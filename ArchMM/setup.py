@@ -1,0 +1,16 @@
+from distutils.core import setup, Extension
+from Cython.Build import cythonize
+import numpy
+
+
+setup(
+    ext_modules = cythonize(
+        [
+            "Cyfiles/KMeans.pyx",
+            "Cyfiles/ChangePointDetection.pyx",
+            "Cyfiles/HMM.pyx",
+            "Cyfiles/HMM_Core.pyx"
+        ],
+        language="c"),
+    include_dirs = [numpy.get_include()]
+)
