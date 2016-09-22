@@ -56,10 +56,16 @@ cdef ieexp2d(M):
             M[i][j] = exp(M[i][j]) if M[i][j] != LOG_ZERO else 0.0
     return M
 
+ctypedef double signal_t
+ctypedef cnp.double_t data_t
+
+cdef struct EStepContext:
+    data_t[:] lnf
+    # TODO
 
 cdef struct Evaluation:
-    cnp.double_t[:, :] gamma
-    cnp.double_t[:, :] loglikelihood
+    data_t[:, :] gamma
+    data_t[:, :] loglikelihood
 
 cdef GaussianGenerator(mu, sigma, n = 1):
     """ Random variables from a gaussian distribution using
@@ -74,10 +80,9 @@ cdef GaussianGenerator(mu, sigma, n = 1):
     -------
     Array containing the random variables
     """
-    cdef Py_ssize_t ndim = len(mu)
     cdef bint has_non_positive_definite_minor = True
     cdef double mcv = 0.00001 # TODO : Use standard deviations in place of a single constant
-    cdef Py_ssize_t i
+    cdef Py_ssize_t i, ndim = len(mu)
     r = randn(n, ndim)
     if n == 1:
         r.shape = (ndim,)
@@ -94,7 +99,7 @@ cdef GaussianGenerator(mu, sigma, n = 1):
 cdef unsigned int numParametersGaussian(unsigned int n):
     return <unsigned int>(0.5 * n * (n + 3.0))
 
-def _sym_quad_form(x, mu, sigma):
+def stableMahalanobis(x, mu, sigma):
     """ Stable version of the Mahalanobis distance
     
     Parameters
@@ -156,7 +161,7 @@ cdef cnp.ndarray GaussianLoglikelihood(cnp.ndarray obs, cnp.ndarray mu, cnp.ndar
             det_sigma = np.linalg.det(sigma[k])
             lndetV = log(det_sigma)
             
-        q = _sym_quad_form(obs, mu[k], sigma[k])
+        q = stableMahalanobis(obs, mu[k], sigma[k])
         lnf[:, k] = -0.5 * (dln2pi + lndetV + q)
     return lnf
 
