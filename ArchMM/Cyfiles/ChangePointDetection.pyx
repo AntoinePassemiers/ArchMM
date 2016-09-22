@@ -104,11 +104,12 @@ cdef class BatchCPD:
         self.mu = np.mean(signal, axis = 0) ** 2
         self.inv_sigma = np.linalg.inv(np.cov(signal.T))
         self.potential_points = <Py_ssize_t*>malloc(2 * self.n * sizeof(Py_ssize_t))
-        self.evaluateSegment(0, self.n, NUMPY_INF_VALUE)
         self.costs = <double*>malloc(2 * self.n * sizeof(double))
         if self.costs == NULL:
             printf("Memory error.")
             exit(EXIT_FAILURE)
+        self.evaluateSegment(0, self.n, NUMPY_INF_VALUE)
+
         
     cpdef cnp.int_t[:] getKeypoints(self):
         self.keypoints[self.n_keypoints] = self.n
@@ -151,7 +152,6 @@ cdef class BatchCPD:
         cdef size_t slice_size = end - begin
         cdef Py_ssize_t mid, best_mid = slice_size / 2
         cdef double lowest_cost = NUMPY_INF_VALUE
-        
         # TODO : polyfit for window_padding < 7
         if slice_size > 2 * self.window_padding:
             for mid in range(begin + self.window_padding, end - self.window_padding):
@@ -171,7 +171,7 @@ cdef class BatchCPD:
                 if cost < lowest_cost:
                     lowest_cost = cost
                     best_mid = mid
-            self.potential_points[self.n_potential_points] = best_mid 
+            self.potential_points[self.n_potential_points] = best_mid
             self.costs[self.n_potential_points] = lowest_cost
             self.n_potential_points += 1
             # TODO : recursive call only for the lowest weighted cost
@@ -181,7 +181,6 @@ cdef class BatchCPD:
                 if (previous_cost - cost) / previous_cost >= self.stability_threshold:
                     self.evaluateSegment(begin, best_mid, cost)
                     self.evaluateSegment(best_mid, end, cost)
-                
 
 
         

@@ -64,8 +64,8 @@ cdef struct EStepContext:
     # TODO
 
 cdef struct Evaluation:
-    data_t[:, :] gamma
-    data_t[:, :] loglikelihood
+    data_t[:, :]* gamma
+    data_t[:, :]* loglikelihood
 
 cdef GaussianGenerator(mu, sigma, n = 1):
     """ Random variables from a gaussian distribution using
@@ -291,19 +291,17 @@ cdef class BaseHMM:
         self.previous_mu = np.copy(self.mu)
         return 0
 
-    cdef Evaluation* evaluateModel(self, obs):
+    cdef void evaluateModel(self, obs):
         cdef cnp.ndarray lnf = GaussianLoglikelihood(obs,self.mu,self.sigma)
         cdef size_t T = len(obs)
         cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
         cdef cnp.ndarray ln_beta = np.zeros((T, self.n_states))
-        cdef cnp.ndarray ln_eta = np.zeros((T - 1, self.n_states, self.n_states))           
+        cdef cnp.ndarray ln_eta = np.zeros((T - 1, self.n_states, self.n_states))       
         ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
-        cdef Evaluation* eval = <Evaluation*>malloc(sizeof(Evaluation))
-        eval.gamma = eexp(ln_gamma)
-        eval.loglikelihood = lnP
-        return eval
+        #self.gamma = ieexp2d(ln_gamma)
+        #self.lnP = lnP
         
-    cdef cnp.ndarray forwardProcedure(self, cnp.ndarray lnf, cnp.ndarray ln_alpha):
+    cdef forwardProcedure(self, cnp.ndarray lnf, cnp.ndarray ln_alpha):
         """ Implementation of the forward procedure 
         (1st part of the forward-backward algorithm)
         
@@ -358,11 +356,11 @@ cdef class BaseHMM:
             ln_eta -= lnP_f
         ln_eta = np.nan_to_num(ln_eta)
         
-        # compute ln_gamma for posterior on hidden statess
         ln_gamma = ln_alpha + ln_beta - lnP_f
         return ln_eta, ln_gamma, lnP_f
 
-    def fit(self, obs, n_iterations = 100, convergence_threshold = 1.0e-4, dynamic_features = False, delta_window = 1):
+    def fit(self, obs, n_iterations = 100, 
+            dynamic_features = False, delta_window = 1):
         """
         Launches the iterative Baum-Welch algorithm for parameter re-estimation.
         Call this method for training purposes, after having executed a parameter estimation
@@ -383,13 +381,12 @@ cdef class BaseHMM:
             deltas, delta_deltas = self.getDeltas(obs, delta_window = delta_window)
             obs = np.concatenate((obs, deltas, delta_deltas), axis = 1)
         T, D = obs.shape[0], obs.shape[1]
-        
         self.initParameters(obs)
         ln_alpha = np.zeros((T, self.n_states))
         ln_beta = np.zeros((T, self.n_states))
         ln_eta = np.zeros((T - 1, self.n_states, self.n_states))
 
-        # main loop
+        cdef long convergence_threshold = <long>0.0001
         old_F = 1.0e20
         i = 0
         while i < n_iterations:
@@ -397,13 +394,12 @@ cdef class BaseHMM:
             lnf = GaussianLoglikelihood(obs, self.mu, self.sigma)
             ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
             # check for convergence
-            F = -lnP # Free energy
+            F = - lnP # Free energy
             dF = F - old_F # Delta free energy
-            if(abs(dF) < convergence_threshold):
+            if(np.abs(dF) < convergence_threshold):
                 break
             old_F = F
             
-            # M step
             gamma = ieexp2d(ln_gamma) # inplace exp function
             for k in range(self.n_states):
                 post = gamma[:, k]
@@ -487,8 +483,15 @@ cdef class BaseHMM:
                [CRITERION_LIKELIHOOD] Negative Likelihood
         """
         n = obs.shape[0]
-        cdef Evaluation* eval = self.evaluateModel(obs)
-        lnP = eval.loglikelihood
+        self.evaluateModel(obs)
+        
+        
+        cdef cnp.ndarray lnf = GaussianLoglikelihood(obs,self.mu,self.sigma)
+        cdef size_t T = len(obs)
+        cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
+        cdef cnp.ndarray ln_beta = np.zeros((T, self.n_states))
+        cdef cnp.ndarray ln_eta = np.zeros((T - 1, self.n_states, self.n_states))       
+        ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
         nmix, ndim = self.mu.shape[0], self.mu.shape[1]
         # k == Complexity of the model
         k = self.n_states * (1.0 + self.n_states) + nmix * self.numParameters(ndim)
@@ -502,14 +505,18 @@ cdef class BaseHMM:
             criterion = - lnP
         else:
             raise NotImplementedError("The given information criterion is not supported")
-        free(eval)
+        #free(eval)
         return criterion
     
     def decode(self, obs):
         """ Returns the index of the most probable state, given the observations """
-        cdef Evaluation* eval = self.evaluateModel(obs)
-        cdef cnp.ndarray gamma = eval.gamma
-        free(eval)
+        cdef cnp.ndarray lnf = GaussianLoglikelihood(obs,self.mu,self.sigma)
+        cdef size_t T = len(obs)
+        cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
+        cdef cnp.ndarray ln_beta = np.zeros((T, self.n_states))
+        cdef cnp.ndarray ln_eta = np.zeros((T - 1, self.n_states, self.n_states))       
+        ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
+        gamma = ieexp2d(ln_gamma)
         return gamma.argmax(1)
     
     cpdef cSave(self, filename):
