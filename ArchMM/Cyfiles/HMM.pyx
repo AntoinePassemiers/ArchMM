@@ -115,7 +115,7 @@ def stableMahalanobis(x, mu, sigma):
             inv_sigma = np.array(np.linalg.inv(sigma), dtype = np.double)
             has_nans = False
         except np.linalg.LinAlgError:
-            inv_sigma = sigma + np.eye(len(sigma), dtype = np.double) * mcv # TODO
+            inv_sigma = sigma + np.eye(len(sigma), dtype = np.double) * mcv # TODO - ERROR
             try:
                 inv_sigma = np.linalg.inv(inv_sigma)
             except:
@@ -290,16 +290,6 @@ cdef class BaseHMM:
             self.ln_transition_probs = elog(self.transition_probs) # log transition probability
         self.previous_mu = np.copy(self.mu)
         return 0
-
-    cdef void evaluateModel(self, obs):
-        cdef cnp.ndarray lnf = GaussianLoglikelihood(obs,self.mu,self.sigma)
-        cdef size_t T = len(obs)
-        cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
-        cdef cnp.ndarray ln_beta = np.zeros((T, self.n_states))
-        cdef cnp.ndarray ln_eta = np.zeros((T - 1, self.n_states, self.n_states))       
-        ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
-        #self.gamma = ieexp2d(ln_gamma)
-        #self.lnP = lnP
         
     cdef forwardProcedure(self, cnp.ndarray lnf, cnp.ndarray ln_alpha):
         """ Implementation of the forward procedure 
@@ -390,12 +380,10 @@ cdef class BaseHMM:
         old_F = 1.0e20
         i = 0
         while i < n_iterations:
-            # E step
             lnf = GaussianLoglikelihood(obs, self.mu, self.sigma)
             ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
-            # check for convergence
-            F = - lnP # Free energy
-            dF = F - old_F # Delta free energy
+            F = - lnP
+            dF = F - old_F
             if(np.abs(dF) < convergence_threshold):
                 break
             old_F = F
@@ -482,9 +470,7 @@ cdef class BaseHMM:
                [CRITERION_BIC] Bayesian Information Criterion
                [CRITERION_LIKELIHOOD] Negative Likelihood
         """
-        n = obs.shape[0]
-        self.evaluateModel(obs)
-        
+        n = obs.shape[0]        
         
         cdef cnp.ndarray lnf = GaussianLoglikelihood(obs,self.mu,self.sigma)
         cdef size_t T = len(obs)
@@ -510,7 +496,7 @@ cdef class BaseHMM:
     
     def decode(self, obs):
         """ Returns the index of the most probable state, given the observations """
-        cdef cnp.ndarray lnf = GaussianLoglikelihood(obs,self.mu,self.sigma)
+        cdef cnp.ndarray lnf = GaussianLoglikelihood(obs, self.mu, self.sigma)
         cdef size_t T = len(obs)
         cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
         cdef cnp.ndarray ln_beta = np.zeros((T, self.n_states))

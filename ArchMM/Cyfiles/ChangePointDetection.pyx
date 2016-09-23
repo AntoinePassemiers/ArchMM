@@ -18,7 +18,18 @@ cpdef unsigned int SUM_OF_SQUARES_COST = 4
 cpdef unsigned int MAHALANOBIS_DISTANCE_COST = 5
 
 
-
+def invSigma(sigma):
+    sigma = np.nan_to_num(sigma)
+    singular = True
+    mcv = 0.00001
+    while singular:
+        try:
+            inv_sigma = np.array(np.linalg.inv(sigma), dtype = np.double)
+            singular = False
+        except np.linalg.LinAlgError:
+            sigma += np.eye(len(sigma), dtype = np.double) * mcv # TODO
+            mcv *= 10
+    return inv_sigma
 
 cdef class BatchCPD:
     """Implementation of the batch Change Point Detection Algorithm.
@@ -82,6 +93,7 @@ cdef class BatchCPD:
         self.cost_func = cost_func
         self.max_n_keypoints = max_n_keypoints if not n_keypoints else n_keypoints # TODO
         self.n_keypoints = 0
+        self.n_potential_points = 0
         self.window_padding = window_padding
         self.keypoints = np.empty(self.max_n_keypoints + 1, dtype = np.int)
         self.keypoints[0] = 0
@@ -102,14 +114,13 @@ cdef class BatchCPD:
         self.n = signal.shape[0]
         self.n_dim = signal.shape[1]
         self.mu = np.mean(signal, axis = 0) ** 2
-        self.inv_sigma = np.linalg.inv(np.cov(signal.T))
+        self.inv_sigma = invSigma(np.cov(signal.T))
         self.potential_points = <Py_ssize_t*>malloc(2 * self.n * sizeof(Py_ssize_t))
         self.costs = <double*>malloc(2 * self.n * sizeof(double))
         if self.costs == NULL:
             printf("Memory error.")
             exit(EXIT_FAILURE)
         self.evaluateSegment(0, self.n, NUMPY_INF_VALUE)
-
         
     cpdef cnp.int_t[:] getKeypoints(self):
         self.keypoints[self.n_keypoints] = self.n
