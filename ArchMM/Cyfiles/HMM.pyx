@@ -260,7 +260,8 @@ cdef class BaseHMM:
         cdef Py_ssize_t n_dim = obs.shape[1]
         cdef size_t i
         if self.architecture == ARCHITECTURE_LINEAR:
-            cpd = BatchCPD(n_keypoints = self.n_states, window_padding = 0)
+            cpd = BatchCPD(n_keypoints = self.n_states, window_padding = 1,
+                           cost_func = MAHALANOBIS_DISTANCE_COST)
             cpd.detectPoints(obs)
             keypoint_indexes = cpd.getKeypoints()
             # self.n_states = len(keypoint_indexes)

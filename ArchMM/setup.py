@@ -7,6 +7,7 @@ setup(
     ext_modules = cythonize(
         [
             "Cyfiles/Math.pyx",
+            "Cyfiles/Queue.pyx",
             "Cyfiles/KMeans.pyx",
             "Cyfiles/ChangePointDetection.pyx",
             "Cyfiles/HMM.pyx",

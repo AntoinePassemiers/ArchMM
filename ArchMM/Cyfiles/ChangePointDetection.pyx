@@ -7,6 +7,7 @@ from libc.stdio cimport *
 from cython.parallel import parallel, prange
 
 include "Math.pyx"
+include "Queue.pyx"
 
 #http://iopscience.iop.org/article/10.1088/1742-6596/364/1/012031/pdf
 
@@ -24,7 +25,7 @@ cdef class BatchCPD:
     """Implementation of the batch Change Point Detection Algorithm.
     This algorithm is designed for getting the positions of the points where most of the
     changes occur in the signal. These points are called change points.
-    The input signal is processed according to a recursive divide-and-conquer procedure.
+    The input signal is processed according to a divide-and-conquer procedure.
     
     Parameters
     ----------
@@ -73,7 +74,8 @@ cdef class BatchCPD:
     cdef cnp.double_t[:, :] inv_sigma
     
     def __cinit__(self, aprx_func = POLYNOMIAL_APRX, aprx_degree = 3, threshold = 0.01,
-                  cost_func = SUM_OF_SQUARES_COST, max_n_keypoints = 50, window_padding = 7, n_keypoints = None):
+                  cost_func = MAHALANOBIS_DISTANCE_COST, max_n_keypoints = 50, window_padding = 1, 
+                  n_keypoints = None):
         if not (POLYNOMIAL_APRX <= aprx_func <= FOURIER_APRX):
             raise NotImplementedError(str(aprx_func) + " approximation function is not supported.")
         self.aprx_func = aprx_func
@@ -83,6 +85,7 @@ cdef class BatchCPD:
         self.max_n_keypoints = max_n_keypoints if not n_keypoints else n_keypoints # TODO
         self.n_keypoints = 0
         self.n_potential_points = 0
+        assert(window_padding > 0)
         self.window_padding = window_padding
         self.keypoints = np.empty(self.max_n_keypoints + 1, dtype = np.int)
         self.keypoints[0] = 0
@@ -91,7 +94,7 @@ cdef class BatchCPD:
         free(self.costs)
 
     cpdef detectPoints(self, signal):
-        """ Initializes the parameters, the data structures, and calls the recursive function
+        """ Initializes the parameters, the data structures, and calls the function
          evaluateSegment.
          
         Parameters
@@ -109,7 +112,7 @@ cdef class BatchCPD:
         if self.costs == NULL:
             printf("Memory error.")
             exit(EXIT_FAILURE)
-        self.evaluateSegment(0, self.n, NUMPY_INF_VALUE)
+        self.evaluateSegment()
         print(len(self.keypoints), self.n_keypoints + 2)
         assert(len(self.keypoints) == self.n_keypoints + 2)
         self.keypoints[self.n_keypoints] = self.n
@@ -126,7 +129,7 @@ cdef class BatchCPD:
         cdef Py_ssize_t i, n = len(vector)
         cdef cnp.ndarray delta = np.empty(len(vector))
         for i in range(n):
-            delta[i] = vector[i] - self.mu[i]
+            delta[i] = np.sqrt(np.nan_to_num(vector[i])) - self.mu[i]
         return <double>np.dot(np.dot(delta, self.inv_sigma), delta)
     
     cdef double SumOfSquaresCost(self, cnp.double_t[:] vector):
@@ -134,14 +137,14 @@ cdef class BatchCPD:
         cdef Py_ssize_t i
         cdef double total = 0.0
         for i in range(len(vector)):
-            total += vector[i] ** 2
+            total += vector[i] ** 2 # TODO : remove the square
         return total
     
-    cdef void evaluateSegment(self, Py_ssize_t begin, Py_ssize_t end, double previous_cost):
-        """ Recursive function which fits the subset between [[begin]] end [[end]].
+    cdef void evaluateSegment(self):
+        """ Function which fits the subset between [[begin]] end [[end]].
         The cost of the regression is used as a criterion to find the best split point 
         for the current subset. The next two subsets are then created from the split that 
-        minimizes the cost function, and are processed recursively.
+        minimizes the cost function, and are processed according to a breadth-first search.
          
         Parameters
         ----------
@@ -152,42 +155,69 @@ cdef class BatchCPD:
                         ([[previous_cost]] - cost) / [[previous_cost]] is lower than
                         a given threshold/ 
         """
-        assert(begin < end)
+        cdef Queue* queue = newQueue()
+        cdef Iteration* current_iter = <Iteration*>malloc(sizeof(Iteration))
+        current_iter.begin = 0
+        current_iter.end = self.n
+        current_iter.previous_cost = NUMPY_INF_VALUE
         cdef cnp.double_t[:] aprx
-        cdef double cost = 0
-        cdef size_t slice_size = end - begin
-        cdef Py_ssize_t mid, best_mid = begin + slice_size / 2
-        cdef double lowest_cost = NUMPY_INF_VALUE
-        # TODO : polyfit for window_padding < 7
-        if slice_size > 2 * self.window_padding:
-            for mid in range(begin + self.window_padding, end - self.window_padding):
-                cost = 0
-                if self.aprx_func == POLYNOMIAL_APRX:
-                    aprx_A = np.polyfit(np.arange(mid - begin), 
-                            self.signal[begin:mid], self.aprx_degree, full = True)
-                    aprx_B = np.polyfit(np.arange(end - mid), 
-                            self.signal[mid:end], self.aprx_degree, full = True)
-                    if self.cost_func == MAHALANOBIS_DISTANCE_COST:
-                        # TODO : remplacer aprx_A[1] par aprx_B[1] par les approximations de la régression
-                        cost = self.MahalanobisCost(aprx_A[1]) + self.MahalanobisCost(aprx_B[1])
-                    elif self.cost_func == SUM_OF_SQUARES_COST:
-                        cost = self.SumOfSquaresCost(aprx_A[1]) + self.SumOfSquaresCost(aprx_B[1])
-                    else:
-                        pass # TODO
-                if cost < lowest_cost:
-                    lowest_cost = cost
-                    best_mid = mid
-            self.potential_points[self.n_potential_points] = best_mid
-            self.costs[self.n_potential_points] = lowest_cost
-            self.n_potential_points += 1
-            # TODO : recursive call only for the lowest weighted cost
-            # TODO : check potential_points to determine the new keypoint
-            self.keypoints[self.n_keypoints] = best_mid
-            self.n_keypoints += 1
-            if not (self.n_keypoints == self.max_n_keypoints - 1):
+        cdef Py_ssize_t begin, end
+        cdef double previous_cost, cost = 0
+        cdef size_t slice_size
+        cdef Py_ssize_t mid, best_mid
+        cdef double lowest_cost
+        enqueue(queue, current_iter)
+        while not (self.n_keypoints == self.max_n_keypoints - 1) and not isQueueEmpty(queue):
+            current_iter = dequeue(queue)
+            begin = current_iter.begin
+            end = current_iter.end
+            free(current_iter)
+            assert(begin < end)
+            previous_cost = current_iter.previous_cost
+            slice_size = end - begin
+            best_mid = begin + slice_size / 2
+            lowest_cost = NUMPY_INF_VALUE
+            if slice_size > 2 * self.window_padding:
+                for mid in range(begin + self.window_padding, end - self.window_padding):
+                    cost = 0
+                    if self.aprx_func == POLYNOMIAL_APRX:
+                        aprx_A = np.polyfit(np.arange(mid - begin), 
+                                self.signal[begin:mid], self.aprx_degree, full = True)
+                        aprx_B = np.polyfit(np.arange(end - mid), 
+                                self.signal[mid:end], self.aprx_degree, full = True)
+                        if self.cost_func == MAHALANOBIS_DISTANCE_COST:
+                            # TODO : remplacer aprx_A[1] par aprx_B[1] par les approximations de la régression
+                            cost = self.MahalanobisCost(aprx_A[1]) + self.MahalanobisCost(aprx_B[1])
+                        elif self.cost_func == SUM_OF_SQUARES_COST:
+                            cost = self.SumOfSquaresCost(aprx_A[1]) + self.SumOfSquaresCost(aprx_B[1])
+                        else:
+                            pass # TODO
+                    if cost < lowest_cost:
+                        lowest_cost = cost
+                        best_mid = mid
+                self.potential_points[self.n_potential_points] = best_mid
+                self.costs[self.n_potential_points] = lowest_cost
+                self.n_potential_points += 1
+                # TODO : recursive call only for the lowest weighted cost
+                # TODO : check potential_points to determine the new keypoint
+                # if not (self.n_keypoints == self.max_n_keypoints - 1):
+                self.keypoints[self.n_keypoints] = best_mid
+                self.n_keypoints += 1
                 # TODO : if (previous_cost - cost) / previous_cost >= self.stability_threshold:
-                self.evaluateSegment(begin + 1, best_mid, cost)
-                self.evaluateSegment(best_mid, end - 1, cost)
+                if not (self.n_keypoints == self.max_n_keypoints - 1):
+                    current_iter = <Iteration*>malloc(sizeof(Iteration))
+                    current_iter.begin = begin + 1
+                    current_iter.end = best_mid
+                    current_iter.previous_cost = cost
+                    enqueue(queue, current_iter)
+                    current_iter = <Iteration*>malloc(sizeof(Iteration))
+                    current_iter.begin = best_mid
+                    current_iter.end = end - 1
+                    current_iter.previous_cost = cost
+                    enqueue(queue, current_iter)
+                    # self.evaluateSegment(begin + 1, best_mid, cost)
+                    # self.evaluateSegment(best_mid, end - 1, cost)
+        free(queue)
 
 
         
