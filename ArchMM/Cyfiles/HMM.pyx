@@ -260,7 +260,7 @@ cdef class BaseHMM:
         cdef Py_ssize_t n_dim = obs.shape[1]
         cdef size_t i
         if self.architecture == ARCHITECTURE_LINEAR:
-            cpd = BatchCPD(max_n_keypoints = self.n_states)
+            cpd = BatchCPD(n_keypoints = self.n_states, window_padding = 0)
             cpd.detectPoints(obs)
             keypoint_indexes = cpd.getKeypoints()
             # self.n_states = len(keypoint_indexes)
@@ -272,8 +272,6 @@ cdef class BaseHMM:
                 self.transition_probs[i, i] = 1.0 - a_ij
             self.initial_probs = np.zeros(self.n_states, dtype = np.float)
             self.initial_probs[0] = 1.0
-            self.ln_initial_probs = np.nan_to_num(elog(self.initial_probs))
-            self.ln_transition_probs = np.nan_to_num(elog(self.transition_probs))
             self.mu = np.empty((self.n_states, obs.shape[1]))
             self.sigma = np.empty((self.n_states, n_dim, n_dim))
             for i in range(self.n_states - 1):
@@ -286,8 +284,8 @@ cdef class BaseHMM:
             self.sigma = np.tile(np.identity(obs.shape[1]),(self.n_states, 1, 1))
             self.initial_probs = np.tile(1.0 / self.n_states, self.n_states)
             self.transition_probs = dirichlet([1.0] * self.n_states, self.n_states)
-            self.ln_initial_probs = elog(self.initial_probs) # log initial probability
-            self.ln_transition_probs = elog(self.transition_probs) # log transition probability
+        self.ln_initial_probs = np.nan_to_num(elog(self.initial_probs))
+        self.ln_transition_probs = np.nan_to_num(elog(self.transition_probs))
         self.previous_mu = np.copy(self.mu)
         return 0
         

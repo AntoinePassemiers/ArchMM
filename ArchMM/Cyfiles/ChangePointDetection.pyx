@@ -6,6 +6,8 @@ from libc.stdlib cimport *
 from libc.stdio cimport * 
 from cython.parallel import parallel, prange
 
+include "Math.pyx"
+
 #http://iopscience.iop.org/article/10.1088/1742-6596/364/1/012031/pdf
 
 cdef double NUMPY_INF_VALUE = np.nan_to_num(np.inf)
@@ -17,19 +19,6 @@ cpdef unsigned int FOURIER_APRX = 3
 cpdef unsigned int SUM_OF_SQUARES_COST = 4
 cpdef unsigned int MAHALANOBIS_DISTANCE_COST = 5
 
-
-def invSigma(sigma):
-    sigma = np.nan_to_num(sigma)
-    singular = True
-    mcv = 0.00001
-    while singular:
-        try:
-            inv_sigma = np.array(np.linalg.inv(sigma), dtype = np.double)
-            singular = False
-        except np.linalg.LinAlgError:
-            sigma += np.eye(len(sigma), dtype = np.double) * mcv # TODO
-            mcv *= 10
-    return inv_sigma
 
 cdef class BatchCPD:
     """Implementation of the batch Change Point Detection Algorithm.
@@ -114,17 +103,23 @@ cdef class BatchCPD:
         self.n = signal.shape[0]
         self.n_dim = signal.shape[1]
         self.mu = np.mean(signal, axis = 0) ** 2
-        self.inv_sigma = invSigma(np.cov(signal.T))
+        self.inv_sigma = stableInvSigma(np.cov(signal.T))
         self.potential_points = <Py_ssize_t*>malloc(2 * self.n * sizeof(Py_ssize_t))
         self.costs = <double*>malloc(2 * self.n * sizeof(double))
         if self.costs == NULL:
             printf("Memory error.")
             exit(EXIT_FAILURE)
         self.evaluateSegment(0, self.n, NUMPY_INF_VALUE)
+        print(len(self.keypoints), self.n_keypoints + 2)
+        assert(len(self.keypoints) == self.n_keypoints + 2)
+        self.keypoints[self.n_keypoints] = self.n
+        self.keypoints = np.sort(self.keypoints[:self.n_keypoints+1])
+        print(list(self.keypoints[:]))
+        for i in range(len(self.keypoints) - 1):
+            assert(self.keypoints[i] != self.keypoints[i + 1])
         
     cpdef cnp.int_t[:] getKeypoints(self):
-        self.keypoints[self.n_keypoints] = self.n
-        return np.sort(self.keypoints[:self.n_keypoints+1])
+        return self.keypoints
     
     cdef double MahalanobisCost(self, cnp.double_t[:] vector):
         """ Mahalanobis distance between the vector and the mean of the signal """
@@ -161,7 +156,7 @@ cdef class BatchCPD:
         cdef cnp.double_t[:] aprx
         cdef double cost = 0
         cdef size_t slice_size = end - begin
-        cdef Py_ssize_t mid, best_mid = slice_size / 2
+        cdef Py_ssize_t mid, best_mid = begin + slice_size / 2
         cdef double lowest_cost = NUMPY_INF_VALUE
         # TODO : polyfit for window_padding < 7
         if slice_size > 2 * self.window_padding:
@@ -186,12 +181,13 @@ cdef class BatchCPD:
             self.costs[self.n_potential_points] = lowest_cost
             self.n_potential_points += 1
             # TODO : recursive call only for the lowest weighted cost
-            if not self.n_keypoints == self.max_n_keypoints - 1:
-                self.keypoints[self.n_keypoints] = best_mid
-                self.n_keypoints += 1
-                if (previous_cost - cost) / previous_cost >= self.stability_threshold:
-                    self.evaluateSegment(begin, best_mid, cost)
-                    self.evaluateSegment(best_mid, end, cost)
+            # TODO : check potential_points to determine the new keypoint
+            self.keypoints[self.n_keypoints] = best_mid
+            self.n_keypoints += 1
+            if not (self.n_keypoints == self.max_n_keypoints - 1):
+                # TODO : if (previous_cost - cost) / previous_cost >= self.stability_threshold:
+                self.evaluateSegment(begin + 1, best_mid, cost)
+                self.evaluateSegment(best_mid, end - 1, cost)
 
 
         

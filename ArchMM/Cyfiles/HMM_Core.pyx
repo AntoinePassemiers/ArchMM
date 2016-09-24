@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 # cython: profile=True
 
-import pickle, numbers
+import collections, numbers
 import numpy as np
-from numpy.random import randn, random, dirichlet
 
 from libc.math cimport exp, log, M_PI
 
@@ -22,9 +21,35 @@ def convertToMultiSpace(data):
             # TODO
 
 class AdaptiveHMM:
+
+    arch_names = collections.defaultdict()
+    arch_names["linear"] = ARCHITECTURE_LINEAR
+    arch_names["right"] = ARCHITECTURE_LEFT_TO_RIGHT
+    arch_names["ergodic"] = ARCHITECTURE_ERGODIC
+    arch_names["cyclic"] = ARCHITECTURE_CYCLIC
+    arch_names["bakis"] = ARCHITECTURE_BAKIS
+    crit_names = collections.defaultdict()
+    crit_names["aic"] = CRITERION_AIC
+    crit_names["aicc"] = CRITERION_AICC
+    crit_names["bic"] = CRITERION_BIC
+    crit_names["likelihood"] = CRITERION_LIKELIHOOD
+    dist_names = collections.defaultdict()
+    dist_names["gaussian"] = DISTRIBUTION_GAUSSIAN
+    dist_names["multinomial"] = DISTRIBUTION_MULTINOMIAL
     
-    def __init__(self, n_states, architecture = ARCHITECTURE_LINEAR):
-        self.hmm = BaseHMM(n_states, architecture = architecture)
+    def __init__(self, n_states, architecture = "linear"):
+        l_architecture = architecture.lower()
+        found = False
+        for name in AdaptiveHMM.arch_names.keys():
+            if l_architecture in name:
+                arch = AdaptiveHMM.arch_names[name]
+                found = True
+        if not found:
+            arch = AdaptiveHMM.arch_names["ergodic"]
+            print("Warning : architecture %s not found" % l_architecture)
+            print("An ergodic structure will be used instead.")
+        
+        self.hmm = BaseHMM(n_states, architecture = arch)
         
     def getMu(self):
         return self.hmm.getMu()
