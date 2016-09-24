@@ -17,6 +17,8 @@ http://stackoverflow.com/questions/10718699/convert-numpy-array-to-cython-pointe
 
 cdef bint RELEASE_MODE = False
 
+# TODO : numerical stability : use float128
+
 
 cpdef unsigned int ARCHITECTURE_LINEAR = 1
 cpdef unsigned int ARCHITECTURE_BAKIS = 2
@@ -219,16 +221,19 @@ cdef class BaseHMM:
                                                 one_sided way.
                    [ARCHITECTURE_CYCLIC] Each node is connected to the next one in a one_sided way,
                                          except the last node which loops back to the first one.
+    distribution : type of the input signal's distribution
+                   [DISTRIBUTION_GAUSSIAN] For variable following a normal law
+                   [DISTRIBUTION_MULTINOMIAL] For discrete variables with a finite set of values
     initial_probs : array containing the probability, for each hidden state, to be processed at first
     transition_probs : matrix where the element i_j represents the probability to move to the hidden
                        state j knowing that the current state is the state i  
     """
 
-    cdef unsigned int architecture
+    cdef unsigned int architecture, distribution
     cdef Py_ssize_t n_states
     cdef cnp.ndarray initial_probs, transition_probs
     cdef cnp.ndarray ln_initial_probs, ln_transition_probs
-    cdef cnp.ndarray mu, previous_mu, sigma
+    cdef cnp.ndarray mu, previous_mu, sigma, previous_sigma
     cdef unsigned int (*numParameters)(unsigned int)
     cdef cnp.ndarray (*loglikelihood)(cnp.ndarray, cnp.ndarray, cnp.ndarray)
 
@@ -237,6 +242,7 @@ cdef class BaseHMM:
         if not (ARCHITECTURE_LINEAR <= architecture <= ARCHITECTURE_CYCLIC): 
             raise NotImplementedError("This architecture is not supported yet")
         self.architecture = architecture
+        self.distribution = distribution
         self.n_states = n_states
         if distribution == DISTRIBUTION_GAUSSIAN:
             self.numParameters = &numParametersGaussian
@@ -261,7 +267,7 @@ cdef class BaseHMM:
         cdef size_t i
         if self.architecture == ARCHITECTURE_LINEAR:
             cpd = BatchCPD(n_keypoints = self.n_states, window_padding = 1,
-                           cost_func = MAHALANOBIS_DISTANCE_COST)
+                           cost_func = SUM_OF_SQUARES_COST, aprx_degree = 2)
             cpd.detectPoints(obs)
             keypoint_indexes = cpd.getKeypoints()
             # self.n_states = len(keypoint_indexes)
@@ -275,7 +281,8 @@ cdef class BaseHMM:
             self.initial_probs[0] = 1.0
             self.mu = np.empty((self.n_states, obs.shape[1]))
             self.sigma = np.empty((self.n_states, n_dim, n_dim))
-            for i in range(self.n_states - 1):
+            print(keypoint_indexes)
+            for i in range(self.n_states):
                 segment = obs[keypoint_indexes[i]:keypoint_indexes[i + 1], :]
                 self.mu[i] = segment.mean(axis = 0)
                 self.sigma[i] = np.cov(segment.T)
@@ -285,9 +292,12 @@ cdef class BaseHMM:
             self.sigma = np.tile(np.identity(obs.shape[1]),(self.n_states, 1, 1))
             self.initial_probs = np.tile(1.0 / self.n_states, self.n_states)
             self.transition_probs = dirichlet([1.0] * self.n_states, self.n_states)
+        self.mu = np.nan_to_num(self.mu)
+        self.sigma = np.nan_to_num(self.sigma)
         self.ln_initial_probs = np.nan_to_num(elog(self.initial_probs))
         self.ln_transition_probs = np.nan_to_num(elog(self.transition_probs))
         self.previous_mu = np.copy(self.mu)
+        self.previous_sigma = np.copy(self.sigma)
         return 0
         
     cdef forwardProcedure(self, cnp.ndarray lnf, cnp.ndarray ln_alpha):
@@ -400,8 +410,12 @@ cdef class BaseHMM:
                 
                 if np.all(self.mu[k] == 0):
                     self.mu[k] = self.previous_mu[k]
-                else:
-                    self.previous_mu[k] = self.mu[k]
+            is_nan = (self.mu == np.nan)
+            self.mu[is_nan] = self.previous_mu[is_nan]
+            is_nan = (self.sigma == np.nan)
+            self.sigma[is_nan] = self.previous_sigma[is_nan]
+            self.previous_mu[:] = self.mu[:]
+            self.previous_sigma[:] = self.sigma[:]
             
         self.transition_probs = eexp(self.ln_transition_probs)
         eigenvalues = np.linalg.eig(self.transition_probs.T)

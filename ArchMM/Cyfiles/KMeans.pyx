@@ -34,7 +34,7 @@ cdef class ClusterSet:
         free(self.cluster_max_sizes)
         
     cdef void insert(self, Py_ssize_t cluster_id, cnp.double_t[:] element):
-        """ Inserts [[elements]] in the cluster [[cluster_id]].
+        """ Inserts [[element]] in the cluster [[cluster_id]].
         The cluster is implemented using an array. If the array is full,
         a new array is initialized with the double of the previous array's size. """
         cdef double** new_cluster
