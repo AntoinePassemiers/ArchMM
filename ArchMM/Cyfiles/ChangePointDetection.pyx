@@ -92,7 +92,7 @@ cdef class BatchCPD:
     def __dealloc__(self):
         free(self.costs)
 
-    cpdef detectPoints(self, signal):
+    cpdef detectPoints(self, signal, mu, sigma):
         """ Initializes the parameters, the data structures, and calls the function
          evaluateSegment.
          
@@ -104,8 +104,8 @@ cdef class BatchCPD:
         self.signal = signal
         self.n = signal.shape[0]
         self.n_dim = signal.shape[1]
-        self.mu = np.mean(signal, axis = 0) ** 2
-        self.inv_sigma = stableInvSigma(np.cov(signal.T))
+        self.mu = mu
+        self.inv_sigma = stableInvSigma(sigma)
         self.potential_points = <Py_ssize_t*>malloc(2 * self.n * sizeof(Py_ssize_t))
         self.costs = <double*>malloc(2 * self.n * sizeof(double))
         if self.costs == NULL:

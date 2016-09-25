@@ -50,23 +50,29 @@ class AdaptiveHMM:
             print("An ergodic structure will be used instead.")
         
         self.hmm = BaseHMM(n_states, architecture = arch)
+        self.stdvs = self.mu = None
         
     def getMu(self):
         return self.hmm.getMu()
         
     def fit(self, observations, **kwargs):
         assert(not np.any(np.isnan(observations)))
-        assert(not np.any(np.isinf(observations)))        
+        assert(not np.any(np.isinf(observations)))
+        sigma = np.cov(observations.T)
+        self.stdvs = np.sqrt(np.diag(sigma))
+        self.mu = np.mean(observations, axis = 0)
+        observations = (observations - self.mu) / self.stdvs.T
         # TODO : Process observations before passing them to self.hmm
         if len(observations.shape) == 1:
             obs = np.zeros((len(observations), 2), dtype = np.double)
             obs[:, 0] = observations[:]
             obs[:, 1] = np.random.rand(len(observations))
             observations = obs
-        self.hmm.fit(observations, **kwargs)
+        self.hmm.fit(observations, self.mu, sigma, **kwargs)
         
-    def score(self, *args, **kwargs):
-        return self.hmm.score(*args, **kwargs)
+    def score(self, observations, **kwargs):
+        observations = (observations - self.mu) / self.stdvs.T
+        return self.hmm.score(observations, **kwargs)
         
     def randomSequence(self, *args, **kwargs):
         return self.hmm.randomSequence(*args, **kwargs)

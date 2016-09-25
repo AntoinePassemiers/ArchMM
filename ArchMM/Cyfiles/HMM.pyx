@@ -233,7 +233,7 @@ cdef class BaseHMM:
     cdef Py_ssize_t n_states
     cdef cnp.ndarray initial_probs, transition_probs
     cdef cnp.ndarray ln_initial_probs, ln_transition_probs
-    cdef cnp.ndarray mu, previous_mu, sigma, previous_sigma
+    cdef cnp.ndarray mu, previous_mu, sigma, previous_sigma, MU, SIGMA
     cdef unsigned int (*numParameters)(unsigned int)
     cdef cnp.ndarray (*loglikelihood)(cnp.ndarray, cnp.ndarray, cnp.ndarray)
 
@@ -268,7 +268,7 @@ cdef class BaseHMM:
         if self.architecture == ARCHITECTURE_LINEAR:
             cpd = BatchCPD(n_keypoints = self.n_states, window_padding = 1,
                            cost_func = MAHALANOBIS_DISTANCE_COST, aprx_degree = 2)
-            cpd.detectPoints(obs)
+            cpd.detectPoints(obs, self.MU, self.SIGMA)
             keypoint_indexes = cpd.getKeypoints()
             # self.n_states = len(keypoint_indexes)
             self.transition_probs = np.zeros((self.n_states, self.n_states), dtype = np.float)
@@ -357,7 +357,7 @@ cdef class BaseHMM:
         ln_gamma = ln_alpha + ln_beta - lnP_f
         return ln_eta, ln_gamma, lnP_f
 
-    def fit(self, obs, n_iterations = 100, 
+    def fit(self, obs, mu, sigma, n_iterations = 100, 
             dynamic_features = False, delta_window = 1):
         """
         Launches the iterative Baum-Welch algorithm for parameter re-estimation.
@@ -373,7 +373,10 @@ cdef class BaseHMM:
                                 If [[n_terations]] is small enough, the algorithm may stop 
                                 before the convergence criterion can be fulfilled.
         dynamic_features : 
+        sigma : variance-covariance matrix of the WHOLE signal
         """
+        self.MU = mu
+        self.SIGMA = sigma
         assert(len(obs.shape) == 2)
         if dynamic_features:
             deltas, delta_deltas = self.getDeltas(obs, delta_window = delta_window)
@@ -496,7 +499,7 @@ cdef class BaseHMM:
         if mode == CRITERION_AIC:
             criterion = 2 * k - 2 * lnP
         elif mode == CRITERION_AICC:
-            criterion = 2 * k - 2 * lnP + float(2 * k * (k + 1)) / float(n - k - 1) 
+            criterion = 2 * k - 2 * lnP + float(2 * k * (k + 1)) / float(n - k - 1)
         elif mode == CRITERION_BIC:
             criterion = k * elog(n) - lnP
         elif mode == CRITERION_LIKELIHOOD:
