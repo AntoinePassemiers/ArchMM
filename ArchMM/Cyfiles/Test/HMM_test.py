@@ -14,7 +14,7 @@ if __name__ == "__main__":
     
     data = np.arange(1, 1001).reshape(500, 2)
     data[59, 1] = 78
-    hmm = AdaptiveHMM(10)
+    hmm = AdaptiveHMM(10, "ergodic")
     hmm.fit(data, dynamic_features = False)
     print(hmm.getMu())
     

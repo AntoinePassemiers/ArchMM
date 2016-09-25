@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
-import pickle
+import ctypes, pickle
 import numpy as np
 from numpy.random import randn, random, dirichlet
 from scipy.spatial.distance import cdist # TO REMOVE
-
+from libc.stdio cimport *
 from libc.math cimport exp, log, M_PI
 
 include "KMeans.pyx"
@@ -233,7 +233,8 @@ cdef class BaseHMM:
     cdef Py_ssize_t n_states
     cdef cnp.ndarray initial_probs, transition_probs
     cdef cnp.ndarray ln_initial_probs, ln_transition_probs
-    cdef cnp.ndarray mu, previous_mu, sigma, previous_sigma, MU, SIGMA
+    cdef cnp.ndarray mu 
+    cdef cnp.ndarray previous_mu, sigma, previous_sigma, MU, SIGMA
     cdef unsigned int (*numParameters)(unsigned int)
     cdef cnp.ndarray (*loglikelihood)(cnp.ndarray, cnp.ndarray, cnp.ndarray)
 
@@ -267,8 +268,9 @@ cdef class BaseHMM:
         cdef size_t i
         if self.architecture == ARCHITECTURE_LINEAR:
             cpd = BatchCPD(n_keypoints = self.n_states, window_padding = 1,
-                           cost_func = MAHALANOBIS_DISTANCE_COST, aprx_degree = 2)
+                           cost_func = SUM_OF_SQUARES_COST, aprx_degree = 2)
             cpd.detectPoints(obs, self.MU, self.SIGMA)
+            printf("\tParameter estimation finished\n")
             keypoint_indexes = cpd.getKeypoints()
             # self.n_states = len(keypoint_indexes)
             self.transition_probs = np.zeros((self.n_states, self.n_states), dtype = np.float)
@@ -279,8 +281,8 @@ cdef class BaseHMM:
                 self.transition_probs[i, i] = 1.0 - a_ij
             self.initial_probs = np.zeros(self.n_states, dtype = np.float)
             self.initial_probs[0] = 1.0
-            self.mu = np.empty((self.n_states, obs.shape[1]))
-            self.sigma = np.empty((self.n_states, n_dim, n_dim))
+            self.mu = np.empty((self.n_states, n_dim), dtype = np.double)
+            self.sigma = np.empty((self.n_states, n_dim, n_dim), dtype = np.double)
             for i in range(self.n_states):
                 segment = obs[keypoint_indexes[i]:keypoint_indexes[i + 1], :]
                 self.mu[i] = segment.mean(axis = 0)
@@ -313,8 +315,11 @@ cdef class BaseHMM:
         The loglikelihood of the forward procedure 
         """ 
         cdef Py_ssize_t t, T = len(lnf)
-        ln_alpha[0, :] = np.nan_to_num(self.ln_initial_probs + lnf[0, :])
+        with np.errstate(over = 'ignore'):
+            # WARNING : overflow in add
+            ln_alpha[0, :] = np.nan_to_num(self.ln_initial_probs + lnf[0, :])
         for t in range(1, T):
+            # WARNING : overflow in add
             ln_alpha[t, :] = logsum(ln_alpha[t - 1, :] + self.ln_transition_probs.T, 1) + lnf[t, :]
         ln_alpha = np.nan_to_num(ln_alpha)
         return logsum(ln_alpha[-1, :])
@@ -345,15 +350,15 @@ cdef class BaseHMM:
         lnP_b = self.backwardProcedure(lnf, ln_beta)
         if abs((lnP_f - lnP_b) / lnP_f) > 1.0e-6:
             printf("Error. Forward and backward algorithm must produce the same loglikelihood.\n")
-        
-        for i in range(self.n_states):
-            for j in range(self.n_states):
-                for t in range(T - 1):
-                    ln_eta[t, i, j] = ln_alpha[t, i] + self.ln_transition_probs[i, j,] + lnf[t+1,j] + ln_beta[t+1,j]
-                    
-            ln_eta -= lnP_f
+        with np.errstate(over = 'ignore'):
+            for i in range(self.n_states):
+                for j in range(self.n_states):
+                    for t in range(T - 1):
+                        # WARNING : overflow in double_scalars
+                        ln_eta[t, i, j] = ln_alpha[t, i] + self.ln_transition_probs[i, j,] + lnf[t+1,j] + ln_beta[t+1,j]
+                        
+                ln_eta -= lnP_f
         ln_eta = np.nan_to_num(ln_eta)
-        
         ln_gamma = ln_alpha + ln_beta - lnP_f
         return ln_eta, ln_gamma, lnP_f
 
@@ -408,16 +413,17 @@ cdef class BaseHMM:
                 avg_sigma = temp * norm
                 self.mu[k] = np.nan_to_num(np.dot(post, obs) * norm)
                 self.sigma[k] = np.nan_to_num(avg_sigma - np.outer(self.mu[k], self.mu[k]))
-                i += 1
-                
+                """
                 if np.all(self.mu[k] == 0):
                     self.mu[k] = self.previous_mu[k]
+                """
             is_nan = (self.mu == np.nan)
             self.mu[is_nan] = self.previous_mu[is_nan]
             is_nan = (self.sigma == np.nan)
             self.sigma[is_nan] = self.previous_sigma[is_nan]
             self.previous_mu[:] = self.mu[:]
             self.previous_sigma[:] = self.sigma[:]
+            i += 1
             
         self.transition_probs = eexp(self.ln_transition_probs)
         eigenvalues = np.linalg.eig(self.transition_probs.T)
@@ -486,12 +492,11 @@ cdef class BaseHMM:
                [CRITERION_LIKELIHOOD] Negative Likelihood
         """
         n = obs.shape[0]        
-        
         cdef cnp.ndarray lnf = GaussianLoglikelihood(obs,self.mu,self.sigma)
         cdef size_t T = len(obs)
         cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
         cdef cnp.ndarray ln_beta = np.zeros((T, self.n_states))
-        cdef cnp.ndarray ln_eta = np.zeros((T - 1, self.n_states, self.n_states))       
+        cdef cnp.ndarray ln_eta = np.zeros((T - 1, self.n_states, self.n_states))    
         ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
         nmix, ndim = self.mu.shape[0], self.mu.shape[1]
         # k == Complexity of the model
@@ -520,31 +525,62 @@ cdef class BaseHMM:
         gamma = ieexp2d(ln_gamma)
         return gamma.argmax(1)
     
-    cpdef cSave(self, filename):
-        # http://techblog.appnexus.com/blog/2015/12/22/pyrobuf-a-faster-python-protobuf-library-written-in-cython/
-        # http://stackoverflow.com/questions/29950407/reading-and-writing-an-array-in-a-file-using-c-functions-in-cython
-        """
-        cdef Py_ssize_t i, N
-        cdef FILE* ptr_fw
-        ptr_fw = fopen(filename, "wb")
-        if not (ptr_fw == NULL):
-            for i from N > i >= 0:
-                fscanf(ptr_fr,"%f", &ptr_d[i])
-                fclose(ptr_fr)
-        """
-                
+    cpdef cSave(self, char* filename):
+        cdef size_t i, j, k
+        cdef Py_ssize_t n_dim = self.sigma.shape[1]
+        cdef FILE* ptr_fw = fopen(filename, "wb")
+        if ptr_fw == NULL:
+            printf("Error. Could not open file %s\n", filename)
+            exit(EXIT_FAILURE)
+        cdef cnp.double_t* mu = <cnp.double_t*>self.mu.data
+        cdef cnp.double_t* sigma = <cnp.double_t*>self.sigma.data
+        cdef cnp.float_t* initial_probs = <cnp.float_t*>self.initial_probs.data
+        cdef cnp.float_t* transition_probs = <cnp.float_t*>self.transition_probs.data
+        fwrite(&(self.architecture), sizeof(unsigned int), sizeof(unsigned int), ptr_fw)
+        fwrite(&(self.distribution), sizeof(unsigned int), sizeof(unsigned int), ptr_fw)
+        fwrite(&(self.n_states), sizeof(Py_ssize_t), sizeof(Py_ssize_t), ptr_fw)
+        fwrite(&n_dim, sizeof(Py_ssize_t), sizeof(Py_ssize_t), ptr_fw)
+        fwrite(&mu, sizeof(cnp.double_t), self.n_states * n_dim * sizeof(cnp.double_t), ptr_fw)
+        fwrite(&sigma, sizeof(cnp.double_t), self.n_states * n_dim * n_dim * sizeof(cnp.double_t), ptr_fw)
+        fwrite(&initial_probs, sizeof(cnp.float_t), self.n_states * sizeof(cnp.float_t), ptr_fw)
+        fwrite(&transition_probs, sizeof(cnp.float_t), self.n_states * self.n_states * sizeof(cnp.float_t), ptr_fw)
+        fclose(ptr_fw)
+        
+    cpdef cLoad(self, char* filename):
+        cdef Py_ssize_t i, j, k
+        cdef Py_ssize_t n_dim
+        cdef FILE* ptr_fr = fopen(filename, "rb")
+        if ptr_fr == NULL:
+            printf("Error. Could not open file %s\n", filename)
+            exit(EXIT_FAILURE)
+        fread(&(self.architecture), sizeof(unsigned int), sizeof(unsigned int), ptr_fr)
+        fread(&(self.distribution), sizeof(unsigned int), sizeof(unsigned int), ptr_fr)
+        fread(&(self.n_states), sizeof(Py_ssize_t), sizeof(Py_ssize_t), ptr_fr)
+        fread(&n_dim, sizeof(Py_ssize_t), sizeof(Py_ssize_t), ptr_fr)
+        self.mu = np.empty((self.n_states, n_dim), dtype = np.double)
+        self.mu = np.empty((self.n_states, n_dim), dtype = np.double)
+        cdef cnp.double_t* mu = <cnp.double_t*>self.mu.data
+        cdef double* sigma = <double*>self.sigma.data
+        cdef float* initial_probs = <float*>self.initial_probs.data
+        cdef float* transition_probs = <float*>self.transition_probs.data
+        fclose(ptr_fr)
+        
     def pySave(self, filename):
-        attributes = {"architecture" : int(self.architecture),
-                      "n_states" : int(self.n_states),
-                      "initial_probs" : self.initial_probs,
-                      "transition_probs" : self.transition_probs,
-                      "mu" : self.mu, "sigma" : self.sigma
-                      }
+        attributes = {
+            "architecture" : int(self.architecture),
+            "distribution" : int(self.distribution),
+            "n_states" : int(self.n_states),
+            "initial_probs" : self.initial_probs,
+            "transition_probs" : self.transition_probs,
+            "mu" : self.mu, "sigma" : self.sigma,
+            "MU" : self.mu, "SIGMA" : self.sigma
+        }
         pickle.dump(attributes, open(filename, "wb"))
-
+        
     def pyLoad(self, filename):
         attributes = pickle.load(open(filename, "rb"))
         self.architecture = attributes["architecture"]
+        self.distribution = attributes["distribution"]
         self.n_states = attributes["n_states"]
         self.initial_probs = attributes["initial_probs"]
         self.transition_probs = attributes["transition_probs"]
@@ -552,8 +588,8 @@ cdef class BaseHMM:
         self.ln_transition_probs = np.nan_to_num(elog(self.transition_probs))
         self.mu = attributes["mu"]
         self.sigma = attributes["sigma"]
-
-
-
-
+        self.MU = self.mu = attributes["MU"]
+        self.SIGMA = self.sigma = attributes["SIGMA"]
+        
+        
 
