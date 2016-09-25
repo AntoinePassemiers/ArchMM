@@ -267,7 +267,7 @@ cdef class BaseHMM:
         cdef size_t i
         if self.architecture == ARCHITECTURE_LINEAR:
             cpd = BatchCPD(n_keypoints = self.n_states, window_padding = 1,
-                           cost_func = SUM_OF_SQUARES_COST, aprx_degree = 2)
+                           cost_func = MAHALANOBIS_DISTANCE_COST, aprx_degree = 2)
             cpd.detectPoints(obs)
             keypoint_indexes = cpd.getKeypoints()
             # self.n_states = len(keypoint_indexes)
@@ -281,7 +281,6 @@ cdef class BaseHMM:
             self.initial_probs[0] = 1.0
             self.mu = np.empty((self.n_states, obs.shape[1]))
             self.sigma = np.empty((self.n_states, n_dim, n_dim))
-            print(keypoint_indexes)
             for i in range(self.n_states):
                 segment = obs[keypoint_indexes[i]:keypoint_indexes[i + 1], :]
                 self.mu[i] = segment.mean(axis = 0)

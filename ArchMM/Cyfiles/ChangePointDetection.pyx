@@ -112,10 +112,11 @@ cdef class BatchCPD:
             printf("Memory error.")
             exit(EXIT_FAILURE)
         self.evaluateSegment()
-        assert(len(self.keypoints) == self.n_keypoints + 2)
         self.keypoints[self.n_keypoints] = self.n
         self.keypoints[self.n_keypoints + 1] = 0
+        assert(len(self.keypoints) == self.n_keypoints + 2)
         self.keypoints = np.sort(self.keypoints[:self.n_keypoints + 2])
+        print(list(self.keypoints))
         for i in range(len(self.keypoints) - 1):
             assert(self.keypoints[i] != self.keypoints[i + 1])
         
@@ -125,8 +126,11 @@ cdef class BatchCPD:
     cdef double MahalanobisCost(self, cnp.double_t[:] vector):
         """ Mahalanobis distance between the vector and the mean of the signal """
         cdef Py_ssize_t n = len(vector)
-        cdef cnp.ndarray delta = np.sqrt(np.nan_to_num(vector)) - self.mu
-        return <double>np.dot(np.dot(delta, self.inv_sigma), delta)
+        if n == 0:
+            return 0
+        cdef cnp.ndarray delta = np.sqrt(np.nan_to_num(np.asarray(vector))) - self.mu
+        cost = np.dot(np.dot(delta, self.inv_sigma), delta)
+        return <double>cost
     
     cdef double SumOfSquaresCost(self, cnp.double_t[:] vector):
         """ Sum of squares of the vector elements """
@@ -149,7 +153,7 @@ cdef class BatchCPD:
         previous_cost : cost function of the previous step
                         The convergence criterion is fulfilled when 
                         ([[previous_cost]] - cost) / [[previous_cost]] is lower than
-                        a given threshold/ 
+                        a given threshold.
         """
         cdef Queue* queue = newQueue()
         cdef Iteration* current_iter = <Iteration*>malloc(sizeof(Iteration))
@@ -163,7 +167,7 @@ cdef class BatchCPD:
         cdef Py_ssize_t mid, best_mid
         cdef double lowest_cost
         enqueue(queue, current_iter)
-        while not (self.n_keypoints == self.max_n_keypoints - 1) and not isQueueEmpty(queue):
+        while (not (self.n_keypoints == self.max_n_keypoints - 1)) and (not isQueueEmpty(queue)):
             current_iter = dequeue(queue)
             begin = current_iter.begin
             end = current_iter.end
@@ -173,7 +177,7 @@ cdef class BatchCPD:
             slice_size = end - begin
             best_mid = begin + slice_size / 2
             lowest_cost = NUMPY_INF_VALUE
-            assert(slice_size > 2 * self.window_padding)
+            # assert(slice_size > 2 * self.window_padding)
             for mid in range(begin + self.window_padding, end - self.window_padding):
                 cost = 0
                 if self.aprx_func == POLYNOMIAL_APRX:
@@ -201,16 +205,18 @@ cdef class BatchCPD:
             self.n_keypoints += 1
             # TODO : if (previous_cost - cost) / previous_cost >= self.stability_threshold:
             if not (self.n_keypoints == self.max_n_keypoints - 1):
-                current_iter = <Iteration*>malloc(sizeof(Iteration))
-                current_iter.begin = begin + 1
-                current_iter.end = best_mid
-                current_iter.previous_cost = cost
-                enqueue(queue, current_iter)
-                current_iter = <Iteration*>malloc(sizeof(Iteration))
-                current_iter.begin = best_mid
-                current_iter.end = end - 1
-                current_iter.previous_cost = cost
-                enqueue(queue, current_iter)
+                if best_mid - begin > 2:
+                    current_iter = <Iteration*>malloc(sizeof(Iteration))
+                    current_iter.begin = begin + 1
+                    current_iter.end = best_mid
+                    current_iter.previous_cost = cost
+                    enqueue(queue, current_iter)
+                if end - best_mid > 2:
+                    current_iter = <Iteration*>malloc(sizeof(Iteration))
+                    current_iter.begin = best_mid
+                    current_iter.end = end - 1
+                    current_iter.previous_cost = cost
+                    enqueue(queue, current_iter)
                 # self.evaluateSegment(begin + 1, best_mid, cost)
                 # self.evaluateSegment(best_mid, end - 1, cost)
         free(queue)

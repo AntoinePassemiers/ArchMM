@@ -37,9 +37,8 @@ cdef void enqueue(Queue* queue, Iteration* data):
     queue.length += 1
         
 cdef Iteration* dequeue(Queue* queue):
-    cdef Iteration* item
     cdef Queue_Node* temp = queue.front_node
-    item = temp.data
+    cdef Iteration* item = temp.data
     if queue.front_node == NULL:
         print("Error in dequeue() : Queue is empty");
         exit(EXIT_FAILURE)
@@ -53,7 +52,4 @@ cdef Iteration* dequeue(Queue* queue):
     return item
 
 cdef bint isQueueEmpty(Queue* queue):
-    if queue.length == 0:
-        return True
-    else:
-        return False
+    return queue.length == 0

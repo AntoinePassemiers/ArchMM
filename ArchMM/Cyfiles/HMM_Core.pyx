@@ -55,6 +55,8 @@ class AdaptiveHMM:
         return self.hmm.getMu()
         
     def fit(self, observations, **kwargs):
+        assert(not np.any(np.isnan(observations)))
+        assert(not np.any(np.isinf(observations)))        
         # TODO : Process observations before passing them to self.hmm
         if len(observations.shape) == 1:
             obs = np.zeros((len(observations), 2), dtype = np.double)
