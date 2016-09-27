@@ -10,11 +10,6 @@ from libc.math cimport exp, log, M_PI
 include "KMeans.pyx"
 include "ChangePointDetection.pyx"
 
-
-""" TODO - URGENT
-http://stackoverflow.com/questions/10718699/convert-numpy-array-to-cython-pointer
-"""
-
 cdef bint RELEASE_MODE = False
 
 # TODO : numerical stability : use float128
@@ -30,6 +25,8 @@ cpdef unsigned int CRITERION_AIC = 101
 cpdef unsigned int CRITERION_AICC = 102
 cpdef unsigned int CRITERION_BIC = 103
 cpdef unsigned int CRITERION_LIKELIHOOD = 104
+cpdef unsigned int CRITERION_NEG_LIKELIHOOD = 105
+cpdef unsigned int CRITERION_PROBABILITY = 106
 
 cpdef unsigned int DISTRIBUTION_GAUSSIAN = 201
 cpdef unsigned int DISTRIBUTION_MULTINOMIAL = 202
@@ -413,10 +410,10 @@ cdef class BaseHMM:
                 avg_sigma = temp * norm
                 self.mu[k] = np.nan_to_num(np.dot(post, obs) * norm)
                 self.sigma[k] = np.nan_to_num(avg_sigma - np.outer(self.mu[k], self.mu[k]))
-                """
+                
                 if np.all(self.mu[k] == 0):
                     self.mu[k] = self.previous_mu[k]
-                """
+                
             is_nan = (self.mu == np.nan)
             self.mu[is_nan] = self.previous_mu[is_nan]
             is_nan = (self.sigma == np.nan)
@@ -509,9 +506,12 @@ cdef class BaseHMM:
             criterion = k * elog(n) - lnP
         elif mode == CRITERION_LIKELIHOOD:
             criterion = - lnP
+        elif mode == CRITERION_NEG_LIKELIHOOD:
+            criterion = lnP
+        elif mode == CRITERION_PROBABILITY:
+            criterion = 1 if lnP >= 0 else np.exp(lnP)
         else:
             raise NotImplementedError("The given information criterion is not supported")
-        #free(eval)
         return criterion
     
     def decode(self, obs):

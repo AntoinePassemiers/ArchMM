@@ -33,6 +33,8 @@ class AdaptiveHMM:
     crit_names["aicc"] = CRITERION_AICC
     crit_names["bic"] = CRITERION_BIC
     crit_names["likelihood"] = CRITERION_LIKELIHOOD
+    crit_names["neg likelihood"] = CRITERION_NEG_LIKELIHOOD
+    crit_names["probability"] = CRITERION_PROBABILITY
     dist_names = collections.defaultdict()
     dist_names["gaussian"] = DISTRIBUTION_GAUSSIAN
     dist_names["multinomial"] = DISTRIBUTION_MULTINOMIAL
@@ -71,10 +73,21 @@ class AdaptiveHMM:
             observations = obs
         self.hmm.fit(observations, self.mu, self.sigma, **kwargs)
         
-    def score(self, observations, **kwargs):
+    def score(self, observations, mode = "likelihood"):
+        l_mode = mode.lower()
+        found = False
+        for name in AdaptiveHMM.crit_names.keys():
+            if l_mode in name:
+                mode = AdaptiveHMM.crit_names[name]
+                found = True
+        if not found:
+            mode = AdaptiveHMM.crit_names["likelihood"]
+            print("Warning : mode %s not found" % l_mode)
+            print("The likelihood will be returned instead.")
+            
         if self.standardize:
             observations = (observations - self.mu) / self.stdvs
-        return self.hmm.score(observations, **kwargs)
+        return self.hmm.score(observations, mode = mode)
         
     def randomSequence(self, *args, **kwargs):
         return self.hmm.randomSequence(*args, **kwargs)
