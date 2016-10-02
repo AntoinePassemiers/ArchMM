@@ -3,12 +3,15 @@
 import ctypes, pickle
 import numpy as np
 from numpy.random import randn, random, dirichlet
+from cpython cimport array 
 from scipy.spatial.distance import cdist # TO REMOVE
 from libc.stdio cimport *
 from libc.math cimport exp, log, M_PI
 
+include "Artifacts.pyx"
 include "KMeans.pyx"
 include "ChangePointDetection.pyx"
+include "MLP.pyx"
 
 cdef bint RELEASE_MODE = False
 
@@ -26,11 +29,10 @@ cpdef unsigned int CRITERION_AICC = 102
 cpdef unsigned int CRITERION_BIC = 103
 cpdef unsigned int CRITERION_LIKELIHOOD = 104
 cpdef unsigned int CRITERION_NEG_LIKELIHOOD = 105
-cpdef unsigned int CRITERION_PROBABILITY = 106
 
 cpdef unsigned int DISTRIBUTION_GAUSSIAN = 201
 cpdef unsigned int DISTRIBUTION_MULTINOMIAL = 202
-
+    
 
 """ Extended versions of the ln, exp, and log product functions 
 to prevent the Baum-Welch algorithm from causing overflow/underflow """
@@ -129,7 +131,8 @@ def stableMahalanobis(x, mu, sigma):
     q[np.isnan(q)] = NUMPY_INF_VALUE
     return q
 
-cdef cnp.ndarray GaussianLoglikelihood(cnp.ndarray obs, cnp.ndarray mu, cnp.ndarray sigma):
+cdef cnp.ndarray GaussianLoglikelihood(cnp.ndarray obs, cnp.ndarray mu, 
+                                       cnp.ndarray sigma, cnp.ndarray mv_indexes):
     """ Returns a matrix representing the log-likelihood of the distribution
     
     Parameters
@@ -137,6 +140,7 @@ cdef cnp.ndarray GaussianLoglikelihood(cnp.ndarray obs, cnp.ndarray mu, cnp.ndar
     obs : input signal
     mu : mean of the input signal
     sigma : variance-covariance matrix of the input signal
+    mv_indexes : positions of the missing values in [[obs]]
     """
     cdef Py_ssize_t nobs = obs.shape[0]
     cdef Py_ssize_t ndim = obs.shape[1] 
@@ -159,9 +163,10 @@ cdef cnp.ndarray GaussianLoglikelihood(cnp.ndarray obs, cnp.ndarray mu, cnp.ndar
             mcv *= 10
             det_sigma = np.linalg.det(sigma[k])
             lndetV = log(det_sigma)
-            
+        
         q = stableMahalanobis(obs, mu[k], sigma[k])
-        lnf[:, k] = -0.5 * (dln2pi + lndetV + q)
+        # TODO : adjust lnf by taking into account self.missing_values_indexes 
+        lnf[:, k] = -0.5 * (dln2pi + lndetV + q) # TODO : check the log-likelihood constraints
     return lnf
 
 cdef logsum(matrix, axis = None):
@@ -207,7 +212,7 @@ cdef class BaseHMM:
     In the example, the most probable label for the unlabeled data is the model
     among (hmm, hmm2) which minimizes its information criterion
     
-    Attributes
+    Parameters
     ----------
     n_states : number of hidden states of the model
     architecture : type of architecture of the HMM
@@ -221,6 +226,12 @@ cdef class BaseHMM:
     distribution : type of the input signal's distribution
                    [DISTRIBUTION_GAUSSIAN] For variable following a normal law
                    [DISTRIBUTION_MULTINOMIAL] For discrete variables with a finite set of values
+    missing_value : numeric value representing the missing values in the observations
+                    If no value is provided, the training and scoring algorithms will not check
+                    for the missing values before processing the data.
+    
+    Attributes
+    ----------
     initial_probs : array containing the probability, for each hidden state, to be processed at first
     transition_probs : matrix where the element i_j represents the probability to move to the hidden
                        state j knowing that the current state is the state i  
@@ -230,18 +241,26 @@ cdef class BaseHMM:
     cdef Py_ssize_t n_states
     cdef cnp.ndarray initial_probs, transition_probs
     cdef cnp.ndarray ln_initial_probs, ln_transition_probs
-    cdef cnp.ndarray mu 
+    cdef cnp.ndarray mu
     cdef cnp.ndarray previous_mu, sigma, previous_sigma, MU, SIGMA
     cdef unsigned int (*numParameters)(unsigned int)
-    cdef cnp.ndarray (*loglikelihood)(cnp.ndarray, cnp.ndarray, cnp.ndarray)
+    cdef cnp.ndarray (*loglikelihood)(cnp.ndarray, cnp.ndarray, cnp.ndarray, cnp.ndarray)
+    # Arguments for handling missing values
+    cdef double missing_value
+    cdef cnp.ndarray mv_indexes
+    # Arguments for the input-output HMM architecture
+    cdef object state_subnetworks, output_subnetworks
+    cdef cnp.ndarray zeta # Memory of the dynamical system
+    cdef cnp.ndarray eta  # Global output of the system
 
     def __cinit__(self, n_states, distribution = DISTRIBUTION_GAUSSIAN,
-                  architecture = ARCHITECTURE_LINEAR):
+                  architecture = ARCHITECTURE_LINEAR, missing_value = DEFAULT_MISSING_VALUE):
         if not (ARCHITECTURE_LINEAR <= architecture <= ARCHITECTURE_CYCLIC): 
             raise NotImplementedError("This architecture is not supported yet")
         self.architecture = architecture
         self.distribution = distribution
         self.n_states = n_states
+        self.missing_value = missing_value
         if distribution == DISTRIBUTION_GAUSSIAN:
             self.numParameters = &numParametersGaussian
             self.loglikelihood = &GaussianLoglikelihood
@@ -263,6 +282,8 @@ cdef class BaseHMM:
         cdef Py_ssize_t n = obs.shape[0]
         cdef Py_ssize_t n_dim = obs.shape[1]
         cdef size_t i
+        self.setMissingValues(obs)
+        
         if self.architecture == ARCHITECTURE_LINEAR:
             cpd = BatchCPD(n_keypoints = self.n_states, window_padding = 1,
                            cost_func = SUM_OF_SQUARES_COST, aprx_degree = 2)
@@ -296,7 +317,6 @@ cdef class BaseHMM:
         self.ln_transition_probs = np.nan_to_num(elog(self.transition_probs))
         self.previous_mu = np.copy(self.mu)
         self.previous_sigma = np.copy(self.sigma)
-        return 0
         
     cdef forwardProcedure(self, cnp.ndarray lnf, cnp.ndarray ln_alpha):
         """ Implementation of the forward procedure 
@@ -313,12 +333,10 @@ cdef class BaseHMM:
         """ 
         cdef Py_ssize_t t, T = len(lnf)
         with np.errstate(over = 'ignore'):
-            # WARNING : overflow in add
             ln_alpha[0, :] = np.nan_to_num(self.ln_initial_probs + lnf[0, :])
-        for t in range(1, T):
-            # WARNING : overflow in add
-            ln_alpha[t, :] = logsum(ln_alpha[t - 1, :] + self.ln_transition_probs.T, 1) + lnf[t, :]
-        ln_alpha = np.nan_to_num(ln_alpha)
+            for t in range(1, T):
+                ln_alpha[t, :] = logsum(ln_alpha[t - 1, :] + self.ln_transition_probs.T, 1) + lnf[t, :]
+            ln_alpha = np.nan_to_num(ln_alpha)
         return logsum(ln_alpha[-1, :])
 
     cdef backwardProcedure(self, lnf, ln_beta):
@@ -335,10 +353,11 @@ cdef class BaseHMM:
         The loglikelihood of the backward procedure
         """
         cdef Py_ssize_t t, T = len(lnf)
-        ln_beta[T - 1, :] = 0.0
-        for t in range(T - 2, -1, -1):
-            ln_beta[t, :] = logsum(self.ln_transition_probs + lnf[t + 1, :] + ln_beta[t + 1, :], 1)
-        ln_beta = np.nan_to_num(ln_beta)
+        with np.errstate(over = 'ignore'):
+            ln_beta[T - 1, :] = 0.0
+            for t in range(T - 2, -1, -1):
+                ln_beta[t, :] = logsum(self.ln_transition_probs + lnf[t + 1, :] + ln_beta[t + 1, :], 1)
+            ln_beta = np.nan_to_num(ln_beta)
         return logsum(ln_beta[0, :] + lnf[0, :] + self.ln_initial_probs)
     
     def E_step(self, lnf, ln_alpha, ln_beta, ln_eta):
@@ -351,10 +370,9 @@ cdef class BaseHMM:
             for i in range(self.n_states):
                 for j in range(self.n_states):
                     for t in range(T - 1):
-                        # WARNING : overflow in double_scalars
-                        ln_eta[t, i, j] = ln_alpha[t, i] + self.ln_transition_probs[i, j,] + lnf[t+1,j] + ln_beta[t+1,j]
-                        
+                        ln_eta[t, i, j] = ln_alpha[t, i] + self.ln_transition_probs[i, j,] + lnf[t+1,j] + ln_beta[t+1,j]      
                 ln_eta -= lnP_f
+                
         ln_eta = np.nan_to_num(ln_eta)
         ln_gamma = ln_alpha + ln_beta - lnP_f
         return ln_eta, ln_gamma, lnP_f
@@ -383,6 +401,7 @@ cdef class BaseHMM:
         if dynamic_features:
             deltas, delta_deltas = self.getDeltas(obs, delta_window = delta_window)
             obs = np.concatenate((obs, deltas, delta_deltas), axis = 1)
+            
         T, D = obs.shape[0], obs.shape[1]
         self.initParameters(obs)
         ln_alpha = np.zeros((T, self.n_states))
@@ -390,15 +409,16 @@ cdef class BaseHMM:
         ln_eta = np.zeros((T - 1, self.n_states, self.n_states))
 
         cdef long convergence_threshold = <long>0.0001
+        cdef bint has_converged = False
         old_F = 1.0e20
         i = 0
-        while i < n_iterations:
-            lnf = GaussianLoglikelihood(obs, self.mu, self.sigma)
+        while i < n_iterations and not has_converged:
+            lnf = GaussianLoglikelihood(obs, self.mu, self.sigma, self.mv_indexes)
             ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
             F = - lnP
             dF = F - old_F
             if(np.abs(dF) < convergence_threshold):
-                break
+                has_converged = True
             old_F = F
             
             gamma = ieexp2d(ln_gamma) # inplace exp function
@@ -425,6 +445,34 @@ cdef class BaseHMM:
         self.transition_probs = eexp(self.ln_transition_probs)
         eigenvalues = np.linalg.eig(self.transition_probs.T)
         self.initial_probs = normalizeMatrix(np.abs(eigenvalues[1][:, eigenvalues[0].argmax()]))
+        
+    def fitIO(self, U, targets = None, mu = None, sigma = None, n_iterations = 100, 
+              dynamic_features = False, delta_window = 1, n_classes = 2):
+        Y = targets
+        assert(len(U) == len(Y))
+        self.MU = mu
+        self.SIGMA = sigma
+        P = len(U)
+        n = self.n_states
+        m = U[0].shape[1]
+        r = n_classes
+        S = np.repeat(np.arange(n), n).reshape((n, n), order = 'F') # Only if ergodic topology
+        self.zeta = np.random.rand(n) # zeta_0 : initial state probability distribution
+        self.zeta /= self.zeta.sum()
+        self.eta = np.random.rand(m)
+        self.eta /= self.eta.sum()
+        n_hidden = 16 # Number of hidden units must be determined with the validation set
+        N = self.state_subnetworks = newStateSubnetworks(n, m, n_hidden, n, network_type = SUBNETWORK_STATE)
+        O = self.output_subnetworks = newStateSubnetworks(n, m, n_hidden, r, network_type = SUBNETWORK_OUTPUT)
+        
+        for p in range(P):
+            T_p = len(U[p])
+            for j in range(n):
+                # Compute phi_j_t and eta_j_t
+                for i in S[j]:
+                    # Compute alpha_i_t, beta_i_t and h_i_j_t
+                    # Adjust parameters of N[j] and O[j]
+                    pass
             
     def noisedDistribution(self, state):
         return GaussianGenerator(self.mu[state], self.sigma[state])
@@ -471,12 +519,18 @@ cdef class BaseHMM:
             states[t] = (A_cdf[states[t-1]] > r[t]).argmax()
             observations[t] = distribution_func(states[t])
         return states, observations
+    
+    cdef void setMissingValues(self, cnp.ndarray observations):
+        if self.missing_value == DEFAULT_MISSING_VALUE:
+            self.mv_indexes = getMissingValuesIndexes(observations, self.missing_value)
+        else:
+            self.mv_indexes = np.empty(0)
 
     def score(self, obs, mode = CRITERION_AICC):
         """
         Evaluates how the model fits the data, by taking into account the complexity
-        (number of parameters) of the model. The model that has the minimal complexity 
-        and maximizes the likelihood is the best model 
+        (number of parameters) of the model. The best model both minimizes its complexity
+        and maximizes its likelihood
         
         Parameters
         ----------
@@ -488,8 +542,9 @@ cdef class BaseHMM:
                [CRITERION_BIC] Bayesian Information Criterion
                [CRITERION_LIKELIHOOD] Negative Likelihood
         """
+        self.setMissingValues(obs)
         n = obs.shape[0]        
-        cdef cnp.ndarray lnf = GaussianLoglikelihood(obs,self.mu,self.sigma)
+        cdef cnp.ndarray lnf = GaussianLoglikelihood(obs,self.mu,self.sigma, self.mv_indexes)
         cdef size_t T = len(obs)
         cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
         cdef cnp.ndarray ln_beta = np.zeros((T, self.n_states))
@@ -508,15 +563,13 @@ cdef class BaseHMM:
             criterion = - lnP
         elif mode == CRITERION_NEG_LIKELIHOOD:
             criterion = lnP
-        elif mode == CRITERION_PROBABILITY:
-            criterion = 1 if lnP >= 0 else np.exp(lnP)
         else:
             raise NotImplementedError("The given information criterion is not supported")
         return criterion
     
     def decode(self, obs):
         """ Returns the index of the most probable state, given the observations """
-        cdef cnp.ndarray lnf = GaussianLoglikelihood(obs, self.mu, self.sigma)
+        cdef cnp.ndarray lnf = GaussianLoglikelihood(obs, self.mu, self.sigma, self.mv_indexes)
         cdef size_t T = len(obs)
         cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
         cdef cnp.ndarray ln_beta = np.zeros((T, self.n_states))
@@ -573,7 +626,8 @@ cdef class BaseHMM:
             "initial_probs" : self.initial_probs,
             "transition_probs" : self.transition_probs,
             "mu" : self.mu, "sigma" : self.sigma,
-            "MU" : self.mu, "SIGMA" : self.sigma
+            "MU" : self.mu, "SIGMA" : self.sigma,
+            "missing_value" : self.missing_value
         }
         pickle.dump(attributes, open(filename, "wb"))
         
@@ -590,6 +644,7 @@ cdef class BaseHMM:
         self.sigma = attributes["sigma"]
         self.MU = self.mu = attributes["MU"]
         self.SIGMA = self.sigma = attributes["SIGMA"]
+        self.missing_value = attributes["missing_value"]
         
         
 
