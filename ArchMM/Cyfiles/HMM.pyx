@@ -448,6 +448,9 @@ cdef class BaseHMM:
         
     def fitIO(self, U, targets = None, mu = None, sigma = None, n_iterations = 100, 
               dynamic_features = False, delta_window = 1, n_classes = 2):
+        
+        # https://github.com/asheshjain399/GraphicalModels/blob/master/IOHMM/IOhmmFit.m
+        
         Y = targets
         assert(len(U) == len(Y))
         self.MU = mu
@@ -467,8 +470,17 @@ cdef class BaseHMM:
         
         for p in range(P):
             T_p = len(U[p])
+            ln_alpha = np.zeros((T_p, n))
+            ln_beta  = np.zeros((T_p, n))
+            
+            self.initParameters(U[p])
+            lnf = GaussianLoglikelihood(U[p], self.mu, self.sigma, self.mv_indexes)
+            L = self.forwardProcedure(lnf, ln_alpha) # Compute L = sum of all alpha_i_T
+            lnP_b = self.backwardProcedure(lnf, ln_beta)
+            # Compute h_i_j_t = alpha_j_t-1 * phi_i_j_t * beta_i_t * b_i_t(Y_t) / L
             for j in range(n):
                 # Compute phi_j_t and eta_j_t
+                self.state_subnetworks[j].updateParameters(U[p], ln_alpha, ln_beta)
                 for i in S[j]:
                     # Compute alpha_i_t, beta_i_t and h_i_j_t
                     # Adjust parameters of N[j] and O[j]

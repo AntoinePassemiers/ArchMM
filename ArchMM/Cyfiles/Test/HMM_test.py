@@ -49,17 +49,13 @@ def testIOHMM():
     hmm.fit([U], targets = [Y], n_iterations = 70, n_classes = 2)
     
 def testMLP():
-    X_values = np.asarray(np.random.rand(16, 16), dtype = theano.config.floatX)
-    y_values = np.asarray(np.random.randint(2, size = 16), dtype = np.int)
-    mlp = MLP(16, 16, 2)
-    mlp.train(X_values, y_values)
-    for i in range(50):
-        X_test = np.random.rand(16)
-        result = np.asarray(X_test, dtype = theano.config.floatX)
-        result = mlp.predict(result)
-        print(result.eval())
+    X = np.array([[1, 0], [0, 1], [2, 1], [0, 2]])
+    Y = np.array([1, 0, 1, 0])
+    mlp = MLP(2, 4, 2)
+    mlp.train(X, Y)
+    print(mlp.predict(X))
     
 
 if __name__ == "__main__":
-    testMLP()
+    testIOHMM()
     print("Finished")

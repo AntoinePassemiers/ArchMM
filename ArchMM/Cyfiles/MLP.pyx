@@ -19,124 +19,168 @@ class Layer:
             output = linear_output
         return output
 
-class HiddenLayer(Layer):
-    def __init__(self, inputv, n_in, n_out, rng, activation):
-        self.input = inputv
-        self.n_in = n_in
-        self.n_out = n_out
-        self.rng = rng
-        self.activation = activation
-        
-        W_array = np.asarray(
-            rng.uniform(
-                low = -np.sqrt(6.0 / (self.n_in + self.n_out)),
-                high = np.sqrt(6.0 / (self.n_in + self.n_out))
-                ),
-            dtype = theano.config.floatX
+class LogisticRegression(Layer):
+    def __init__(self, input, n_in, n_out):
+        self.W = theano.shared(
+            value=np.zeros(
+                (n_in, n_out),
+                dtype=theano.config.floatX
+            ),
+            name='W',
+            borrow=True
         )
-        if activation == T.nnet.sigmoid:
-            W_array *= 4
-        self.W = theano.shared(value = W_array, name = "W", borrow = True)
-        b_array = np.ones((n_out,), dtype = theano.config.floatX)
-        self.b = theano.shared(value = b_array, name = "b", borrow = True)
-        temp = T.dot(inputv, self.W) + self.b
-        self.output = temp if not activation else activation(temp)
+        self.b = theano.shared(
+            value=np.zeros(
+                (n_out,),
+                dtype=theano.config.floatX
+            ),
+            name='b',
+            borrow=True
+        )
+        self.p_y_given_x = T.nnet.softmax(T.dot(input, self.W) + self.b)
+        self.y_pred = T.argmax(self.p_y_given_x, axis=1)
         self.params = [self.W, self.b]
-      
-class OutputLayer(Layer):
-    def __init__(self, inputv, n_in, n_out, rng):
-        W_array = np.asarray(np.random.randn(n_in, n_out), dtype = theano.config.floatX)
-        b_array = np.asarray(np.ones(n_out), dtype = theano.config.floatX)
-        self.W = theano.shared(value = W_array, name = "W", borrow = True)
-        self.b = theano.shared(value = b_array, name = "b", borrow = True)
-        self.p_y_given_x = T.nnet.softmax(T.dot(inputv, self.W) + self.b)
-        self.y_pred = T.argmax(self.p_y_given_x, axis = 1)
-        self.params = [self.W, self.b]
-        self.input = inputv
+        self.input = input
         self.activation = T.nnet.softmax
     def negative_log_likelihood(self, y):
         return -T.mean(T.log(self.p_y_given_x)[T.arange(y.shape[0]), y])
     def errors(self, y):
         if y.ndim != self.y_pred.ndim:
-            raise TypeError("y should have the same shape as self.y_pred",
-                            ('y', y.type, 'y_pred', self.y_pred.type))
+            raise TypeError(
+                'y should have the same shape as self.y_pred',
+                ('y', y.type, 'y_pred', self.y_pred.type)
+            )
         if y.dtype.startswith('int'):
             return T.mean(T.neq(self.y_pred, y))
         else:
-            return NotImplementedError()
-      
+            raise NotImplementedError()
         
-class MLP:
-    def __init__(self, n_in, n_hidden, n_out, rng = np.random.RandomState(4), 
-                 learning_rate = 0.01, L1_reg = 0.00, L2_reg = 0.0001, n_epochs = 1000):
-        self.X = T.matrix('X')
-        self.y = T.ivector('y')
-        self.input = self.X
-        self.n_in = n_in
-        self.n_hidden = n_hidden
-        self.n_out = n_out
-        self.rng = rng
-        self.learning_rate = learning_rate
-        self.L1_reg = L1_reg
-        self.L2_reg = L2_reg
-        self.n_epochs = n_epochs
         
-        self.hidden_layer = HiddenLayer(self.X, n_in, n_hidden, rng, T.tanh)
-        self.output_layer = OutputLayer(self.hidden_layer.output, n_hidden, n_out, rng)
-        self.params = self.hidden_layer.params + self.output_layer.params
-        self.layers = [self.hidden_layer, self.output_layer]
-        
-        self.L1 = np.abs(self.hidden_layer.W).sum() + np.abs(self.output_layer.W).sum()
-        self.L2_sqr = (self.hidden_layer.W ** 2).sum() + (self.output_layer.W ** 2).sum()
+class HiddenLayer(Layer):
+    def __init__(self, rng, input, n_in, n_out, W=None, b=None,
+                 activation=T.nnet.nnet.sigmoid):
+        self.input = input
+        self.activation = activation
+        if W is None:
+            W_values = np.asarray(
+                rng.uniform(
+                    low=-np.sqrt(6. / (n_in + n_out)),
+                    high=np.sqrt(6. / (n_in + n_out)),
+                    size=(n_in, n_out)
+                ),
+                dtype=theano.config.floatX
+            )
+            if activation == theano.tensor.nnet.sigmoid:
+                W_values *= 4
 
-        self.negative_log_likelihood = self.output_layer.negative_log_likelihood
-        self.errors = self.output_layer.errors
-        self.cost = self.negative_log_likelihood(self.y) + self.L1_reg * self.L1 + self.L2_reg + self.L2_sqr 
-        self.gradient_params = [T.grad(self.cost, param) for param in self.params]
-        self.updates = [
-            (param, param - self.learning_rate * gradient_param)
-            for param, gradient_param in zip(self.params, self.gradient_params)
-        ]
-        self.predicter = theano.function([self.X], self.processOutput(self.X))
-    
-    def train(self, X_array, y_array):
-        # y_array must contain only 0 and 1
-        train_X = theano.shared(value = X_array, name = "train_X", borrow = True)
-        train_y = theano.shared(value = y_array, name = "train_y", borrow = True)
-        index = T.lscalar()
-        self.trainer = theano.function(
-            inputs = [index],
-            outputs = self.cost,
-            updates = self.updates,
-            givens = {
-                self.X : train_X[index : (index + 1)],
-                self.y : train_y[index : (index + 1)] 
-            }
+            W = theano.shared(value=W_values, name='W', borrow=True)
+
+        if b is None:
+            b_values = np.zeros((n_out,), dtype=theano.config.floatX)
+            b = theano.shared(value=b_values, name='b', borrow=True)
+
+        self.W = W
+        self.b = b
+
+        lin_output = T.dot(input, self.W) + self.b
+        self.output = (
+            lin_output if activation is None
+            else activation(lin_output)
         )
-        
-        start_time = timeit.default_timer()
-        epoch = 0
-        while epoch < self.n_epochs:
-            epoch += 1
-            for i in range(train_X.shape[0].eval()):
-                avg_cost = self.trainer(i)
-        total_time = timeit.default_timer() - start_time
-        print("Total training time : %i min %i" % (total_time / 60, total_time % 60))
-        
+        self.params = [self.W, self.b]
+
+
+class MLP(object):
+    def __init__(self, n_in, n_hidden, n_out, rng = np.random.RandomState(1234)):
+        self.input = self.x = T.matrix('x')
+        self.rng = rng
+        self.hiddenLayer = HiddenLayer(
+            rng=self.rng,
+            input=self.input,
+            n_in=n_in,
+            n_out=n_hidden,
+            activation=T.tanh
+        )
+        self.logRegressionLayer = LogisticRegression(
+            input=self.hiddenLayer.output,
+            n_in=n_hidden,
+            n_out=n_out
+        )
+        self.layers = [self.hiddenLayer, self.logRegressionLayer]
+        self.L1 = (
+            np.abs(self.hiddenLayer.W).sum()
+            + np.abs(self.logRegressionLayer.W).sum()
+        )
+        self.L2_sqr = (
+            (self.hiddenLayer.W ** 2).sum()
+            + (self.logRegressionLayer.W ** 2).sum()
+        )
+        self.negative_log_likelihood = (
+            self.logRegressionLayer.negative_log_likelihood
+        )
+        self.errors = self.logRegressionLayer.errors
+        self.params = self.hiddenLayer.params + self.logRegressionLayer.params
+        self.input = input
     def processOutput(self, X):
         for layer in self.layers:
             X = layer.processOutput(X)
         return X
-        
-    def predict(self, X_array):
-        test_X = theano.shared(value = X_array, name = "test_X", borrow = True)
-        return self.processOutput(test_X)
     
+    def train(self, train_set_x, train_set_y,
+                 learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
+                 batch_size=20, n_hidden=500):
+        X_values = np.asarray(train_set_x, dtype = theano.config.floatX)
+        y_values = np.asarray(train_set_y, dtype = np.int)
+        train_set_x = theano.shared(name = "X_train", borrow = True, value = X_values)
+        train_set_y = theano.shared(name = "y_train", borrow = True, value = y_values)
+        index = T.lscalar()
+        y = T.ivector('y')
+        cost = (
+            self.negative_log_likelihood(y)
+            + L1_reg * self.L1
+            + L2_reg * self.L2_sqr
+        )
+        gparams = [T.grad(cost, param) for param in self.params]
+        updates = [
+            (param, param - learning_rate * gparam)
+            for param, gparam in zip(self.params, gparams)
+        ]
+        
+        b = train_set_x.shape[0].eval()
+        if batch_size > b:
+            batch_size = b
+            b = 1
+        else:
+            b /= batch_size
+        train_model = theano.function(
+            inputs=[index],
+            outputs=cost,
+            updates=updates,
+            givens={
+                self.x: train_set_x[index * batch_size: (index + 1) * batch_size],
+                y: train_set_y[index * batch_size: (index + 1) * batch_size]
+            }
+        )
+        improvement_threshold = 0.995
+        epoch = 0
+        while (epoch < n_epochs):
+            epoch = epoch + 1
+            for minibatch in range(b):
+                minibatch_avg_cost = train_model(minibatch)
+    
+    def predict(self, test_X):
+        X_values = np.asarray(test_X, dtype = theano.config.floatX)
+        test_X = theano.shared(name = "X_test", borrow = True, value = X_values)
+        return self.processOutput(test_X).eval() 
 
 class StateSubnetwork(MLP):
-    pass
+    def updateParameters(self, X, alpha, beta):
+        pred_Y = self.predict(X)
+        print(pred_Y.shape)
+        
 class OutputSubnetwork(MLP):
-    pass
+    def updateParameters(self, X, zeta, B):
+        pred_Y = self.predict(X)
 
 def newStateSubnetworks(n_networks, n_in, n_hidden, n_out, network_type = SUBNETWORK_STATE):
     nets = []
