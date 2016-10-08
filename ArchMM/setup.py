@@ -12,6 +12,7 @@ setup(
             "Cyfiles/Queue.pyx",
             "Cyfiles/KMeans.pyx",
             "Cyfiles/ChangePointDetection.pyx",
+            "Cyfiles/IO_HMM.pyx",
             "Cyfiles/HMM.pyx",
             "Cyfiles/HMM_Core.pyx"
         ],

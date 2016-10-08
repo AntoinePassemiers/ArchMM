@@ -2,6 +2,7 @@
 
 import sys, pickle
 import numpy as np
+import matplotlib.pyplot as plt
 
 sys.path.insert(0, '..')
 sys.path.insert(0, '../..')
@@ -11,7 +12,7 @@ from ArchMM.Cyfiles.HMM_Core import *
 def testHMM():
     data = np.arange(1, 1001, dtype = np.double).reshape(500, 2)
     data[59, 1] = 78
-    hmm = AdaptiveHMM(10, "linear", standardize = True, missing_value = 0)
+    hmm = AdaptiveHMM(10, "ergodic", standardize = True, missing_value = 0)
     hmm.fit(data, dynamic_features = False)
     print(hmm.getMu())
     data2 = np.arange(1, 1001).reshape(500, 2)
@@ -26,6 +27,35 @@ def testHMM():
     print(hmm.score(data, mode = "probability"))
     print(hmm.score(data2, mode = "probability"))
     print(hmm.score(data3, mode = "probability"))
+    
+    plt.plot(data3[:, 1])
+    plt.show()
+    
+def villoTest():
+    data = [11,11,10,10,9,9,9,11,10,10,9,10,11,12,
+            11,11,13,14,13,14,16,18,17,18,17,18,17,
+            17,17,16,15,16,16,16,16,17,17,17,17,12,
+            12,12,12,11,12,12,12,13,14,14,14,15,15,
+            15,15,15,15,15,15,15,14,14,14,14,14,14,
+            3,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,2,2,1,
+            2,1,3,5,6,5,4,5,4,5,5,5,6,9,8,8,8,8,9,9,
+            9,9,8,8,8,9,10,9,9,10,9,9,8,7,7,7,7,8,6,
+            6,5,4,3,2,3,2,3,1,3,2,4,5,4,5,7,8,8,9,8,
+            9,8,8,7,7,7,7,7,7,8,
+            7,7,8,9,9,9,8,9,9,9,8,8,8,6,7,7,7,7,7]
+    D = np.zeros((len(data), 2))
+    D[:, 0] = np.array(data)[:]
+    hmm = AdaptiveHMM(5, "ergodic", standardize = False)
+    hmm.fit(D, dynamic_features = False, n_iterations = 5)
+    states, seq = hmm.randomSequence(len(data))
+    print(hmm.getA())
+    fig = plt.figure()
+    ax1 = fig.add_subplot(221)
+    ax1.step(range(len(data)), D[:, 0])
+    ax2 = fig.add_subplot(222)
+    ax2.step(range(len(data)), seq[:, 0])
+    plt.show()
+    
     
 def testHMMwithMissingValues():
     data = pickle.load(open("data_hmm_input", 'rb'))
@@ -46,7 +76,7 @@ def testIOHMM():
     U[159, 1] = -4586
     Y = np.random.randint(2, size = (500))
     hmm = AdaptiveHMM(10, has_io = True)
-    hmm.fit([U], targets = [Y], n_iterations = 70, n_classes = 2)
+    hmm.fit([U], targets = [Y], n_iterations = 5, n_classes = 2)
     
 def testMLP():
     X = np.array([[1, 0], [0, 1], [2, 1], [0, 2]])
@@ -57,5 +87,5 @@ def testMLP():
     
 
 if __name__ == "__main__":
-    testIOHMM()
+    villoTest()
     print("Finished")

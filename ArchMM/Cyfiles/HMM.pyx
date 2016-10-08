@@ -11,7 +11,9 @@ from libc.math cimport exp, log, M_PI
 include "Artifacts.pyx"
 include "KMeans.pyx"
 include "ChangePointDetection.pyx"
-include "MLP.pyx"
+# include "MLP.pyx"
+
+theano_support = False
 
 cdef bint RELEASE_MODE = False
 
@@ -32,6 +34,9 @@ cpdef unsigned int CRITERION_NEG_LIKELIHOOD = 105
 
 cpdef unsigned int DISTRIBUTION_GAUSSIAN = 201
 cpdef unsigned int DISTRIBUTION_MULTINOMIAL = 202
+
+cpdef unsigned int USE_LOG_IMPLEMENTATION = 301
+cpdef unsigned int USE_LIN_IMPLEMENTATION = 302
     
 
 """ Extended versions of the ln, exp, and log product functions 
@@ -60,13 +65,6 @@ cdef ieexp2d(M):
 ctypedef double signal_t
 ctypedef cnp.double_t data_t
 
-cdef struct EStepContext:
-    data_t[:] lnf
-    # TODO
-
-cdef struct Evaluation:
-    data_t[:, :]* gamma
-    data_t[:, :]* loglikelihood
 
 cdef GaussianGenerator(mu, sigma, n = 1):
     """ Random variables from a gaussian distribution using
@@ -237,7 +235,7 @@ cdef class BaseHMM:
                        state j knowing that the current state is the state i  
     """
 
-    cdef unsigned int architecture, distribution
+    cdef unsigned int architecture, distribution, use_implementation
     cdef Py_ssize_t n_states
     cdef cnp.ndarray initial_probs, transition_probs
     cdef cnp.ndarray ln_initial_probs, ln_transition_probs
@@ -250,13 +248,15 @@ cdef class BaseHMM:
     cdef cnp.ndarray mv_indexes
     # Arguments for the input-output HMM architecture
     cdef object state_subnetworks, output_subnetworks
-    cdef cnp.ndarray zeta # Memory of the dynamical system
+    cdef cnp.ndarray xi # Memory of the dynamical system
     cdef cnp.ndarray eta  # Global output of the system
 
     def __cinit__(self, n_states, distribution = DISTRIBUTION_GAUSSIAN,
-                  architecture = ARCHITECTURE_LINEAR, missing_value = DEFAULT_MISSING_VALUE):
+                  architecture = ARCHITECTURE_LINEAR, missing_value = DEFAULT_MISSING_VALUE,
+                  use_implementation = USE_LIN_IMPLEMENTATION):
         if not (ARCHITECTURE_LINEAR <= architecture <= ARCHITECTURE_CYCLIC): 
             raise NotImplementedError("This architecture is not supported yet")
+        self.use_implementation = use_implementation
         self.architecture = architecture
         self.distribution = distribution
         self.n_states = n_states
@@ -269,6 +269,9 @@ cdef class BaseHMM:
         
     def getMu(self):
         return self.mu
+    
+    def getA(self):
+        return self.transition_probs
             
     cdef int initParameters(self, obs) except -1:
         """ Initialize the parameters of the model according to the output of the
@@ -313,10 +316,11 @@ cdef class BaseHMM:
             self.transition_probs = dirichlet([1.0] * self.n_states, self.n_states)
         self.mu = np.nan_to_num(self.mu)
         self.sigma = np.nan_to_num(self.sigma)
-        self.ln_initial_probs = np.nan_to_num(elog(self.initial_probs))
-        self.ln_transition_probs = np.nan_to_num(elog(self.transition_probs))
         self.previous_mu = np.copy(self.mu)
         self.previous_sigma = np.copy(self.sigma)
+        if self.use_implementation == USE_LOG_IMPLEMENTATION:
+            self.ln_initial_probs = np.nan_to_num(elog(self.initial_probs))
+            self.ln_transition_probs = np.nan_to_num(elog(self.transition_probs))
         
     cdef forwardProcedure(self, cnp.ndarray lnf, cnp.ndarray ln_alpha):
         """ Implementation of the forward procedure 
@@ -362,8 +366,8 @@ cdef class BaseHMM:
     
     def E_step(self, lnf, ln_alpha, ln_beta, ln_eta):
         cdef Py_ssize_t i, j, t, T = len(lnf)
-        lnP_f = self.forwardProcedure(lnf, ln_alpha)
-        lnP_b = self.backwardProcedure(lnf, ln_beta)
+        lnP_f = np.nan_to_num(self.forwardProcedure(lnf, ln_alpha))
+        lnP_b = np.nan_to_num(self.backwardProcedure(lnf, ln_beta))
         if abs((lnP_f - lnP_b) / lnP_f) > 1.0e-6:
             printf("Error. Forward and backward algorithm must produce the same loglikelihood.\n")
         with np.errstate(over = 'ignore'):
@@ -377,7 +381,7 @@ cdef class BaseHMM:
         ln_gamma = ln_alpha + ln_beta - lnP_f
         return ln_eta, ln_gamma, lnP_f
 
-    def fit(self, obs, mu, sigma, n_iterations = 100, 
+    def logFit(self, obs, mu, sigma, n_iterations = 100, 
             dynamic_features = False, delta_window = 1):
         """
         Launches the iterative Baum-Welch algorithm for parameter re-estimation.
@@ -446,11 +450,130 @@ cdef class BaseHMM:
         eigenvalues = np.linalg.eig(self.transition_probs.T)
         self.initial_probs = normalizeMatrix(np.abs(eigenvalues[1][:, eigenvalues[0].argmax()]))
         
-    def fitIO(self, U, targets = None, mu = None, sigma = None, n_iterations = 100, 
+    cdef void linForwardProcedure(self, cnp.ndarray alpha, cnp.ndarray pi, cnp.ndarray A, cnp.ndarray B):
+        cdef Py_ssize_t i, j
+        cdef Py_ssize_t T = alpha.shape[0]
+        cdef Py_ssize_t n = alpha.shape[1]
+        cdef double transition_seq_prob
+        for i in range(n):
+            alpha[0, i] = pi[i] * B[0, i]
+        for t in range(1, T):
+            for j in range(n):
+                transition_seq_prob = 0
+                for i in range(n):
+                    transition_seq_prob += alpha[t - 1, i] * A[i, j]
+                alpha[t, j] = transition_seq_prob * B[t, j]
+            
+    cdef void linBackwardProcedure(self, cnp.ndarray beta, cnp.ndarray A, cnp.ndarray B):
+        cdef Py_ssize_t i, j
+        cdef Py_ssize_t T = beta.shape[0]
+        cdef Py_ssize_t n = beta.shape[1]
+        cdef double temp
+        for i in range(n):
+            beta[T - 1, i] = 1
+        for t in range(0, T - 1):
+            for i in range(n):
+                temp = 0
+                for j in range(n):
+                    temp += beta[t + 1, j] * A[i, j] * B[t + 1, j]
+                beta[t, i] = temp
+        
+    def linFit(self, obs, mu, sigma, n_iterations = 100, 
+            dynamic_features = False, delta_window = 1):
+        print("-1")
+        self.MU = mu
+        self.SIGMA = sigma
+        assert(len(obs.shape) == 2)
+        if dynamic_features:
+            deltas, delta_deltas = self.getDeltas(obs, delta_window = delta_window)
+            obs = np.concatenate((obs, deltas, delta_deltas), axis = 1)
+        print("0")
+        self.initParameters(obs)
+        print("1")
+        cdef bint has_converged = False
+        cdef Py_ssize_t i, j, t, k
+        cdef Py_ssize_t T = obs.shape[0]
+        cdef Py_ssize_t n = obs.shape[1]
+        cdef cnp.ndarray alpha = np.empty((T, n), dtype = np.double)
+        cdef cnp.ndarray beta = np.empty((T, n), dtype = np.double)
+        cdef cnp.ndarray gamma = np.empty((T, n), dtype = np.double)
+        cdef cnp.ndarray eta = np.empty((T - 1, n, n), dtype = np.double)
+        cdef cnp.ndarray pi = self.initial_probs
+        cdef cnp.ndarray A = self.transition_probs
+        cdef cnp.ndarray B
+        cdef double bayes_denom, eta_sum, gamma_sum
+        cdef cnp.ndarray bayes_num = np.empty((n, n), dtype = np.double)
+        print("2")
+        B = GaussianLoglikelihood(obs,self.mu,self.sigma, self.mv_indexes)
+        k = 0
+        print("3")
+        while k < n_iterations and not has_converged:
+            self.linForwardProcedure(alpha, pi, A, B)
+            self.linBackwardProcedure(beta, A, B)
+            print("C")
+            for t in range(T):
+                bayes_denom = 0
+                for j in range(n):
+                    bayes_denom += alpha[t, j] * beta[t, j]
+                for i in range(n):
+                    gamma[t, i] = (alpha[t, i] * beta[t, i]) / bayes_denom
+            gamma = np.nan_to_num(gamma)
+            print("D")
+            for t in range(0, T - 1):
+                bayes_denom = 0
+                for i in range(n):
+                    for j in range(n):
+                        bayes_num[i, j] = alpha[t, i] * A[i, j] * beta[t + 1, j] * B[t + 1, j]
+                        bayes_denom += bayes_num[i, j]
+                for i in range(n):
+                    for j in range(n):
+                        eta[t, i, j] = bayes_num[i, j] / bayes_denom
+            eta = np.nan_to_num(eta)
+
+            for i in range(n):
+                pi[i] = gamma[0, i]
+                for j in range(n):
+                    eta_sum = gamma_sum = 0
+                    for t in range(0, T - 1):
+                        eta_sum += eta[t, i, j]
+                        gamma_sum += gamma[t, i]
+                    A[i, j] = eta_sum / gamma_sum if gamma_sum > 0 else 1
+            pi = np.nan_to_num(pi)
+            A = np.nan_to_num(A)
+
+            for i in range(n):
+                post = gamma[:, i]
+                post_sum = post.sum()
+                norm = 1.0 / post_sum if post_sum != 0.0 else -LOG_ZERO
+                temp = np.nan_to_num(np.dot(post * obs.T, obs))
+                avg_sigma = temp * norm
+                self.mu[i] = np.nan_to_num(np.dot(post, obs) * norm)
+                self.sigma[i] = np.nan_to_num(avg_sigma - np.outer(self.mu[i], self.mu[i]))
+                if np.all(self.mu[i] == 0):
+                    self.mu[i] = self.previous_mu[i]
+
+            is_nan = (self.mu == np.nan)
+            self.mu[is_nan] = self.previous_mu[is_nan]
+            is_nan = (self.sigma == np.nan)
+            self.sigma[is_nan] = self.previous_sigma[is_nan]
+            self.previous_mu[:] = self.mu[:]
+            self.previous_sigma[:] = self.sigma[:]
+            k += 1
+
+        self.transition_probs = A
+        self.initial_probs = pi
+
+    def fit(self, obs, mu, sigma, **kwargs):
+        if self.use_implementation == USE_LIN_IMPLEMENTATION:
+            self.linFit(obs, mu, sigma, **kwargs)
+        else:
+            self.logFit(obs, mu, sigma, **kwargs)
+        
+    def fitIO(self, U, targets = None, mu = None, sigma = None, n_iterations = 5, 
               dynamic_features = False, delta_window = 1, n_classes = 2):
         
         # https://github.com/asheshjain399/GraphicalModels/blob/master/IOHMM/IOhmmFit.m
-        
+        """
         Y = targets
         assert(len(U) == len(Y))
         self.MU = mu
@@ -460,31 +583,28 @@ cdef class BaseHMM:
         m = U[0].shape[1]
         r = n_classes
         S = np.repeat(np.arange(n), n).reshape((n, n), order = 'F') # Only if ergodic topology
-        self.zeta = np.random.rand(n) # zeta_0 : initial state probability distribution
-        self.zeta /= self.zeta.sum()
-        self.eta = np.random.rand(m)
-        self.eta /= self.eta.sum()
+        self.xi = np.random.rand(n) # xi_0 : initial state probability distribution
+        self.xi /= self.xi.sum()
         n_hidden = 16 # Number of hidden units must be determined with the validation set
         N = self.state_subnetworks = newStateSubnetworks(n, m, n_hidden, n, network_type = SUBNETWORK_STATE)
         O = self.output_subnetworks = newStateSubnetworks(n, m, n_hidden, r, network_type = SUBNETWORK_OUTPUT)
-        
-        for p in range(P):
-            T_p = len(U[p])
-            ln_alpha = np.zeros((T_p, n))
-            ln_beta  = np.zeros((T_p, n))
-            
-            self.initParameters(U[p])
-            lnf = GaussianLoglikelihood(U[p], self.mu, self.sigma, self.mv_indexes)
-            L = self.forwardProcedure(lnf, ln_alpha) # Compute L = sum of all alpha_i_T
-            lnP_b = self.backwardProcedure(lnf, ln_beta)
-            # Compute h_i_j_t = alpha_j_t-1 * phi_i_j_t * beta_i_t * b_i_t(Y_t) / L
-            for j in range(n):
-                # Compute phi_j_t and eta_j_t
-                self.state_subnetworks[j].updateParameters(U[p], ln_alpha, ln_beta)
-                for i in S[j]:
-                    # Compute alpha_i_t, beta_i_t and h_i_j_t
-                    # Adjust parameters of N[j] and O[j]
-                    pass
+        for iter in range(n_iterations):
+            print("\tIteration number %i..." % iter)
+            for p in range(P):
+                T_p = len(U[p])
+                ln_alpha = np.zeros((T_p, n))
+                ln_beta  = np.zeros((T_p, n))
+                ln_eta = np.zeros((T_p - 1, n, n))
+                self.initParameters(U[p])
+                lnf = GaussianLoglikelihood(U[p], self.mu, self.sigma, self.mv_indexes)
+                # B = #outputs k in j for input l / #numbers to be in j for input l
+                # B = sum from 0 to T-1 of gamma_t(j, l) with y(t+1) = k / sum from 0 to T-1 of gamma_t(j, l)
+                L = self.forwardProcedure(lnf, ln_alpha) # L = sum of all alpha_i_T 
+                lnP_b = self.backwardProcedure(lnf, ln_beta)
+                for j in range(n):
+                    N[j].updateParameters(U[p], Y[p], ln_alpha, ln_beta, lnf, L, ln_eta)
+        """
+        pass
             
     def noisedDistribution(self, state):
         return GaussianGenerator(self.mu[state], self.sigma[state])

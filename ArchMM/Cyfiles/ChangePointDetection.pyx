@@ -114,6 +114,7 @@ cdef class BatchCPD:
         self.evaluateSegment()
         self.keypoints[self.n_keypoints] = self.n
         self.keypoints[self.n_keypoints + 1] = 0
+        print(len(self.keypoints), self.n_keypoints + 2)
         assert(len(self.keypoints) == self.n_keypoints + 2)
         self.keypoints = np.sort(self.keypoints[:self.n_keypoints + 2])
         print(list(self.keypoints))
