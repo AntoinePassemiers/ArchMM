@@ -43,15 +43,24 @@ def villoTest():
             6,5,4,3,2,3,2,3,1,3,2,4,5,4,5,7,8,8,9,8,
             9,8,8,7,7,7,7,7,7,8,
             7,7,8,9,9,9,8,9,9,9,8,8,8,6,7,7,7,7,7]
+    f = np.array(data)[1:] - np.array(data)[:-1]
     D = np.zeros((len(data), 2))
     D[:, 0] = np.array(data)[:]
-    hmm = AdaptiveHMM(5, "ergodic", standardize = False)
-    hmm.fit(D, dynamic_features = False, n_iterations = 5)
+    hmm = AdaptiveHMM(30, "linear", standardize = False)
+    hmm.fit(D, dynamic_features = False, n_iterations = 100)
     states, seq = hmm.randomSequence(len(data))
-    print(hmm.getA())
+    """
+    internal_memory = 11
+    for i in range(len(seq)):
+        internal_memory += seq[i]
+        seq[i] = internal_memory
+    """
+    print(states)
+    print(hmm.getMu()[:])
+    print(hmm.getA()[:])
     fig = plt.figure()
     ax1 = fig.add_subplot(221)
-    ax1.step(range(len(data)), D[:, 0])
+    ax1.step(range(len(data)), data)
     ax2 = fig.add_subplot(222)
     ax2.step(range(len(data)), seq[:, 0])
     plt.show()

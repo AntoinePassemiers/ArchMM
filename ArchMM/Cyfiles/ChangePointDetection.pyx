@@ -21,6 +21,73 @@ cpdef unsigned int SUM_OF_SQUARES_COST = 4
 cpdef unsigned int MAHALANOBIS_DISTANCE_COST = 5
 
 
+def epolyfit(arr, degree, **kwargs):
+    N = arr.shape[0]
+    ndim = arr.shape[1]
+    if N <= degree:
+        reg = (np.zeros(1), np.zeros(ndim), 0, np.zeros(1), 0)
+    else:
+        X = np.arange(N)
+        reg = np.polyfit(X, arr, degree, **kwargs)
+    return reg
+
+cdef double SumOfSquaresCost(cnp.double_t[:] vector):
+    """ Sum of squares of the vector elements """
+    cdef Py_ssize_t i
+    cdef double total = 0.0
+    for i in range(len(vector)):
+        total += vector[i] ** 2 # TODO : remove the square ?
+    return total
+    
+cdef double MahalanobisCost(cnp.double_t[:] vector, cnp.ndarray mu, cnp.ndarray inv_sigma):
+    """ Mahalanobis distance between the vector and the mean of the signal """
+    cdef Py_ssize_t n = len(vector)
+    if n == 0:
+        return 0
+    cdef cnp.ndarray delta = np.sqrt(np.nan_to_num(np.asarray(vector))) - mu
+    cost = np.dot(np.dot(delta, inv_sigma), delta)
+    return <double>cost
+
+cdef class CUSUM:
+    def __cinit__(self, threshold = 0.01, cost_func = MAHALANOBIS_DISTANCE_COST, 
+                  window_size = 15, n_keypoints = 50):
+        self.window_size = window_size
+        self.cost_func = cost_func
+    
+    cpdef detectPoints(self, signal, mu, sigma):
+        """
+        cdef size_t current_n_keypoints = 0
+        cdef Py_ssize_t i, j
+        cdef Py_ssize_t N = self.window_size
+        cdef cnp.ndarray beta = np.zeros(N, dtype = np.double)
+        cdef double cusum
+        cdef object loop_range_1, loop_range_2
+        enqueue(queue, current_iter)
+        while (not (current_n_keypoints == self.n_keypoints - 1)) and (not isQueueEmpty(queue)):
+            loop_range_1 = range(N - 2, 2) if N < 4 else range(N - 2, 2, -1)
+            for j in loop_range_1:
+                cusum = 0
+                loop_range_2 = range(j - 1, 1) if j < 2 else range(j - 1, 1, -1)
+                for i in loop_range_2:
+                    beta[i] += self.cost_func()
+        """
+        pass
+        
+    cpdef cnp.int_t[:] getKeypoints(self):
+        pass
+    
+    cdef double getCost(self, cnp.ndarray costs_A, cnp.ndarray costs_B):
+        cdef double cost
+        if self.cost_func == MAHALANOBIS_DISTANCE_COST:
+            # TODO : remplacer aprx_A[1] par aprx_B[1] par les approximations de la régression
+            cost = MahalanobisCost(costs_A, self.mu, self.inv_sigma) + \
+                MahalanobisCost(costs_B, self.mu, self.inv_sigma)
+        elif self.cost_func == SUM_OF_SQUARES_COST:
+            cost = SumOfSquaresCost(costs_A) + SumOfSquaresCost(costs_B)
+        else:
+            raise NotImplementedError()
+        return cost
+
 cdef class BatchCPD:
     """Implementation of the batch Change Point Detection Algorithm.
     This algorithm is designed for getting the positions of the points where most of the
@@ -114,7 +181,6 @@ cdef class BatchCPD:
         self.evaluateSegment()
         self.keypoints[self.n_keypoints] = self.n
         self.keypoints[self.n_keypoints + 1] = 0
-        print(len(self.keypoints), self.n_keypoints + 2)
         assert(len(self.keypoints) == self.n_keypoints + 2)
         self.keypoints = np.sort(self.keypoints[:self.n_keypoints + 2])
         print(list(self.keypoints))
@@ -124,22 +190,17 @@ cdef class BatchCPD:
     cpdef cnp.int_t[:] getKeypoints(self):
         return self.keypoints
     
-    cdef double MahalanobisCost(self, cnp.double_t[:] vector):
-        """ Mahalanobis distance between the vector and the mean of the signal """
-        cdef Py_ssize_t n = len(vector)
-        if n == 0:
-            return 0
-        cdef cnp.ndarray delta = np.sqrt(np.nan_to_num(np.asarray(vector))) - self.mu
-        cost = np.dot(np.dot(delta, self.inv_sigma), delta)
-        return <double>cost
-    
-    cdef double SumOfSquaresCost(self, cnp.double_t[:] vector):
-        """ Sum of squares of the vector elements """
-        cdef Py_ssize_t i
-        cdef double total = 0.0
-        for i in range(len(vector)):
-            total += vector[i] ** 2 # TODO : remove the square ?
-        return total
+    cdef double getCost(self, cnp.ndarray costs_A, cnp.ndarray costs_B):
+        cdef double cost
+        if self.cost_func == MAHALANOBIS_DISTANCE_COST:
+            # TODO : remplacer aprx_A[1] par aprx_B[1] par les approximations de la régression
+            cost = MahalanobisCost(costs_A, self.mu, self.inv_sigma) + \
+                MahalanobisCost(costs_B, self.mu, self.inv_sigma)
+        elif self.cost_func == SUM_OF_SQUARES_COST:
+            cost = SumOfSquaresCost(costs_A) + SumOfSquaresCost(costs_B)
+        else:
+            raise NotImplementedError()
+        return cost
     
     cdef void evaluateSegment(self):
         """ Function which fits the subset between [[begin]] end [[end]].
@@ -182,17 +243,9 @@ cdef class BatchCPD:
             for mid in range(begin + self.window_padding, end - self.window_padding):
                 cost = 0
                 if self.aprx_func == POLYNOMIAL_APRX:
-                    aprx_A = np.polyfit(np.arange(mid - begin), 
-                            self.signal[begin:mid], self.aprx_degree, full = True)
-                    aprx_B = np.polyfit(np.arange(end - mid), 
-                            self.signal[mid:end], self.aprx_degree, full = True)
-                    if self.cost_func == MAHALANOBIS_DISTANCE_COST:
-                        # TODO : remplacer aprx_A[1] par aprx_B[1] par les approximations de la régression
-                        cost = self.MahalanobisCost(aprx_A[1]) + self.MahalanobisCost(aprx_B[1])
-                    elif self.cost_func == SUM_OF_SQUARES_COST:
-                        cost = self.SumOfSquaresCost(aprx_A[1]) + self.SumOfSquaresCost(aprx_B[1])
-                    else:
-                        pass # TODO
+                    aprx_A = epolyfit(self.signal[begin:mid], self.aprx_degree, full = True)
+                    aprx_B = epolyfit(self.signal[mid:end], self.aprx_degree, full = True)
+                    cost = self.getCost(aprx_A[1], aprx_B[1])
                 if cost < lowest_cost:
                     lowest_cost = cost
                     best_mid = mid

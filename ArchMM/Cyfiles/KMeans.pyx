@@ -114,17 +114,18 @@ cdef randomize_centroids(cnp.double_t[:, :] data, Py_ssize_t k):
     cdef Py_ssize_t n_dim = data.shape[1]
     cdef cnp.ndarray centroids = np.empty((k, n_dim), dtype = np.double)
     for cluster in range(0, k):
-        centroids[cluster, :] = data[np.random.randint(0, len(data), size=1)]
+        centroids[cluster, :] = data[int(np.random.randint(0, len(data), size = 1)), :]
     return centroids
 
 cpdef kMeans(data, k, n_iter = 1000):
     """ Implementation of the well-known k-means algorithm """
-    cdef Py_ssize_t n_dim = data.shape[1], i = 0
+    cdef Py_ssize_t n_dim = data.shape[1]
+    cdef Py_ssize_t i = 0
     cdef cnp.ndarray centroids = randomize_centroids(data, k)
     cdef cnp.ndarray old_centroids = np.empty((k, n_dim), dtype = np.double)
     cdef size_t iterations = 0
-    cdef ClusterSet clusters    
-
+    cdef ClusterSet clusters
+    
     while not (iterations > n_iter or old_centroids.all() == centroids.all()):
         iterations += 1
         clusters = ClusterSet(k, len(data), n_dim)

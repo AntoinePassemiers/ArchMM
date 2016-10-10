@@ -237,7 +237,7 @@ cdef class BaseHMM:
 
     cdef unsigned int architecture, distribution, use_implementation
     cdef Py_ssize_t n_states
-    cdef cnp.ndarray initial_probs, transition_probs
+    cdef cnp.ndarray initial_probs, transition_probs, previous_A
     cdef cnp.ndarray ln_initial_probs, ln_transition_probs
     cdef cnp.ndarray mu
     cdef cnp.ndarray previous_mu, sigma, previous_sigma, MU, SIGMA
@@ -314,6 +314,7 @@ cdef class BaseHMM:
             self.sigma = np.tile(np.identity(obs.shape[1]),(self.n_states, 1, 1))
             self.initial_probs = np.tile(1.0 / self.n_states, self.n_states)
             self.transition_probs = dirichlet([1.0] * self.n_states, self.n_states)
+
         self.mu = np.nan_to_num(self.mu)
         self.sigma = np.nan_to_num(self.sigma)
         self.previous_mu = np.copy(self.mu)
@@ -480,16 +481,13 @@ cdef class BaseHMM:
         
     def linFit(self, obs, mu, sigma, n_iterations = 100, 
             dynamic_features = False, delta_window = 1):
-        print("-1")
         self.MU = mu
         self.SIGMA = sigma
         assert(len(obs.shape) == 2)
         if dynamic_features:
             deltas, delta_deltas = self.getDeltas(obs, delta_window = delta_window)
             obs = np.concatenate((obs, deltas, delta_deltas), axis = 1)
-        print("0")
         self.initParameters(obs)
-        print("1")
         cdef bint has_converged = False
         cdef Py_ssize_t i, j, t, k
         cdef Py_ssize_t T = obs.shape[0]
@@ -500,17 +498,16 @@ cdef class BaseHMM:
         cdef cnp.ndarray eta = np.empty((T - 1, n, n), dtype = np.double)
         cdef cnp.ndarray pi = self.initial_probs
         cdef cnp.ndarray A = self.transition_probs
+        self.previous_A = np.copy(A)
         cdef cnp.ndarray B
         cdef double bayes_denom, eta_sum, gamma_sum
         cdef cnp.ndarray bayes_num = np.empty((n, n), dtype = np.double)
-        print("2")
         B = GaussianLoglikelihood(obs,self.mu,self.sigma, self.mv_indexes)
         k = 0
-        print("3")
         while k < n_iterations and not has_converged:
             self.linForwardProcedure(alpha, pi, A, B)
             self.linBackwardProcedure(beta, A, B)
-            print("C")
+            
             for t in range(T):
                 bayes_denom = 0
                 for j in range(n):
@@ -518,7 +515,7 @@ cdef class BaseHMM:
                 for i in range(n):
                     gamma[t, i] = (alpha[t, i] * beta[t, i]) / bayes_denom
             gamma = np.nan_to_num(gamma)
-            print("D")
+
             for t in range(0, T - 1):
                 bayes_denom = 0
                 for i in range(n):
@@ -537,7 +534,7 @@ cdef class BaseHMM:
                     for t in range(0, T - 1):
                         eta_sum += eta[t, i, j]
                         gamma_sum += gamma[t, i]
-                    A[i, j] = eta_sum / gamma_sum if gamma_sum > 0 else 1
+                    A[i, j] = eta_sum / gamma_sum if gamma_sum > 0 else self.previous_A[i, j]
             pi = np.nan_to_num(pi)
             A = np.nan_to_num(A)
 
@@ -560,8 +557,10 @@ cdef class BaseHMM:
             self.previous_sigma[:] = self.sigma[:]
             k += 1
 
+        for i in range(n):
+            A[i, :] = A[i, :] / A[i, :].sum()
         self.transition_probs = A
-        self.initial_probs = pi
+        self.initial_probs = pi / pi.sum()
 
     def fit(self, obs, mu, sigma, **kwargs):
         if self.use_implementation == USE_LIN_IMPLEMENTATION:
