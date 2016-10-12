@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-import timeit
-import theano
+import os, timeit
 
-# https://eldorado.tu-dortmund.de/bitstream/2003/5496/1/03010.pdf
+from Utils import *
+
+os.environ["THEANO_FLAGS"] = "floatX=float32,exception_verbosity=high" # TODO : doesn't work
+
+import theano
+import theano.typed_list
 
 SUBNETWORK_STATE = 301
 SUBNETWORK_OUTPUT = 302
@@ -123,11 +127,73 @@ class MLP(object):
         self.errors = self.logRegressionLayer.errors
         self.params = self.hiddenLayer.params + self.logRegressionLayer.params
         self.input = input
+    
     def processOutput(self, X):
         for layer in self.layers:
             X = layer.processOutput(X)
         return X
     
+    def predict(self, test_X):
+        X_values = np.asarray(test_X, dtype = theano.config.floatX)
+        test_X = theano.shared(name = "X_test", borrow = True, value = X_values)
+        return self.processOutput(test_X).eval() 
+    
+
+
+class StateSubnetwork(MLP):
+    def __init__(self, state_id, n_in, n_hidden, n_out):
+        MLP.__init__(self, n_in, n_hidden, n_out)
+        self.state_id = state_id
+        self.xi = None
+    def train(self, train_list_x, xi_list, learning_rate = 0.01, 
+              L1_reg = 0.00, L2_reg = 0.0001, n_epochs = 1):
+        
+        N = len(train_list_x)
+        m = train_list_x[0].shape[1]
+        train_set_x = theano.typed_list.TypedListType(theano.tensor.fmatrix)()
+        xi = theano.typed_list.TypedListType(theano.tensor.ftensor3)()
+        for i in range(N):
+            xi_values = np.asarray(xi_list[i], dtype = theano.config.floatX)
+            X_values = np.asarray(train_list_x[i], dtype = theano.config.floatX)
+            theano.typed_list.append(train_set_x, theano.shared(name = "X_train", borrow = True, value = X_values))
+            theano.typed_list.append(xi, theano.shared(name = "xi", borrow = True, value = xi_values))
+        self.xi = theano.tensor.tensor3('xi_j')
+        index = theano.tensor.lscalar()
+        self.j = theano.tensor.lscalar()
+        j_t = theano.tensor.lscalar()
+        
+        # prob = self.processOutput(self.x[self.j + 1, :])
+        cost = - (self.xi[self.state_id, :, self.j] * theano.tensor.log(45)).sum()
+
+        gparams = [theano.tensor.grad(cost, param) for param in self.params]
+        updates = [
+            (param, param - learning_rate * gparam)
+            for param, gparam in zip(self.params, gparams)
+        ]
+        
+        train_model = theano.function(
+            inputs = [index, self.j],
+            outputs = cost,
+            updates = updates,
+            givens = {
+                self.x: train_set_x[index],
+                self.xi: xi[index]
+            }
+        )
+        if not RELEASE_MODE:
+            theano.printing.debugprint(cost)
+        
+        epoch = 0
+        while (epoch < n_epochs):
+            epoch += 1
+            for sequence_id in range(N):
+                for j in range(len(train_list_x[sequence_id])):
+                    minibatch_avg_cost = train_model(sequence_id, j)
+        
+class OutputSubnetwork(MLP):
+    def __init__(self, output_id, n_in, n_hidden, n_out):
+        MLP.__init__(self, n_in, n_hidden, n_out)
+        self.output_id = output_id
     def train(self, train_set_x, train_set_y,
                  learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
                  batch_size=20):
@@ -137,6 +203,7 @@ class MLP(object):
         train_set_y = theano.shared(name = "y_train", borrow = True, value = y_values)
         index = theano.tensor.lscalar()
         y = theano.tensor.ivector('y')
+        
         cost = (
             self.negative_log_likelihood(y)
             + L1_reg * self.L1
@@ -169,36 +236,6 @@ class MLP(object):
             epoch = epoch + 1
             for minibatch in range(b):
                 minibatch_avg_cost = train_model(minibatch)
-    
-    def predict(self, test_X):
-        X_values = np.asarray(test_X, dtype = theano.config.floatX)
-        test_X = theano.shared(name = "X_test", borrow = True, value = X_values)
-        return self.processOutput(test_X).eval() 
-
-class StateSubnetwork(MLP):
-    def __init__(self, state_id, n_in, n_hidden, n_out):
-        MLP.__init__(self, n_in, n_hidden, n_out)
-        self.state_id = state_id
-    def updateParameters(self, X, y, ln_alpha, ln_beta, ln_B, L, ln_eta):
-        # TODO : initialize ln_eta
-        T = len(ln_alpha)
-        i = self.state_id
-        phi_i_t = self.predict(X)
-        with np.errstate(over = 'ignore'):
-            # h_i_j_t = alpha_j_t-1 * phi_i_j_t * beta_i_t * b_i_t(Y_t) / L
-            for j in range(self.n_out):
-                ln_eta[:(T - 1), i, j] = ln_alpha[:(T - 1), i] + np.log(phi_i_t[1:T, j]) + ln_B[1:T, j] + ln_beta[1:T, j]   
-            ln_eta -= L
-        # maximize sum_i sum_j h_i_j_t(previous step) * log(phi_i_j_t)
-        self.train(X, y, n_epochs = 5)
-        return phi_i_t
-        
-class OutputSubnetwork(MLP):
-    def __init__(self, output_id, n_in, n_hidden, n_out):
-        MLP.__init__(self, n_in, n_hidden, n_out)
-        self.output_id = output_id
-    def updateParameters(self, X, zeta, B):
-        pred_Y = self.predict(X)
 
 def newStateSubnetworks(n_networks, n_in, n_hidden, n_out, network_type = SUBNETWORK_STATE):
     nets = []

@@ -2,7 +2,7 @@
 
 import sys, pickle
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 sys.path.insert(0, '..')
 sys.path.insert(0, '../..')
@@ -46,7 +46,7 @@ def villoTest():
     f = np.array(data)[1:] - np.array(data)[:-1]
     D = np.zeros((len(data), 2))
     D[:, 0] = np.array(data)[:]
-    hmm = AdaptiveHMM(30, "linear", standardize = False)
+    hmm = AdaptiveHMM(50, "linear", standardize = False)
     hmm.fit(D, dynamic_features = False, n_iterations = 100)
     states, seq = hmm.randomSequence(len(data))
     """
@@ -78,12 +78,12 @@ def testHMMwithMissingValues():
     # hmm.randomSequence(45)
     
 def testIOHMM():
-    U = np.arange(1, 1001).reshape(500, 2)
+    U = np.arange(1, 101).reshape(50, 2)
     U[25, 1] = 78
-    U[259, 1] = 0
-    U[370, 1] = 78
-    U[159, 1] = -4586
-    Y = np.random.randint(2, size = (500))
+    U[49, 1] = 0
+    U[7, 1] = 78
+    U[18, 1] = -4586
+    Y = np.random.randint(2, size = (50))
     hmm = AdaptiveHMM(10, has_io = True)
     hmm.fit([U], targets = [Y], n_iterations = 5, n_classes = 2)
     
@@ -96,5 +96,5 @@ def testMLP():
     
 
 if __name__ == "__main__":
-    villoTest()
+    testIOHMM()
     print("Finished")

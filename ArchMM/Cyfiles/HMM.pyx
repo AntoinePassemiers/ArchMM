@@ -3,21 +3,18 @@
 import ctypes, pickle
 import numpy as np
 from numpy.random import randn, random, dirichlet
-from cpython cimport array 
 from scipy.spatial.distance import cdist # TO REMOVE
+from cpython cimport array 
 from libc.stdio cimport *
-from libc.math cimport exp, log, M_PI
+cimport libc.math
 
 include "Artifacts.pyx"
 include "KMeans.pyx"
 include "ChangePointDetection.pyx"
-# include "MLP.pyx"
+include "IO_HMM.pyx"
+include "MLP.pyx"
 
 theano_support = False
-
-cdef bint RELEASE_MODE = False
-
-# TODO : numerical stability : use float128
 
 
 cpdef unsigned int ARCHITECTURE_LINEAR = 1
@@ -39,6 +36,7 @@ cpdef unsigned int USE_LOG_IMPLEMENTATION = 301
 cpdef unsigned int USE_LIN_IMPLEMENTATION = 302
     
 
+
 """ Extended versions of the ln, exp, and log product functions 
 to prevent the Baum-Welch algorithm from causing overflow/underflow """
 
@@ -59,7 +57,7 @@ cdef ieexp2d(M):
     cdef Py_ssize_t i, j
     for i in range(M.shape[0]):
         for j in range(M.shape[1]):
-            M[i][j] = exp(M[i][j]) if M[i][j] != LOG_ZERO else 0.0
+            M[i][j] = libc.math.exp(M[i][j]) if M[i][j] != LOG_ZERO else 0.0
     return M
 
 ctypedef double signal_t
@@ -145,7 +143,7 @@ cdef cnp.ndarray GaussianLoglikelihood(cnp.ndarray obs, cnp.ndarray mu,
     cdef Py_ssize_t nmix = len(mu)
     cdef double mcv
     cdef Py_ssize_t k, j
-    cdef double dln2pi = ndim * log(2.0 * M_PI)
+    cdef double dln2pi = ndim * libc.math.log(2.0 * libc.math.M_PI)
     lnf = np.empty((nobs, nmix))
     for k in range(nmix):
         try:
@@ -153,14 +151,14 @@ cdef cnp.ndarray GaussianLoglikelihood(cnp.ndarray obs, cnp.ndarray mu,
         except ValueError:
             sigma[k] = np.nan_to_num(sigma[k])
             det_sigma = np.linalg.det(sigma[k])
-        lndetV = log(det_sigma)
+        lndetV = libc.math.log(det_sigma)
         mcv = 0.00001
         while det_sigma == 0 or np.isnan(lndetV):
             for j in range(ndim):
                 sigma[k, j, j] += mcv
             mcv *= 10
             det_sigma = np.linalg.det(sigma[k])
-            lndetV = log(det_sigma)
+            lndetV = libc.math.log(det_sigma)
         
         q = stableMahalanobis(obs, mu[k], sigma[k])
         # TODO : adjust lnf by taking into account self.missing_values_indexes 
@@ -570,41 +568,84 @@ cdef class BaseHMM:
         
     def fitIO(self, U, targets = None, mu = None, sigma = None, n_iterations = 5, 
               dynamic_features = False, delta_window = 1, n_classes = 2):
-        
-        # https://github.com/asheshjain399/GraphicalModels/blob/master/IOHMM/IOhmmFit.m
-        """
-        Y = targets
-        assert(len(U) == len(Y))
         self.MU = mu
         self.SIGMA = sigma
-        P = len(U)
-        n = self.n_states
-        m = U[0].shape[1]
-        r = n_classes
-        S = np.repeat(np.arange(n), n).reshape((n, n), order = 'F') # Only if ergodic topology
-        self.xi = np.random.rand(n) # xi_0 : initial state probability distribution
-        self.xi /= self.xi.sum()
-        n_hidden = 16 # Number of hidden units must be determined with the validation set
-        N = self.state_subnetworks = newStateSubnetworks(n, m, n_hidden, n, network_type = SUBNETWORK_STATE)
-        O = self.output_subnetworks = newStateSubnetworks(n, m, n_hidden, r, network_type = SUBNETWORK_OUTPUT)
+        cdef Py_ssize_t i, j, k, p
+        assert(len(U) == len(targets))
+        cdef size_t n_sequences = len(U)
+        cdef cnp.ndarray T = np.empty(n_sequences)
+        for p in range(n_sequences):
+            T[p] = len(U[p])
+        cdef size_t m = U[0].shape[1]
+        cdef size_t n = self.n_states
+        cdef size_t r = 2
+        cdef size_t n_hidden = 16 # Number of hidden units must be determined with the validation set
+        cdef object N = newStateSubnetworks(n + 1, m, n_hidden, n, network_type = SUBNETWORK_STATE)
+        self.state_subnetworks = N
+        cdef object O = newStateSubnetworks(n, m, n_hidden, r, network_type = SUBNETWORK_OUTPUT)
+        self.output_subnetworks = O
+        piN = N[-1]
+        cdef cnp.ndarray loglikelihood = np.zeros(n_iterations)
+        cdef object alpha = new3DVLMList(n_sequences, n, T, dtype = np.float)
+        cdef object beta = new3DVLMList(n_sequences, n, T, dtype = np.float)
+        cdef object gamma = new3DVLMList(n_sequences, n, T, dtype = np.float)
+        cdef object xi = new3DVLMList(n_sequences, n, T, n, dtype = np.double)
+        cdef object dens = new3DVLMList(n_sequences, n, T, dtype = np.double)
+        cdef object omega = new3DVLMList(n_sequences, T, n, dtype = np.double)
+        cdef cnp.ndarray A = np.empty((n, n), dtype = np.float)
         for iter in range(n_iterations):
-            print("\tIteration number %i..." % iter)
-            for p in range(P):
-                T_p = len(U[p])
-                ln_alpha = np.zeros((T_p, n))
-                ln_beta  = np.zeros((T_p, n))
-                ln_eta = np.zeros((T_p - 1, n, n))
-                self.initParameters(U[p])
-                lnf = GaussianLoglikelihood(U[p], self.mu, self.sigma, self.mv_indexes)
-                # B = #outputs k in j for input l / #numbers to be in j for input l
-                # B = sum from 0 to T-1 of gamma_t(j, l) with y(t+1) = k / sum from 0 to T-1 of gamma_t(j, l)
-                L = self.forwardProcedure(lnf, ln_alpha) # L = sum of all alpha_i_T 
-                lnP_b = self.backwardProcedure(lnf, ln_beta)
-                for j in range(n):
-                    N[j].updateParameters(U[p], Y[p], ln_alpha, ln_beta, lnf, L, ln_eta)
-        """
-        pass
-            
+            print("Iteration number %i..." % iter)
+            """ Forward procedure """
+            for j in range(n_sequences):
+                initial_probs = piN.processOutput(U[j][0, :]) # Processing sequence j for all times t
+                sequence_probs = np.multiply(dens[j][:, 0], initial_probs.eval())
+                omega[j][0] = 1.0 / np.sum(sequence_probs)
+                alpha[j][:, 0] = np.linalg.norm(sequence_probs)
+                loglikelihood[iter] = np.log(np.sum(sequence_probs))
+                for k in range(1, dens[j].shape[1]):
+                    for i in range(n):
+                        A[i] = N[i].processOutput(U[j][k, :]).eval() # TODO : VERY SLOW
+                    sequence_probs = np.multiply(dens[j][:, k], (A * alpha[j][:, k - 1]))
+                    print(j, k)
+                    omega[j][k] = 1.0 / np.sum(sequence_probs)
+                    alpha[j][:, k] = np.linalg.norm(sequence_probs)
+                    loglikelihood[j] += np.log(np.sum(sequence_probs))
+            printf("\tAlpha probabilities computed\n")
+            """ Backward procedure """
+            for j in range(n_sequences):
+                beta[j][:, -1] = omega[j][-1]
+                for k in range(dens[j].shape[1] - 2, -1, -1):
+                    for i in range(n):
+                        A[i] = N[i].processOutput(U[j][k + 1, :]).eval() # TODO : VERY SLOW
+                    print(j, k)
+                    beta[j][:, k] = np.dot(A, np.multiply(dens[j][:, k + 1], beta[j][:, k + 1]))
+                    beta[j][:, k] *= omega[j][k]
+            printf("\tBeta probabilities computed\n")
+            """ Forward-Backward xi computation """
+            for j in range(n_sequences):
+                gamma[j] = np.divide(np.multiply(alpha[j], beta[j]), omega[j].T)
+            for j in range(n_sequences):
+                for k in range(n_sequences - 1):
+                    for i in range(n):
+                        A[i] = N[i].processOutput(U[j][k + 1, :])
+                        xi[j][:, :, k] = np.multiply(A, alpha[j][:, k] * np.multiply(dens[j][:, k + 1], beta[j][:, k + 1]))
+            printf("\tXi tensor computed\n")
+            """ E-Step """
+            state_frequencies = np.zeros(n, dtype = np.float)
+            for j in range(n_sequences):
+                state_frequencies += np.sum(gamma[j], axis = 1)
+            obs_vector = np.zeros((n, r), dtype = np.int)
+            for j in range(n_sequences):
+                for k in range(r):
+                    obs_vector[:, k] += np.sum(gamma[j][:, np.where(targets[j] == k)[0]], axis = 1) # TODO : check np.where indices
+            printf("\tEnd of expectation step\n")
+            """ M-Step """
+            # TODO : Minimize function for the piW network
+            for j in range(n):
+                N[j].train(U, xi)
+            printf("\tEnd of maximization step")
+                
+                            
     def noisedDistribution(self, state):
         return GaussianGenerator(self.mu[state], self.sigma[state])
     

@@ -7,12 +7,12 @@ setup(
     ext_modules = cythonize(
         [
             "Cyfiles/Math.pyx",
-            "Cyfiles/MLP.pyx",
-            "Cyfiles/Artifacts.pyx",
-            "Cyfiles/Queue.pyx",
             "Cyfiles/KMeans.pyx",
             "Cyfiles/ChangePointDetection.pyx",
+            "Cyfiles/Artifacts.pyx",
+            "Cyfiles/Queue.pyx",
             "Cyfiles/IO_HMM.pyx",
+            "Cyfiles/MLP.pyx",
             "Cyfiles/HMM.pyx",
             "Cyfiles/HMM_Core.pyx"
         ],

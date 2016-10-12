@@ -4,7 +4,6 @@
 import collections, numbers, pickle
 import numpy as np
 
-from libc.math cimport exp, log, M_PI
 
 include "HMM.pyx"
 
