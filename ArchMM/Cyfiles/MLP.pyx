@@ -108,9 +108,9 @@ class MLP(object):
             activation=theano.tensor.tanh
         )
         self.logRegressionLayer = LogisticRegression(
-            input=self.hiddenLayer.output,
-            n_in=n_hidden,
-            n_out=n_out
+            input = self.hiddenLayer.output,
+            n_in = n_hidden,
+            n_out = n_out
         )
         self.layers = [self.hiddenLayer, self.logRegressionLayer]
         self.L1 = (
@@ -148,22 +148,32 @@ class StateSubnetwork(MLP):
     def train(self, train_list_x, xi_list, learning_rate = 0.01, 
               L1_reg = 0.00, L2_reg = 0.0001, n_epochs = 1):
         
+        self.index = theano.tensor.lscalar('index')
+        self.t = theano.tensor.lscalar('t')
+        self.symbolic_xi_j = theano.tensor.tensor3('xi_j')
+        self.symbolic_x_j = theano.tensor.fmatrix('x_j')    
+        self.train_set_x = theano.typed_list.TypedListType(theano.tensor.fmatrix)()
+        self.xi = theano.typed_list.TypedListType(theano.tensor.ftensor3)()
+    
         N = len(train_list_x)
         m = train_list_x[0].shape[1]
-        train_set_x = theano.typed_list.TypedListType(theano.tensor.fmatrix)()
-        xi = theano.typed_list.TypedListType(theano.tensor.ftensor3)()
+        
+        append_node = theano.typed_list.append(self.train_set_x, self.symbolic_x_j)
+        append_x_item = theano.function(inputs = [self.train_set_x, self.symbolic_x_j], outputs = append_node) 
+        append_node = theano.typed_list.append(self.xi, self.symbolic_xi_j)
+        append_xi_item = theano.function(inputs = [self.xi, self.symbolic_xi_j], outputs = append_node) 
+        
+        train_set_x = []
+        xi = []
         for i in range(N):
             xi_values = np.asarray(xi_list[i], dtype = theano.config.floatX)
             X_values = np.asarray(train_list_x[i], dtype = theano.config.floatX)
-            theano.typed_list.append(train_set_x, theano.shared(name = "X_train", borrow = True, value = X_values))
-            theano.typed_list.append(xi, theano.shared(name = "xi", borrow = True, value = xi_values))
-        self.xi = theano.tensor.tensor3('xi_j')
-        index = theano.tensor.lscalar()
-        self.j = theano.tensor.lscalar()
-        j_t = theano.tensor.lscalar()
+            train_set_x = append_x_item(train_set_x, X_values)
+            xi = append_xi_item(xi, xi_values)
         
-        # prob = self.processOutput(self.x[self.j + 1, :])
-        cost = - (self.xi[self.state_id, :, self.j] * theano.tensor.log(45)).sum()
+        # TODO : re-use prob because it has already been computed
+        prob = self.processOutput(self.symbolic_x_j[self.t + 1, :])
+        cost = - (self.symbolic_xi_j[self.state_id, :, self.t] * theano.tensor.log(prob)).sum()
 
         gparams = [theano.tensor.grad(cost, param) for param in self.params]
         updates = [
@@ -171,24 +181,24 @@ class StateSubnetwork(MLP):
             for param, gparam in zip(self.params, gparams)
         ]
         
-        train_model = theano.function(
-            inputs = [index, self.j],
-            outputs = cost,
-            updates = updates,
-            givens = {
-                self.x: train_set_x[index],
-                self.xi: xi[index]
-            }
-        )
         if not RELEASE_MODE:
-            theano.printing.debugprint(cost)
+            debugfile = open("C://Users/Xanto183/git/ArchMM/ArchMM/theano_cost_graph.txt", "w")
+            theano.printing.debugprint(cost, file = debugfile)
+        
+        train_model = theano.function(
+            inputs = [self.symbolic_x_j, self.symbolic_xi_j, self.t],
+            outputs = cost,
+            updates = updates
+        )
         
         epoch = 0
         while (epoch < n_epochs):
             epoch += 1
             for sequence_id in range(N):
                 for j in range(len(train_list_x[sequence_id])):
-                    minibatch_avg_cost = train_model(sequence_id, j)
+                    # Shapes : (50, 2) and (10, 50, 10)
+                    print(train_set_x[sequence_id].shape, xi[sequence_id].shape)
+                    minibatch_avg_cost = train_model(train_set_x[sequence_id], xi[sequence_id], j)
         
 class OutputSubnetwork(MLP):
     def __init__(self, output_id, n_in, n_hidden, n_out):
