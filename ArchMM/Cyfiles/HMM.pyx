@@ -11,7 +11,6 @@ cimport libc.math
 include "Artifacts.pyx"
 include "KMeans.pyx"
 include "ChangePointDetection.pyx"
-include "IO_HMM.pyx"
 include "MLP.pyx"
 
 theano_support = False
@@ -580,11 +579,11 @@ cdef class BaseHMM:
         cdef size_t n = self.n_states
         cdef size_t r = 2
         cdef size_t n_hidden = 16 # Number of hidden units must be determined with the validation set
-        cdef object N = newStateSubnetworks(n + 1, m, n_hidden, n, network_type = SUBNETWORK_STATE)
+        cdef object N = newStateSubnetworks(n, m, n_hidden, n, network_type = SUBNETWORK_STATE)
         self.state_subnetworks = N
         cdef object O = newStateSubnetworks(n, m, n_hidden, r, network_type = SUBNETWORK_OUTPUT)
         self.output_subnetworks = O
-        piN = N[-1]
+        piN = newStateSubnetworks(1, m, n_hidden, n, network_type = SUBNETWORK_STATE)[0]
         cdef cnp.ndarray loglikelihood = np.zeros(n_iterations)
         cdef object alpha = new3DVLMList(n_sequences, n, T, dtype = np.float)
         cdef object beta = new3DVLMList(n_sequences, n, T, dtype = np.float)
@@ -596,6 +595,7 @@ cdef class BaseHMM:
         for iter in range(n_iterations):
             print("Iteration number %i..." % iter)
             """ Forward procedure """
+            print(alpha)
             for j in range(n_sequences):
                 initial_probs = piN.processOutput(U[j][0, :]) # Processing sequence j for all times t
                 sequence_probs = np.multiply(dens[j][:, 0], initial_probs.eval())
@@ -605,11 +605,13 @@ cdef class BaseHMM:
                 for k in range(1, dens[j].shape[1]):
                     for i in range(n):
                         A[i] = N[i].processOutput(U[j][k, :]).eval() # TODO : VERY SLOW
+                    print(A)
                     sequence_probs = np.multiply(dens[j][:, k], (A * alpha[j][:, k - 1]))
                     print(j, k)
                     omega[j][k] = 1.0 / np.sum(sequence_probs)
                     alpha[j][:, k] = np.linalg.norm(sequence_probs)
                     loglikelihood[j] += np.log(np.sum(sequence_probs))
+            print(alpha)
             printf("\tAlpha probabilities computed\n")
             """ Backward procedure """
             for j in range(n_sequences):
@@ -620,6 +622,7 @@ cdef class BaseHMM:
                     print(j, k)
                     beta[j][:, k] = np.dot(A, np.multiply(dens[j][:, k + 1], beta[j][:, k + 1]))
                     beta[j][:, k] *= omega[j][k]
+            print(beta)
             printf("\tBeta probabilities computed\n")
             """ Forward-Backward xi computation """
             for j in range(n_sequences):
@@ -629,6 +632,8 @@ cdef class BaseHMM:
                     for i in range(n):
                         A[i] = N[i].processOutput(U[j][k + 1, :])
                         xi[j][:, :, k] = np.multiply(A, alpha[j][:, k] * np.multiply(dens[j][:, k + 1], beta[j][:, k + 1]))
+            print(gamma)
+            print(xi)
             printf("\tXi tensor computed\n")
             """ E-Step """
             state_frequencies = np.zeros(n, dtype = np.float)
@@ -642,8 +647,8 @@ cdef class BaseHMM:
             """ M-Step """
             # TODO : Minimize function for the piW network
             for j in range(n):
-                N[j].train(U, xi)
-            printf("\tEnd of maximization step")
+                N[j].train(U, xi, n_epochs = 1)
+            printf("\tEnd of maximization step\n")
                 
                             
     def noisedDistribution(self, state):

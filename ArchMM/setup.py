@@ -11,7 +11,6 @@ setup(
             "Cyfiles/ChangePointDetection.pyx",
             "Cyfiles/Artifacts.pyx",
             "Cyfiles/Queue.pyx",
-            "Cyfiles/IO_HMM.pyx",
             "Cyfiles/MLP.pyx",
             "Cyfiles/HMM.pyx",
             "Cyfiles/HMM_Core.pyx"

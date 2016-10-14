@@ -10,6 +10,7 @@ os.environ["THEANO_FLAGS"] = "floatX=float32,exception_verbosity=high" # TODO : 
 import theano
 import theano.typed_list
 
+SUBNETWORK_PI_STATE = 300
 SUBNETWORK_STATE = 301
 SUBNETWORK_OUTPUT = 302
 
@@ -138,15 +139,14 @@ class MLP(object):
         test_X = theano.shared(name = "X_test", borrow = True, value = X_values)
         return self.processOutput(test_X).eval() 
     
-
+class PiStateSubnetwork(MLP):
+    pass
 
 class StateSubnetwork(MLP):
-    def __init__(self, state_id, n_in, n_hidden, n_out):
+    def __init__(self, state_id, n_in, n_hidden, n_out, learning_rate = 0.01, ):
         MLP.__init__(self, n_in, n_hidden, n_out)
         self.state_id = state_id
         self.xi = None
-    def train(self, train_list_x, xi_list, learning_rate = 0.01, 
-              L1_reg = 0.00, L2_reg = 0.0001, n_epochs = 1):
         
         self.index = theano.tensor.lscalar('index')
         self.t = theano.tensor.lscalar('t')
@@ -154,50 +154,46 @@ class StateSubnetwork(MLP):
         self.symbolic_x_j = theano.tensor.fmatrix('x_j')    
         self.train_set_x = theano.typed_list.TypedListType(theano.tensor.fmatrix)()
         self.xi = theano.typed_list.TypedListType(theano.tensor.ftensor3)()
-    
-        N = len(train_list_x)
-        m = train_list_x[0].shape[1]
-        
+
         append_node = theano.typed_list.append(self.train_set_x, self.symbolic_x_j)
-        append_x_item = theano.function(inputs = [self.train_set_x, self.symbolic_x_j], outputs = append_node) 
+        self.append_x_item = theano.function(inputs = [self.train_set_x, self.symbolic_x_j], outputs = append_node) 
         append_node = theano.typed_list.append(self.xi, self.symbolic_xi_j)
-        append_xi_item = theano.function(inputs = [self.xi, self.symbolic_xi_j], outputs = append_node) 
-        
-        train_set_x = []
-        xi = []
-        for i in range(N):
-            xi_values = np.asarray(xi_list[i], dtype = theano.config.floatX)
-            X_values = np.asarray(train_list_x[i], dtype = theano.config.floatX)
-            train_set_x = append_x_item(train_set_x, X_values)
-            xi = append_xi_item(xi, xi_values)
+        self.append_xi_item = theano.function(inputs = [self.xi, self.symbolic_xi_j], outputs = append_node)
         
         # TODO : re-use prob because it has already been computed
         prob = self.processOutput(self.symbolic_x_j[self.t + 1, :])
-        cost = - (self.symbolic_xi_j[self.state_id, :, self.t] * theano.tensor.log(prob)).sum()
-
-        gparams = [theano.tensor.grad(cost, param) for param in self.params]
-        updates = [
+        self.cost = - (self.symbolic_xi_j[self.state_id, self.t, :] * theano.tensor.log(prob)).sum()
+        
+        self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
+        self.updates = [
             (param, param - learning_rate * gparam)
-            for param, gparam in zip(self.params, gparams)
+            for param, gparam in zip(self.params, self.gparams)
         ]
         
         if not RELEASE_MODE:
-            debugfile = open("C://Users/Xanto183/git/ArchMM/ArchMM/theano_cost_graph.txt", "w")
-            theano.printing.debugprint(cost, file = debugfile)
+            debugfile = open("theano_cost_graph.txt", "w")
+            theano.printing.debugprint(self.cost, file = debugfile)
+        
+    def train(self, train_list_x, xi_list, n_epochs = 1):
+        
+        train_set_x, xi = [], []
+        N = len(train_list_x)
+        for i in range(N):
+            xi_values = np.asarray(xi_list[i], dtype = theano.config.floatX)
+            X_values = np.asarray(train_list_x[i], dtype = theano.config.floatX)
+            train_set_x = self.append_x_item(train_set_x, X_values)
+            xi = self.append_xi_item(xi, xi_values)
         
         train_model = theano.function(
             inputs = [self.symbolic_x_j, self.symbolic_xi_j, self.t],
-            outputs = cost,
-            updates = updates
+            outputs = self.cost,
+            updates = self.updates
         )
-        
         epoch = 0
         while (epoch < n_epochs):
             epoch += 1
             for sequence_id in range(N):
-                for j in range(len(train_list_x[sequence_id])):
-                    # Shapes : (50, 2) and (10, 50, 10)
-                    print(train_set_x[sequence_id].shape, xi[sequence_id].shape)
+                for j in range(len(train_list_x[sequence_id]) - 1):
                     minibatch_avg_cost = train_model(train_set_x[sequence_id], xi[sequence_id], j)
         
 class OutputSubnetwork(MLP):
@@ -249,7 +245,10 @@ class OutputSubnetwork(MLP):
 
 def newStateSubnetworks(n_networks, n_in, n_hidden, n_out, network_type = SUBNETWORK_STATE):
     nets = []
-    if network_type == SUBNETWORK_STATE:
+    if network_type == SUBNETWORK_PI_STATE:
+        for i in range(n_networks):
+            nets.append(PiStateSubnetwork(n_in, n_hidden, n_out))
+    elif network_type == SUBNETWORK_STATE:
         for i in range(n_networks):
             nets.append(StateSubnetwork(i, n_in, n_hidden, n_out))
     elif network_type == SUBNETWORK_OUTPUT:
@@ -258,5 +257,14 @@ def newStateSubnetworks(n_networks, n_in, n_hidden, n_out, network_type = SUBNET
     else:
         raise NotImplementedError()
     return nets
+
+def new3DVLMList(P, T, ndim, ndim_2 = 0, dtype = np.double):
+    if ndim_2 == 0:
+        if type(ndim) == int:
+            return [np.random.rand(T[p], ndim) for p in range(P)]
+        else:
+            return [np.random.rand(T, ndim[p]) for p in range(P)]
+    else:
+        return [np.random.rand(T, ndim[p], ndim_2) for p in range(P)]
 
     
