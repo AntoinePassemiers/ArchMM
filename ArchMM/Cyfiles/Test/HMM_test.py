@@ -78,14 +78,16 @@ def testHMMwithMissingValues():
     # hmm.randomSequence(45)
     
 def testIOHMM():
-    U = np.arange(1, 101).reshape(50, 2)
-    U[25, 1] = 78
-    U[49, 1] = 0
-    U[7, 1] = 78
+    U = np.arange(1, 51).reshape(25, 2)
+    U[5, 1] = 78
+    U[9, 1] = 0
+    U[12, 1] = 78
     U[18, 1] = -4586
-    Y = np.random.randint(2, size = (50))
+    U2 = np.random.rand(25, 2)
+    Y = np.ones(25)
+    Y2 = np.zeros(25)
     hmm = AdaptiveHMM(10, has_io = True)
-    hmm.fit([U], targets = [Y], n_iterations = 5, n_classes = 2)
+    hmm.fit([U, U2], targets = [Y, Y2], n_iterations = 5, n_classes = 2)
     
 def testMLP():
     X = np.array([[1, 0], [0, 1], [2, 1], [0, 2]])

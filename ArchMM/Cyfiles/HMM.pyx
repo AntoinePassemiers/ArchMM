@@ -589,38 +589,43 @@ cdef class BaseHMM:
         cdef object beta = new3DVLMList(n_sequences, n, T, dtype = np.float)
         cdef object gamma = new3DVLMList(n_sequences, n, T, dtype = np.float)
         cdef object xi = new3DVLMList(n_sequences, n, T, n, dtype = np.double)
-        cdef object dens = new3DVLMList(n_sequences, n, T, dtype = np.double)
-        cdef object omega = new3DVLMList(n_sequences, T, n, dtype = np.double)
+        cdef object B = new3DVLMList(n_sequences, n, T, dtype = np.double)
+        cdef object omega = new3DVLMList(n_sequences, T, dtype = np.double)
         cdef cnp.ndarray A = np.empty((n, n), dtype = np.float)
+        cdef cnp.ndarray initial_probs = np.empty((n), dtype = np.float)
         for iter in range(n_iterations):
             print("Iteration number %i..." % iter)
             """ Forward procedure """
             print(alpha)
             for j in range(n_sequences):
-                initial_probs = piN.processOutput(U[j][0, :]) # Processing sequence j for all times t
-                sequence_probs = np.multiply(dens[j][:, 0], initial_probs.eval())
-                omega[j][0] = 1.0 / np.sum(sequence_probs)
-                alpha[j][:, 0] = np.linalg.norm(sequence_probs)
-                loglikelihood[iter] = np.log(np.sum(sequence_probs))
-                for k in range(1, dens[j].shape[1]):
+                initial_probs = piN.processOutput(U[j][0, :]).eval() # Processing sequence j for all times t
+                sequence_probs = np.multiply(B[j][:, 0], initial_probs)
+                prob_sum = np.sum(sequence_probs)
+                # Ensure that the sum of alpha probabilities == 1 on each line
+                alpha[j][:, 0] = sequence_probs / prob_sum
+                omega[j][0] = 1.0 / prob_sum
+                loglikelihood[iter] = np.log(prob_sum)
+                for k in range(1, B[j].shape[1]):
                     for i in range(n):
                         A[i] = N[i].processOutput(U[j][k, :]).eval() # TODO : VERY SLOW
-                    print(A)
-                    sequence_probs = np.multiply(dens[j][:, k], (A * alpha[j][:, k - 1]))
+                    # TODO : check if formula is valid
+                    sequence_probs = np.multiply(B[j][:, k], np.sum(A.T * alpha[j][:, k - 1], axis = 1))
                     print(j, k)
-                    omega[j][k] = 1.0 / np.sum(sequence_probs)
-                    alpha[j][:, k] = np.linalg.norm(sequence_probs)
-                    loglikelihood[j] += np.log(np.sum(sequence_probs))
+                    prob_sum = np.sum(sequence_probs)
+                    alpha[j][:, k] = sequence_probs / prob_sum
+                    omega[j][k] = 1.0 / prob_sum
+                    loglikelihood[iter] += np.log(prob_sum)
             print(alpha)
             printf("\tAlpha probabilities computed\n")
             """ Backward procedure """
             for j in range(n_sequences):
                 beta[j][:, -1] = omega[j][-1]
-                for k in range(dens[j].shape[1] - 2, -1, -1):
+                for k in range(B[j].shape[1] - 2, -1, -1):
                     for i in range(n):
+                        # TODO : already computed -> spare some computation
                         A[i] = N[i].processOutput(U[j][k + 1, :]).eval() # TODO : VERY SLOW
                     print(j, k)
-                    beta[j][:, k] = np.dot(A, np.multiply(dens[j][:, k + 1], beta[j][:, k + 1]))
+                    beta[j][:, k] = np.dot(A, np.multiply(B[j][:, k + 1], beta[j][:, k + 1]))
                     beta[j][:, k] *= omega[j][k]
             print(beta)
             printf("\tBeta probabilities computed\n")
@@ -628,10 +633,10 @@ cdef class BaseHMM:
             for j in range(n_sequences):
                 gamma[j] = np.divide(np.multiply(alpha[j], beta[j]), omega[j].T)
             for j in range(n_sequences):
-                for k in range(n_sequences - 1):
+                for k in range(B[j].shape[1] - 1):
                     for i in range(n):
-                        A[i] = N[i].processOutput(U[j][k + 1, :])
-                        xi[j][:, :, k] = np.multiply(A, alpha[j][:, k] * np.multiply(dens[j][:, k + 1], beta[j][:, k + 1]))
+                        A[i] = N[i].processOutput(U[j][k + 1, :]).eval()
+                        xi[j][:, k, :] = np.multiply(A, alpha[j][:, k] * np.multiply(B[j][:, k + 1], beta[j][:, k + 1]))
             print(gamma)
             print(xi)
             printf("\tXi tensor computed\n")

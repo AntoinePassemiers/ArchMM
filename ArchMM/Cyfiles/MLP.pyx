@@ -258,8 +258,10 @@ def newStateSubnetworks(n_networks, n_in, n_hidden, n_out, network_type = SUBNET
         raise NotImplementedError()
     return nets
 
-def new3DVLMList(P, T, ndim, ndim_2 = 0, dtype = np.double):
-    if ndim_2 == 0:
+def new3DVLMList(P, T, ndim = 0, ndim_2 = 0, dtype = np.double):
+    if isinstance(ndim, int):
+        return [np.random.rand(T[p]) for p in range(P)]
+    elif ndim_2 == 0:
         if type(ndim) == int:
             return [np.random.rand(T[p], ndim) for p in range(P)]
         else:
