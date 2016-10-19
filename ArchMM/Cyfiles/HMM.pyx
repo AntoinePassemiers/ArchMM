@@ -244,9 +244,8 @@ cdef class BaseHMM:
     cdef double missing_value
     cdef cnp.ndarray mv_indexes
     # Arguments for the input-output HMM architecture
-    cdef object state_subnetworks, output_subnetworks
-    cdef cnp.ndarray xi # Memory of the dynamical system
-    cdef cnp.ndarray eta  # Global output of the system
+    cdef object pi_state_subnetwork, state_subnetworks, output_subnetworks
+    cdef size_t n_classes
 
     def __cinit__(self, n_states, distribution = DISTRIBUTION_GAUSSIAN,
                   architecture = ARCHITECTURE_LINEAR, missing_value = DEFAULT_MISSING_VALUE,
@@ -565,97 +564,144 @@ cdef class BaseHMM:
         else:
             self.logFit(obs, mu, sigma, **kwargs)
         
-    def fitIO(self, U, targets = None, mu = None, sigma = None, n_iterations = 5, 
+    def fitIO(self, inputs, targets = None, mu = None, sigma = None, n_iterations = 5, 
               dynamic_features = False, delta_window = 1, n_classes = 2):
         self.MU = mu
         self.SIGMA = sigma
-        cdef Py_ssize_t i, j, k, p
-        assert(len(U) == len(targets))
-        cdef size_t n_sequences = len(U)
+        self.n_classes = n_classes
+        cdef Py_ssize_t i, j, k, l, p
+        cdef size_t n_sequences = len(inputs)
+        assert(n_sequences == len(targets))
         cdef cnp.ndarray T = np.empty(n_sequences)
         for p in range(n_sequences):
-            T[p] = len(U[p])
+            T[p] = len(inputs[p])
+        cdef cnp.ndarray U = typedListTo3DPaddedTensor(inputs, T)
         cdef size_t m = U[0].shape[1]
         cdef size_t n = self.n_states
-        cdef size_t r = 2
+        cdef size_t r = n_classes
         cdef size_t n_hidden = 16 # Number of hidden units must be determined with the validation set
         cdef object N = newStateSubnetworks(n, m, n_hidden, n, network_type = SUBNETWORK_STATE)
         self.state_subnetworks = N
         cdef object O = newStateSubnetworks(n, m, n_hidden, r, network_type = SUBNETWORK_OUTPUT)
         self.output_subnetworks = O
-        piN = newStateSubnetworks(1, m, n_hidden, n, network_type = SUBNETWORK_STATE)[0]
+        piN = newStateSubnetworks(1, m, n_hidden, n, network_type = SUBNETWORK_PI_STATE)[0]
+        self.pi_state_subnetwork = piN
         cdef cnp.ndarray loglikelihood = np.zeros(n_iterations)
-        cdef object alpha = new3DVLMList(n_sequences, n, T, dtype = np.float)
-        cdef object beta = new3DVLMList(n_sequences, n, T, dtype = np.float)
-        cdef object gamma = new3DVLMList(n_sequences, n, T, dtype = np.float)
-        cdef object xi = new3DVLMList(n_sequences, n, T, n, dtype = np.double)
-        cdef object B = new3DVLMList(n_sequences, n, T, dtype = np.double)
-        cdef object omega = new3DVLMList(n_sequences, T, dtype = np.double)
+        cdef object alpha = new3DVLMArray(n_sequences, n, T, dtype = np.float)
+        cdef object beta = new3DVLMArray(n_sequences, n, T, dtype = np.float)
+        cdef object gamma = new3DVLMArray(n_sequences, n, T, dtype = np.float)
+        cdef object xi = new3DVLMArray(n_sequences, n, T, n, dtype = np.double)
         cdef cnp.ndarray A = np.empty((n, n), dtype = np.float)
         cdef cnp.ndarray initial_probs = np.empty((n), dtype = np.float)
+        cdef cnp.ndarray memory = newInternalStates(n_sequences, n)
+        cdef cnp.ndarray new_internal_state = np.empty(n, dtype = np.float)
+        cdef object B = new3DVLMArray(n_sequences, n, T, r, dtype = np.double)
         for iter in range(n_iterations):
             print("Iteration number %i..." % iter)
             """ Forward procedure """
-            print(alpha)
+            for j in range(n_sequences):
+                for i in range(n):
+                    for k in range(T[j]):
+                        B[j, i, k, :] = O[i].processOutput(U[j][k, :]).eval()
+            printf("\tDensities computed\n")
             for j in range(n_sequences):
                 initial_probs = piN.processOutput(U[j][0, :]).eval() # Processing sequence j for all times t
-                sequence_probs = np.multiply(B[j][:, 0], initial_probs)
+                print(U[j][0, :])
+                print("Initial probs : %s" % str(initial_probs))
+                sequence_probs = np.multiply(B[j, :, k, targets[j][0]], initial_probs)
                 prob_sum = np.sum(sequence_probs)
                 # Ensure that the sum of alpha probabilities == 1 on each line
-                alpha[j][:, 0] = sequence_probs / prob_sum
-                omega[j][0] = 1.0 / prob_sum
+                alpha[j, :, 0] = sequence_probs / prob_sum
                 loglikelihood[iter] = np.log(prob_sum)
-                for k in range(1, B[j].shape[1]):
+                for k in range(1, T[j]):
+                    new_internal_state[:] = 0
                     for i in range(n):
-                        A[i] = N[i].processOutput(U[j][k, :]).eval() # TODO : VERY SLOW
-                    # TODO : check if formula is valid
-                    sequence_probs = np.multiply(B[j][:, k], np.sum(A.T * alpha[j][:, k - 1], axis = 1))
+                        A[i] = N[i].processOutput(U[j][k, :]).eval()
+                        new_internal_state[:] += memory[j, i] * A[i]
+                    memory[j, :] = new_internal_state
+                    sequence_probs = np.multiply(B[j, :, k, targets[j][k]], np.sum(A.T * alpha[j, :, k - 1], axis = 1))
                     print(j, k)
                     prob_sum = np.sum(sequence_probs)
-                    alpha[j][:, k] = sequence_probs / prob_sum
-                    omega[j][k] = 1.0 / prob_sum
+                    alpha[j, :, k] = sequence_probs / prob_sum
                     loglikelihood[iter] += np.log(prob_sum)
             print(alpha)
             printf("\tAlpha probabilities computed\n")
             """ Backward procedure """
             for j in range(n_sequences):
-                beta[j][:, -1] = omega[j][-1]
-                for k in range(B[j].shape[1] - 2, -1, -1):
+                beta[j, :, -1] = 1
+                for k in range(T[j] - 2, -1, -1):
                     for i in range(n):
                         # TODO : already computed -> spare some computation
-                        A[i] = N[i].processOutput(U[j][k + 1, :]).eval() # TODO : VERY SLOW
+                        A[i] = N[i].processOutput(U[j][k + 1, :]).eval()
+                    # beta[j][:, k] = np.dot(A, np.multiply(B[j][:, k + 1], beta[j][:, k + 1]))
+                    for i in range(n):
+                        beta[j, i, k] = 0
+                        for l in range(n): # TODO : SUPER SLOW
+                            beta[j, i, k] += beta[j, l, k + 1] * A[i, l] * B[j, l, k + 1, targets[j][k + 1]]
+                    beta[j][:, k] /= beta[j, :, k].sum()
                     print(j, k)
-                    beta[j][:, k] = np.dot(A, np.multiply(B[j][:, k + 1], beta[j][:, k + 1]))
-                    beta[j][:, k] *= omega[j][k]
             print(beta)
             printf("\tBeta probabilities computed\n")
             """ Forward-Backward xi computation """
             for j in range(n_sequences):
-                gamma[j] = np.divide(np.multiply(alpha[j], beta[j]), omega[j].T)
+                gamma[j] = np.multiply(alpha[j], beta[j])
             for j in range(n_sequences):
-                for k in range(B[j].shape[1] - 1):
+                for k in range(T[j] - 1):
                     for i in range(n):
                         A[i] = N[i].processOutput(U[j][k + 1, :]).eval()
-                        xi[j][:, k, :] = np.multiply(A, alpha[j][:, k] * np.multiply(B[j][:, k + 1], beta[j][:, k + 1]))
+                        xi[j, :, k, :] = np.multiply(A, alpha[j, :, k] * np.multiply(B[j, :, k + 1, targets[j][k + 1]], beta[j, :, k + 1]))
             print(gamma)
             print(xi)
             printf("\tXi tensor computed\n")
             """ E-Step """
+            """
             state_frequencies = np.zeros(n, dtype = np.float)
             for j in range(n_sequences):
                 state_frequencies += np.sum(gamma[j], axis = 1)
             obs_vector = np.zeros((n, r), dtype = np.int)
             for j in range(n_sequences):
                 for k in range(r):
-                    obs_vector[:, k] += np.sum(gamma[j][:, np.where(targets[j] == k)[0]], axis = 1) # TODO : check np.where indices
+                    obs_vector[:, k] += np.sum(gamma[j, :, np.where(targets[j][-1] == k)[0]], axis = 1) # TODO : check np.where indices
+            """
             printf("\tEnd of expectation step\n")
             """ M-Step """
             # TODO : Minimize function for the piW network
+            piN.train(U, gamma, n_epochs = 1)
             for j in range(n):
                 N[j].train(U, xi, n_epochs = 1)
+                O[j].train(U, memory, n_epochs = 1)
             printf("\tEnd of maximization step\n")
                 
-                            
+    def predictIO(self, input):
+        """ Viterbi decoder for input-output HMM """
+        assert(len(input.shape) == 2)
+        cdef Py_ssize_t T = input.shape[0]
+        cdef object piN = self.pi_state_subnetwork
+        cdef object N   = self.state_subnetworks
+        cdef object O   = self.output_subnetworks
+        cdef cnp.ndarray state_sequence = np.empty((self.n_classes, T), dtype = np.int8)
+        cdef cnp.ndarray current_eta = np.empty((self.n_states, self.n_classes), dtype = np.float16)
+        cdef cnp.ndarray memory = np.zeros((self.n_classes, self.n_states), dtype = np.double)
+        cdef Py_ssize_t i
+        
+        memory = np.tile(np.log2(piN.processOutput(input[0]).eval()), (self.n_classes, 1))
+        for i in range(self.n_states):
+            current_eta[i, :] = O[i].processOutput(input[0]).eval()
+        for i in range(self.n_classes):
+            memory[i] += np.log2(current_eta[:, i])
+            state_sequence[i, 0] = memory[i].argmax()
+        for t in range(1, T):
+            for i in range(self.n_classes):
+                a = N[state_sequence[i, t - 1]].processOutput(input[t]).eval().reshape(self.n_states)
+                memory[i, :] += np.log2(a)
+            for i in range(self.n_states):
+                current_eta[i, :] = O[i].processOutput(input[t]).eval()
+            for i in range(self.n_classes):
+                memory[i] += np.log2(current_eta[:, i])
+                state_sequence[i, t] = memory[i].argmax()
+        print(memory)
+        return np.argmax(memory.max(axis = 1))
+
     def noisedDistribution(self, state):
         return GaussianGenerator(self.mu[state], self.sigma[state])
     

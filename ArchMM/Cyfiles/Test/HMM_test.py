@@ -87,15 +87,9 @@ def testIOHMM():
     Y = np.ones(25)
     Y2 = np.zeros(25)
     hmm = AdaptiveHMM(10, has_io = True)
-    hmm.fit([U, U2], targets = [Y, Y2], n_iterations = 5, n_classes = 2)
-    
-def testMLP():
-    X = np.array([[1, 0], [0, 1], [2, 1], [0, 2]])
-    Y = np.array([1, 0, 1, 0])
-    mlp = MLP(2, 4, 2)
-    mlp.train(X, Y)
-    print(mlp.predict(X))
-    
+    hmm.fit([U, U2], targets = [Y, Y2], n_iterations = 3, n_classes = 2)
+    print(hmm.predictIO(U))
+    print(hmm.predictIO(U2))
 
 if __name__ == "__main__":
     testIOHMM()
