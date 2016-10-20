@@ -152,7 +152,7 @@ class PiStateSubnetwork(MLP):
 
         results, updates = theano.scan(lambda v, w: v[:, 0] * \
             theano.tensor.log(self.processOutput(w[0, :])), sequences = [self.gamma, self.train_set_x])
-        self.cost = - results.sum()
+        self.cost = - results.sum() # TODO : minimize or maximize ?
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = [
@@ -169,6 +169,7 @@ class PiStateSubnetwork(MLP):
         if not RELEASE_MODE:
             debugfile = open("theano_pistatenetwork_graph.txt", "w")
             theano.printing.debugprint(self.cost, file = debugfile)
+            debugfile.close()
         
     def train(self, train_set_x, gamma, n_epochs = 1):
         train_values_x = np.asarray(train_set_x, dtype = theano.config.floatX)

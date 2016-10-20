@@ -564,7 +564,7 @@ cdef class BaseHMM:
         else:
             self.logFit(obs, mu, sigma, **kwargs)
         
-    def fitIO(self, inputs, targets = None, mu = None, sigma = None, n_iterations = 5, 
+    def fitIO(self, inputs, targets = None, mu = None, sigma = None, n_iterations = 5, n_epochs = 1,
               dynamic_features = False, delta_window = 1, n_classes = 2):
         self.MU = mu
         self.SIGMA = sigma
@@ -608,7 +608,7 @@ cdef class BaseHMM:
                 initial_probs = piN.processOutput(U[j][0, :]).eval() # Processing sequence j for all times t
                 print(U[j][0, :])
                 print("Initial probs : %s" % str(initial_probs))
-                sequence_probs = np.multiply(B[j, :, k, targets[j][0]], initial_probs)
+                sequence_probs = np.multiply(B[j, :, 0, targets[j][0]], initial_probs)
                 prob_sum = np.sum(sequence_probs)
                 # Ensure that the sum of alpha probabilities == 1 on each line
                 alpha[j, :, 0] = sequence_probs / prob_sum
@@ -619,6 +619,7 @@ cdef class BaseHMM:
                         A[i] = N[i].processOutput(U[j][k, :]).eval()
                         new_internal_state[:] += memory[j, i] * A[i]
                     memory[j, :] = new_internal_state
+                    
                     sequence_probs = np.multiply(B[j, :, k, targets[j][k]], np.sum(A.T * alpha[j, :, k - 1], axis = 1))
                     print(j, k)
                     prob_sum = np.sum(sequence_probs)
@@ -666,10 +667,11 @@ cdef class BaseHMM:
             printf("\tEnd of expectation step\n")
             """ M-Step """
             # TODO : Minimize function for the piW network
-            piN.train(U, gamma, n_epochs = 1)
+            n_epochs
+            piN.train(U, gamma, n_epochs = n_epochs)
             for j in range(n):
-                N[j].train(U, xi, n_epochs = 1)
-                O[j].train(U, memory, n_epochs = 1)
+                N[j].train(U, xi, n_epochs = n_epochs)
+                O[j].train(U, memory, n_epochs = n_epochs)
             printf("\tEnd of maximization step\n")
                 
     def predictIO(self, input):
@@ -682,7 +684,7 @@ cdef class BaseHMM:
         cdef cnp.ndarray state_sequence = np.empty((self.n_classes, T), dtype = np.int8)
         cdef cnp.ndarray current_eta = np.empty((self.n_states, self.n_classes), dtype = np.float16)
         cdef cnp.ndarray memory = np.zeros((self.n_classes, self.n_states), dtype = np.double)
-        cdef Py_ssize_t i
+        cdef Py_ssize_t i, t
         
         memory = np.tile(np.log2(piN.processOutput(input[0]).eval()), (self.n_classes, 1))
         for i in range(self.n_states):
@@ -697,9 +699,9 @@ cdef class BaseHMM:
             for i in range(self.n_states):
                 current_eta[i, :] = O[i].processOutput(input[t]).eval()
             for i in range(self.n_classes):
-                memory[i] += np.log2(current_eta[:, i])
+                memory[i, :] += np.log2(current_eta[:, i])
                 state_sequence[i, t] = memory[i].argmax()
-        print(memory)
+        print(state_sequence)
         return np.argmax(memory.max(axis = 1))
 
     def noisedDistribution(self, state):
