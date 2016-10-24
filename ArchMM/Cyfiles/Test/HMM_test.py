@@ -87,7 +87,7 @@ def testIOHMM():
     Y = np.ones(25)
     Y2 = np.zeros(25)
     hmm = AdaptiveHMM(10, has_io = True)
-    hmm.fit([U, U2], targets = [Y, Y2], n_iterations = 1, n_epochs = 1, n_classes = 2)
+    hmm.fit([U, U2], targets = [Y, Y2], n_iterations = 3, n_epochs = 1, n_classes = 2)
     print(hmm.predictIO(U))
     print(hmm.predictIO(U2))
 

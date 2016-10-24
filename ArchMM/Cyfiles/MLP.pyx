@@ -23,6 +23,10 @@ class Layer:
         else:
             output = linear_output
         return output
+    def __getstate__(self):
+        return (self.W, self.b)
+    def __setstate__(self, state):
+        self.W, self.b = state
 
 class LogisticRegression(Layer):
     def __init__(self, input, n_in, n_out, rng = np.random.RandomState(1234)):
@@ -135,7 +139,19 @@ class MLP(object):
     def predict(self, test_X):
         X_values = np.asarray(test_X, dtype = theano.config.floatX)
         test_X = theano.shared(name = "X_test", borrow = True, value = X_values)
-        return self.processOutput(test_X).eval() 
+        return self.processOutput(test_X).eval()
+    
+    def __getstate__(self):
+        state = list()
+        for layer in self.layers:
+            state.append(layer.__getstate__())
+        return state
+    
+    def __setstate__(self, state):
+        i = 0
+        for layer in self.layers:
+            layer.__setstate__(state[i])
+            i += 1
     
 class PiStateSubnetwork(MLP):
     def __init__(self, n_in, n_hidden, n_out, learning_rate = 0.01):
@@ -170,7 +186,6 @@ class PiStateSubnetwork(MLP):
             debugfile = open("theano_pistatenetwork_graph.txt", "w")
             theano.printing.debugprint(self.cost, file = debugfile)
             debugfile.close()
-        
     def train(self, train_set_x, gamma, n_epochs = 1):
         train_values_x = np.asarray(train_set_x, dtype = theano.config.floatX)
         gamma_values = np.asarray(gamma, dtype = theano.config.floatX)
@@ -192,7 +207,7 @@ class StateSubnetwork(MLP):
         self.xi = theano.tensor.tensor3('xi')
         
         # TODO : re-use prob because it has already been computed
-        phi = self.processOutput(self.symbolic_x_j[self.t + 1, :])
+        phi = self.processOutput(self.symbolic_x_j[self.t, :])
         self.cost = - (self.symbolic_xi_j[self.state_id, self.t, :] * theano.tensor.log(phi)).sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
@@ -220,7 +235,7 @@ class StateSubnetwork(MLP):
         while (epoch < n_epochs):
             epoch += 1
             for sequence_id in range(N):
-                for j in range(len(train_values_x[sequence_id]) - 1):
+                for j in range(len(train_values_x[sequence_id])):
                     avg_cost = self.train_model(train_values_x[sequence_id], xi_values[sequence_id], j)
         
 class OutputSubnetwork(MLP):
@@ -236,7 +251,7 @@ class OutputSubnetwork(MLP):
         self.train_set_x = theano.tensor.fmatrix('x')
         
         # TODO : re-use prob because it has already been computed
-        eta = self.processOutput(self.symbolic_x_j[self.t + 1, :])
+        eta = self.processOutput(self.symbolic_x_j[self.t, :])
         self.cost = - (self.symbolic_memory[self.state_id] * theano.tensor.log(eta)).sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
@@ -264,7 +279,7 @@ class OutputSubnetwork(MLP):
         while (epoch < n_epochs):
             epoch += 1
             for sequence_id in range(N):
-                for j in range(len(train_values_x[sequence_id]) - 1):
+                for j in range(len(train_values_x[sequence_id])):
                     avg_cost = self.train_model(train_values_x[sequence_id], memory_values[sequence_id], j)
 
 def newStateSubnetworks(n_networks, n_in, n_hidden, n_out, network_type = SUBNETWORK_STATE):

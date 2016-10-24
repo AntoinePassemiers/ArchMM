@@ -638,12 +638,16 @@ cdef class BaseHMM:
             printf("\tBeta probabilities computed\n")
             """ Forward-Backward xi computation """
             for j in range(n_sequences):
-                gamma[j] = np.multiply(alpha[j], beta[j])
+                gamma[j] = np.multiply(alpha[j], beta[j]) # TO REMOVE IF USELESS
             for j in range(n_sequences):
+                denominator = np.sum(alpha[j, :, -1])
+                xi[j, :, 0, :] = 0 # TODO ???
                 for k in range(T[j] - 1):
                     for i in range(n):
-                        A[i] = N[i].processOutput(U[j][k + 1, :]).eval()
-                        xi[j, :, k, :] = np.multiply(A, alpha[j, :, k] * np.multiply(B[j, :, k + 1, targets[j][k + 1]], beta[j, :, k + 1]))
+                        A[i, :] = N[i].processOutput(U[j][k + 1, :]).eval()
+                        for l in range(n):
+                            # xi[j, :, k, :] = np.multiply(A, alpha[j, :, k] * np.multiply(B[j, :, k + 1, targets[j][k + 1]], beta[j, :, k + 1]))
+                            xi[j, i, k + 1, l] = beta[j, i, k + 1] * alpha[j, l, k] * A[i, l] / denominator
             printf("\tXi tensor computed\n")
             """ E-Step """
             """
@@ -673,6 +677,7 @@ cdef class BaseHMM:
         cdef object N   = self.state_subnetworks
         cdef object O   = self.output_subnetworks
         cdef cnp.ndarray state_sequence = np.empty((self.n_classes, T), dtype = np.int8)
+        cdef cnp.ndarray output_sequence = np.empty((self.n_classes, T), dtype = np.float16)
         cdef cnp.ndarray current_eta = np.empty((self.n_states, self.n_classes), dtype = np.float16)
         cdef cnp.ndarray memory = np.zeros((self.n_classes, self.n_states), dtype = np.double)
         cdef Py_ssize_t i, t
@@ -692,6 +697,7 @@ cdef class BaseHMM:
             for i in range(self.n_classes):
                 memory[i, :] += np.log2(current_eta[:, i])
                 state_sequence[i, t] = memory[i].argmax()
+            print(current_eta[state_sequence[0, t], 0], current_eta[state_sequence[1, t], 0], state_sequence[0, t], state_sequence[1, t])
         print(state_sequence)
         return np.argmax(memory.max(axis = 1))
 
@@ -848,7 +854,10 @@ cdef class BaseHMM:
             "transition_probs" : self.transition_probs,
             "mu" : self.mu, "sigma" : self.sigma,
             "MU" : self.mu, "SIGMA" : self.sigma,
-            "missing_value" : self.missing_value
+            "missing_value" : self.missing_value,
+            "piN" : self.pi_state_subnetwork,
+            "N" : self.state_subnetworks,
+            "O" : self.output_subnetworks
         }
         pickle.dump(attributes, open(filename, "wb"))
         
@@ -866,6 +875,9 @@ cdef class BaseHMM:
         self.MU = self.mu = attributes["MU"]
         self.SIGMA = self.sigma = attributes["SIGMA"]
         self.missing_value = attributes["missing_value"]
+        self.pi_state_subnetwork = attributes["piN"]
+        self.state_subnetworks = attributes["N"]
+        self.output_subnetworks = attributes["O"]
         
         
 
