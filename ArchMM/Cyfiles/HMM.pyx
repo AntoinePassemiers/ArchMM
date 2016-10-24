@@ -606,26 +606,21 @@ cdef class BaseHMM:
             printf("\tDensities computed\n")
             for j in range(n_sequences):
                 initial_probs = piN.processOutput(U[j][0, :]).eval() # Processing sequence j for all times t
-                print(U[j][0, :])
-                print("Initial probs : %s" % str(initial_probs))
                 sequence_probs = np.multiply(B[j, :, 0, targets[j][0]], initial_probs)
-                prob_sum = np.sum(sequence_probs)
-                # Ensure that the sum of alpha probabilities == 1 on each line
-                alpha[j, :, 0] = sequence_probs / prob_sum
-                loglikelihood[iter] = np.log(prob_sum)
+                loglikelihood[iter] = np.log(np.sum(sequence_probs))
                 for k in range(1, T[j]):
                     new_internal_state[:] = 0
                     for i in range(n):
                         A[i] = N[i].processOutput(U[j][k, :]).eval()
                         new_internal_state[:] += memory[j, i] * A[i]
                     memory[j, :] = new_internal_state
-                    
-                    sequence_probs = np.multiply(B[j, :, k, targets[j][k]], np.sum(A.T * alpha[j, :, k - 1], axis = 1))
+                    for i in range(n):
+                        alpha[j, i, k] = 0
+                        for l in range(n):
+                            alpha[j, i, k] += alpha[j, l, k - 1] * A[l, i]
+                        alpha[j, i, k] *= B[j, i, k, targets[j][k]]
                     print(j, k)
-                    prob_sum = np.sum(sequence_probs)
-                    alpha[j, :, k] = sequence_probs / prob_sum
-                    loglikelihood[iter] += np.log(prob_sum)
-            print(alpha)
+                    loglikelihood[iter] += np.log(np.sum(sequence_probs))
             printf("\tAlpha probabilities computed\n")
             """ Backward procedure """
             for j in range(n_sequences):
@@ -633,15 +628,13 @@ cdef class BaseHMM:
                 for k in range(T[j] - 2, -1, -1):
                     for i in range(n):
                         # TODO : already computed -> spare some computation
-                        A[i] = N[i].processOutput(U[j][k + 1, :]).eval()
+                        A[i, :] = N[i].processOutput(U[j][k + 1, :]).eval()
                     # beta[j][:, k] = np.dot(A, np.multiply(B[j][:, k + 1], beta[j][:, k + 1]))
                     for i in range(n):
                         beta[j, i, k] = 0
                         for l in range(n): # TODO : SUPER SLOW
                             beta[j, i, k] += beta[j, l, k + 1] * A[i, l] * B[j, l, k + 1, targets[j][k + 1]]
-                    beta[j][:, k] /= beta[j, :, k].sum()
                     print(j, k)
-            print(beta)
             printf("\tBeta probabilities computed\n")
             """ Forward-Backward xi computation """
             for j in range(n_sequences):
@@ -651,8 +644,6 @@ cdef class BaseHMM:
                     for i in range(n):
                         A[i] = N[i].processOutput(U[j][k + 1, :]).eval()
                         xi[j, :, k, :] = np.multiply(A, alpha[j, :, k] * np.multiply(B[j, :, k + 1, targets[j][k + 1]], beta[j, :, k + 1]))
-            print(gamma)
-            print(xi)
             printf("\tXi tensor computed\n")
             """ E-Step """
             """

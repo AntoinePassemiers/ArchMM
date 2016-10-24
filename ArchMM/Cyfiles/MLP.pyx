@@ -152,7 +152,7 @@ class PiStateSubnetwork(MLP):
 
         results, updates = theano.scan(lambda v, w: v[:, 0] * \
             theano.tensor.log(self.processOutput(w[0, :])), sequences = [self.gamma, self.train_set_x])
-        self.cost = - results.sum() # TODO : minimize or maximize ?
+        self.cost = - results.sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = [
