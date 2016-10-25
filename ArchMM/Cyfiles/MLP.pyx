@@ -230,7 +230,6 @@ class StateSubnetwork(MLP):
         N = len(train_set_x)
         train_values_x = np.asarray(train_set_x, dtype = theano.config.floatX)
         xi_values = np.asarray(xi, dtype = theano.config.floatX)
-        
         epoch = 0
         while (epoch < n_epochs):
             epoch += 1
@@ -307,12 +306,6 @@ def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.double):
             return np.random.rand(P, T, ndim.max())
     else:
         return np.random.rand(P, T, ndim.max(), ndim_2)
-    
-def newInternalStates(n_sequences, n):
-    memory = np.random.rand(n_sequences, n)
-    for i in range(n_sequences):
-        memory[i, :] /= memory[i, :].sum()
-    return memory 
 
 def typedListTo3DPaddedTensor(typed_list, T):
     if isinstance(typed_list, list):

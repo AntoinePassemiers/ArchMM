@@ -593,7 +593,7 @@ cdef class BaseHMM:
         cdef object xi = new3DVLMArray(n_sequences, n, T, n, dtype = np.double)
         cdef cnp.ndarray A = np.empty((n, n), dtype = np.float)
         cdef cnp.ndarray initial_probs = np.empty((n), dtype = np.float)
-        cdef cnp.ndarray memory = newInternalStates(n_sequences, n)
+        cdef cnp.ndarray memory = np.empty((n_sequences, n), dtype = np.float)
         cdef cnp.ndarray new_internal_state = np.empty(n, dtype = np.float)
         cdef object B = new3DVLMArray(n_sequences, n, T, r, dtype = np.double)
         for iter in range(n_iterations):
@@ -606,6 +606,7 @@ cdef class BaseHMM:
             printf("\tDensities computed\n")
             for j in range(n_sequences):
                 initial_probs = piN.processOutput(U[j][0, :]).eval() # Processing sequence j for all times t
+                memory[j, :] = initial_probs
                 sequence_probs = np.multiply(B[j, :, 0, targets[j][0]], initial_probs)
                 loglikelihood[iter] = np.log(np.sum(sequence_probs))
                 for k in range(1, T[j]):
