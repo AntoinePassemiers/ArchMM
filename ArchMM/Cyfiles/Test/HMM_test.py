@@ -84,13 +84,33 @@ def testIOHMM():
     U[12, 1] = 78
     U[18, 1] = -4586
     U2 = np.random.rand(25, 2)
-    Y = np.ones(25)
+    U3 = np.arange(1, 51).reshape(25, 2)
+    U4 = np.random.rand(25, 2)
+    U5 = np.arange(51, 101).reshape(25, 2)
+    U6 = np.random.rand(25, 2)
+    
+    Y = np.random.rand(25)
     Y2 = np.zeros(25)
+    
+    Y3 = np.ones(25)
+    Y4 = np.zeros(25)
+    Y5 = np.ones(25)
+    Y6 = np.zeros(25)
     hmm = AdaptiveHMM(10, has_io = True)
-    hmm.fit([U, U2], targets = [Y, Y2], n_iterations = 3, n_epochs = 1, n_classes = 2)
+    print(hmm.fit([U, U2], targets = [Y, Y2], n_iterations = 10, n_epochs = 1, n_classes = 2))
     print(hmm.predictIO(U))
     print(hmm.predictIO(U2))
+    print(hmm.predictIO(U3))
+    print(hmm.predictIO(U4))
+    
+def testIOHMMSimulation():
+    U = np.arange(1, 51).reshape(25, 2)
+    Y = np.arange(1, 51).reshape(25, 2) + 25
+    hmm = AdaptiveHMM(10, has_io = True)
+    print(hmm.fit([U], targets = [Y], n_iterations = 5, n_epochs = 1, is_classifier = False))
+
 
 if __name__ == "__main__":
-    testIOHMM()
+    testIOHMMSimulation()
+    # villoTest()
     print("Finished")

@@ -81,7 +81,7 @@ class AdaptiveHMM:
         else:
 
             K = kwargs.keys()
-            for arg in ("targets", "n_classes"):
+            for arg in ("targets", "is_classifier"):
                 if not arg in K:
                     print("Error. Parameter [[%s]] must be provided for IO-HMM." % arg)
                     return

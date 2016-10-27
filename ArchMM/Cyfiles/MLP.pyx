@@ -238,9 +238,10 @@ class StateSubnetwork(MLP):
                     avg_cost = self.train_model(train_values_x[sequence_id], xi_values[sequence_id], j)
         
 class OutputSubnetwork(MLP):
-    def __init__(self, state_id, n_in, n_hidden, n_out, learning_rate = 0.01):
+    def __init__(self, state_id, n_in, n_hidden, n_out, is_classifier = True, learning_rate = 0.01):
         MLP.__init__(self, n_in, n_hidden, n_out)
         self.state_id = state_id
+        self.is_classifier = is_classifier
         self.memory = None
         
         self.index = theano.tensor.lscalar('index')
