@@ -84,7 +84,7 @@ class AdaptiveHMM:
             for arg in ("targets", "is_classifier"):
                 if not arg in K:
                     print("Error. Parameter [[%s]] must be provided for IO-HMM." % arg)
-                    return
+                    exit(EXIT_FAILURE)
             self.sigma = np.cov(observations[0].T)
             self.stdvs = np.sqrt(np.diag(self.sigma))
             self.mu = np.mean(observations[0], axis = 0)

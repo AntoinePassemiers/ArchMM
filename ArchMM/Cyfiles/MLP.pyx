@@ -12,8 +12,11 @@ import theano
 import theano.typed_list
 
 SUBNETWORK_PI_STATE = 300
-SUBNETWORK_STATE = 301
-SUBNETWORK_OUTPUT = 302
+SUBNETWORK_STATE    = 301
+SUBNETWORK_OUTPUT   = 302
+
+ERGODIC_LAYER = 401
+LINEAR_LAYER  = 402
 
 class Layer:  
     def processOutput(self, X):
@@ -32,12 +35,11 @@ class LogisticRegression(Layer):
     def __init__(self, input, n_in, n_out, rng = np.random.RandomState(1234)):
         W_values = np.asarray(
             rng.uniform(
-                low=-np.sqrt(6. / (n_in + n_out)),
-                high=np.sqrt(6. / (n_in + n_out)),
-                size=(n_in, n_out)
+                low  = -np.sqrt(6. / (n_in + n_out)),
+                high = np.sqrt(6. / (n_in + n_out)),
+                size = (n_in, n_out)
             ),
-            dtype=theano.config.floatX
-        )
+            dtype=theano.config.floatX)
         W_values *= 4
         self.W = theano.shared(value = W_values, name='W', borrow=True)
         b_values = np.asarray(np.random.rand(n_out), dtype=theano.config.floatX)
@@ -54,8 +56,7 @@ class LogisticRegression(Layer):
         if y.ndim != self.y_pred.ndim:
             raise TypeError(
                 'y should have the same shape as self.y_pred',
-                ('y', y.type, 'y_pred', self.y_pred.type)
-            )
+                ('y', y.type, 'y_pred', self.y_pred.type))
         if y.dtype.startswith('int'):
             return theano.tensor.mean(theano.tensor.neq(self.y_pred, y))
         else:
@@ -195,7 +196,7 @@ class PiStateSubnetwork(MLP):
             avg_cost = self.train_model(train_values_x, gamma_values)
 
 class StateSubnetwork(MLP):
-    def __init__(self, state_id, n_in, n_hidden, n_out, learning_rate = 0.01):
+    def __init__(self, state_id, n_in, n_hidden, n_out, architecture = "ergodic", learning_rate = 0.01):
         MLP.__init__(self, n_in, n_hidden, n_out)
         self.state_id = state_id
         
@@ -297,16 +298,16 @@ def newStateSubnetworks(n_networks, n_in, n_hidden, n_out, network_type = SUBNET
         raise NotImplementedError()
     return nets
 
-def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.double):
+def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.float):
     if isinstance(ndim, int):
-        return np.random.rand(P, T.max())
+        return np.rand((P, T.max()), dtype = dtype)
     elif ndim_2 == 0:
         if type(ndim) == int:
-            return np.random.rand(P, T.max(), ndim)
+            return np.empty((P, T.max(), ndim), dtype = dtype)
         else:
-            return np.random.rand(P, T, ndim.max())
+            return np.empty((P, T, ndim.max()), dtype = dtype)
     else:
-        return np.random.rand(P, T, ndim.max(), ndim_2)
+        return np.empty((P, T, ndim.max(), ndim_2), dtype = dtype)
 
 def typedListTo3DPaddedTensor(typed_list, T):
     if isinstance(typed_list, list):
