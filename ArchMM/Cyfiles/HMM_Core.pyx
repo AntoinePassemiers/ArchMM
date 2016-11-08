@@ -77,7 +77,7 @@ class AdaptiveHMM:
                 obs[:, 0] = observations[:]
                 obs[:, 1] = np.random.rand(len(observations))
                 observations = obs
-            self.hmm.fit(observations, self.mu, self.sigma, **kwargs)
+            return self.hmm.fit(observations, self.mu, self.sigma, **kwargs)
         else:
 
             K = kwargs.keys()
@@ -91,7 +91,7 @@ class AdaptiveHMM:
             if self.standardize:
                 for i in range(len(observations)):
                     observations[i] = (observations[i] - self.mu) / self.stdvs
-            self.hmm.fitIO(observations, mu = self.mu, sigma = self.sigma, **kwargs)
+            return self.hmm.fitIO(observations, mu = self.mu, sigma = self.sigma, **kwargs)
         
     def score(self, observations, mode = "aicc"):
         l_mode = mode.lower()

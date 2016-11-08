@@ -565,6 +565,11 @@ cdef class BaseHMM:
         
     def fitIO(self, inputs, targets = None, mu = None, sigma = None, n_iterations = 5, n_epochs = 1,
               dynamic_features = False, delta_window = 1, is_classifier = True, n_classes = 2):
+        """
+        Expectation step  : the likelihood of each output sequence is computing, knowing the input sequence
+        Maximization step : the gradient descent is used to adjust the model's parameters in such a way
+                            that the likelihood is maximized for each output sequence
+        """
         self.MU = mu
         self.SIGMA = sigma
         self.n_classes = n_classes
@@ -580,21 +585,24 @@ cdef class BaseHMM:
         cdef size_t n = self.n_states
         cdef size_t output_dim = targets[0].shape[1] if len(targets[0].shape) == 2 else 1
         cdef size_t r = n_classes if is_classifier else output_dim
-        cdef size_t n_hidden = 16 # Number of hidden units must be determined with the validation set
+        cdef size_t n_hidden = 4 # Number of hidden units must be determined with the validation set
         cdef object N = newStateSubnetworks(n, m, n_hidden, n, network_type = SUBNETWORK_STATE)
         self.state_subnetworks = N
         cdef object O = newStateSubnetworks(n, m, n_hidden, r, network_type = SUBNETWORK_OUTPUT)
         self.output_subnetworks = O
         piN = newStateSubnetworks(1, m, n_hidden, n, network_type = SUBNETWORK_PI_STATE)[0]
         self.pi_state_subnetwork = piN
-        cdef cnp.ndarray[cnp.double_t,ndim = 1] loglikelihood = np.zeros(n_iterations, dtype = np.double)
+        cdef cnp.ndarray[cnp.double_t,ndim = 2] loglikelihood = np.zeros((n_iterations, n_sequences), dtype = np.double)
+        cdef cnp.ndarray[cnp.double_t,ndim = 1] pistate_cost  = np.zeros(n_iterations, dtype = np.double)
+        cdef cnp.ndarray[cnp.double_t,ndim = 2] state_cost    = np.zeros((n_iterations, n), dtype = np.double)
+        cdef cnp.ndarray[cnp.double_t,ndim = 2] output_cost   = np.zeros((n_iterations, n), dtype = np.double)
         cdef cnp.ndarray[cnp.float_t, ndim = 3] alpha = new3DVLMArray(n_sequences, n, T, dtype = np.float)
         cdef cnp.ndarray[cnp.float_t, ndim = 3] beta  = new3DVLMArray(n_sequences, n, T, dtype = np.float)
         cdef cnp.ndarray[cnp.float_t, ndim = 3] gamma = new3DVLMArray(n_sequences, n, T, dtype = np.float)
         cdef cnp.ndarray[cnp.double_t,ndim = 4] xi    = new3DVLMArray(n_sequences, n, T, n, dtype = np.double)
-        cdef cnp.ndarray[cnp.float_t, ndim = 3] A = np.empty((T_max, n, n), dtype = np.float)
+        cdef cnp.ndarray[cnp.float_t, ndim = 4] A = np.empty((n_sequences, T_max, n, n), dtype = np.float)
         cdef cnp.ndarray[cnp.float_t, ndim = 2] initial_probs
-        cdef cnp.ndarray[cnp.float_t, ndim = 2] memory = np.empty((n_sequences, n), dtype = np.float)
+        cdef cnp.ndarray[cnp.float_t, ndim = 3] memory = np.empty((n_sequences, T_max, n), dtype = np.float)
         cdef cnp.ndarray[cnp.float_t, ndim = 1] new_internal_state = np.empty(n, dtype = np.float)
         cdef cnp.ndarray[cnp.double_t,ndim = 4] B = new3DVLMArray(n_sequences, n, T, r, dtype = np.double)
         for iter in range(n_iterations):
@@ -604,25 +612,24 @@ cdef class BaseHMM:
                 for i in range(n):
                     for k in range(T[j]):
                         B[j, i, k, :] = O[i].processOutput(U[j][k, :]).eval()
+                        A[j, k, i, :] = N[i].processOutput(U[j][k, :]).eval()
             printf("\tDensities computed\n")
             for j in range(n_sequences):
                 initial_probs = piN.processOutput(U[j][0, :]).eval() # Processing sequence j for all times t
-                memory[j, :] = initial_probs
+                memory[j, 0, :] = initial_probs    
                 sequence_probs = np.multiply(B[j, :, 0, targets[j][0]], initial_probs)
-                loglikelihood[iter] = np.log(np.sum(sequence_probs))
+                loglikelihood[iter, j] = np.log(np.sum(sequence_probs))
                 for k in range(1, T[j]):
                     new_internal_state[:] = 0
                     for i in range(n):
-                        A[k, i] = N[i].processOutput(U[j][k, :]).eval()
-                        new_internal_state[:] += memory[j, i] * A[k, i]
-                    memory[j, :] = new_internal_state
+                        new_internal_state[:] += memory[j, k - 1, i] * A[j, k, i, :]
+                    memory[j, k, :] = new_internal_state
                     for i in range(n):
                         alpha[j, i, k] = 0
                         for l in range(n):
-                            alpha[j, i, k] += alpha[j, l, k - 1] * A[k, l, i]
+                            alpha[j, i, k] += alpha[j, l, k - 1] * A[j, k, l, i]
                         alpha[j, i, k] *= B[j, i, k, targets[j][k]]
-                    print(j, k)
-                    loglikelihood[iter] += np.log(np.sum(sequence_probs))
+                    loglikelihood[iter, j] += np.log(np.sum(alpha[j, :, k]))
             printf("\t\tAlpha probabilities computed\n")
             """ Backward procedure """
             for j in range(n_sequences):
@@ -630,9 +637,8 @@ cdef class BaseHMM:
                 for k in range(T[j] - 2, -1, -1):
                     for i in range(n):
                         beta[j, i, k] = 0
-                        for l in range(n): # TODO : SUPER SLOW
-                            beta[j, i, k] += beta[j, l, k + 1] * A[k + 1, i, l] * B[j, l, k + 1, targets[j][k + 1]]
-                    print(j, k)
+                        for l in range(n):
+                            beta[j, i, k] += beta[j, l, k + 1] * A[j, k + 1, i, l] * B[j, l, k, targets[j][k]]
             printf("\t\tBeta probabilities computed\n")
             """ Forward-Backward xi computation """
             for j in range(n_sequences):
@@ -644,18 +650,21 @@ cdef class BaseHMM:
                     for i in range(n):
                         for l in range(n):
                             # xi[j, :, k, :] = np.multiply(A, alpha[j, :, k] * np.multiply(B[j, :, k + 1, targets[j][k + 1]], beta[j, :, k + 1]))
-                            xi[j, i, k + 1, l] = beta[j, i, k + 1] * alpha[j, l, k] * A[k + 1, i, l] / denominator
+                            xi[j, i, k + 1, l] = beta[j, i, k + 1] * alpha[j, l, k] * A[j, k + 1, i, l] / denominator
             printf("\t\tXi tensor computed\n")
             printf("\tEnd of expectation step\n")
             """ M-Step """
-            # TODO : Minimize function for the piW network
-            n_epochs
-            piN.train(U, gamma, n_epochs = n_epochs)
+            """ 
+            memory[j, k, i] is the probability that the current state for the sequence j at time k is i 
+            xi[j, i, k, l] measures the expectation that, for the sequence j, the current state at
+            time k is i and the current state at time k - 1 is l 
+            """
+            pistate_cost[iter] = piN.train(U, gamma, n_epochs = n_epochs)
             for j in range(n):
-                N[j].train(U, xi, n_epochs = n_epochs)
-                O[j].train(U, memory, n_epochs = n_epochs)
+                state_cost[iter, j]  = N[j].train(U, xi, n_epochs = n_epochs)
+                output_cost[iter, j] = O[j].train(U, memory, n_epochs = n_epochs)
             printf("\tEnd of maximization step\n")
-        return loglikelihood
+        return loglikelihood, pistate_cost, state_cost, output_cost
     
     def simulateIO(self, input):
         """ Generate an output sequence using the Viterbi algorithm """
@@ -805,7 +814,7 @@ cdef class BaseHMM:
         return criterion
     
     def decode(self, obs):
-        """ Returns the index of the most probable state, given the observations """
+        """ Returns the index of the most probable states, given the observations """
         cdef cnp.ndarray lnf = GaussianLoglikelihood(obs, self.mu, self.sigma)
         cdef size_t T = len(obs)
         cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty

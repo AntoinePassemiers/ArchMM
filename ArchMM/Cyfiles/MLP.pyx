@@ -4,7 +4,6 @@ import numpy as np
 import os, timeit
 
 from Utils import *
-from numpy import dtype
 
 os.environ["THEANO_FLAGS"] = "floatX=float32,exception_verbosity=high" # TODO : doesn't work
 
@@ -194,6 +193,7 @@ class PiStateSubnetwork(MLP):
         while (epoch < n_epochs):
             epoch += 1
             avg_cost = self.train_model(train_values_x, gamma_values)
+        return avg_cost
 
 class StateSubnetwork(MLP):
     def __init__(self, state_id, n_in, n_hidden, n_out, architecture = "ergodic", learning_rate = 0.01):
@@ -234,9 +234,15 @@ class StateSubnetwork(MLP):
         epoch = 0
         while (epoch < n_epochs):
             epoch += 1
+            M = 0
+            avg_cost = 0
             for sequence_id in range(N):
                 for j in range(len(train_values_x[sequence_id])):
-                    avg_cost = self.train_model(train_values_x[sequence_id], xi_values[sequence_id], j)
+                    cost = self.train_model(train_values_x[sequence_id], xi_values[sequence_id], j)
+                    avg_cost += cost
+                    M += 1
+        return avg_cost / float(M)
+                    
         
 class OutputSubnetwork(MLP):
     def __init__(self, state_id, n_in, n_hidden, n_out, is_classifier = True, learning_rate = 0.01):
@@ -247,13 +253,13 @@ class OutputSubnetwork(MLP):
         
         self.index = theano.tensor.lscalar('index')
         self.t = theano.tensor.lscalar('t')
-        self.symbolic_memory = theano.tensor.fvector('memory')
+        self.symbolic_memory = theano.tensor.fmatrix('memory')
         self.symbolic_x_j = theano.tensor.fmatrix('x_j')
         self.train_set_x = theano.tensor.fmatrix('x')
         
         # TODO : re-use prob because it has already been computed
         eta = self.processOutput(self.symbolic_x_j[self.t, :])
-        self.cost = - (self.symbolic_memory[self.state_id] * theano.tensor.log(eta)).sum()
+        self.cost = - (self.symbolic_memory[self.t, self.state_id] * theano.tensor.log(eta)).sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = [
@@ -279,9 +285,14 @@ class OutputSubnetwork(MLP):
         epoch = 0
         while (epoch < n_epochs):
             epoch += 1
+            M = 0
+            avg_cost = 0
             for sequence_id in range(N):
                 for j in range(len(train_values_x[sequence_id])):
-                    avg_cost = self.train_model(train_values_x[sequence_id], memory_values[sequence_id], j)
+                    cost = self.train_model(train_values_x[sequence_id], memory_values[sequence_id], j)
+                    avg_cost += cost
+                    M += 1
+        return avg_cost / float(M)
 
 def newStateSubnetworks(n_networks, n_in, n_hidden, n_out, network_type = SUBNETWORK_STATE):
     nets = []
@@ -298,16 +309,16 @@ def newStateSubnetworks(n_networks, n_in, n_hidden, n_out, network_type = SUBNET
         raise NotImplementedError()
     return nets
 
-def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.float):
+def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.double):
     if isinstance(ndim, int):
-        return np.rand((P, T.max()), dtype = dtype)
+        return np.random.rand(P, T.max())
     elif ndim_2 == 0:
         if type(ndim) == int:
-            return np.empty((P, T.max(), ndim), dtype = dtype)
+            return np.random.rand(P, T.max(), ndim)
         else:
-            return np.empty((P, T, ndim.max()), dtype = dtype)
+            return np.random.rand(P, T, ndim.max())
     else:
-        return np.empty((P, T, ndim.max(), ndim_2), dtype = dtype)
+        return np.random.rand(P, T, ndim.max(), ndim_2)
 
 def typedListTo3DPaddedTensor(typed_list, T):
     if isinstance(typed_list, list):

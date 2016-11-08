@@ -95,9 +95,17 @@ def testIOHMM():
     Y4 = np.zeros(25)
     Y5 = np.ones(25)
     Y6 = np.zeros(25)
-    hmm = AdaptiveHMM(10, has_io = True)
-    print(hmm.fit([U, U2, U3, U4, U5, U6], targets = [Y, Y2, Y3, Y4, Y5, Y6], 
-                  n_iterations = 10, n_epochs = 1, n_classes = 2, is_classifier = True))
+    hmm = AdaptiveHMM(5, has_io = True)
+    fit = hmm.fit([U, U2, U3, U4, U5, U6], targets = [Y, Y2, Y3, Y4, Y5, Y6], 
+                  n_iterations = 20, n_epochs = 5, n_classes = 2, is_classifier = True)
+    print(fit[0])
+    print(fit[1])
+    print(fit[2])
+    print(fit[3])
+    for i in range(4):
+        np.save(open("iohmm_training_%i" % i, "wb"), fit[i])
+
+    
     print(hmm.predictIO(U))
     print(hmm.predictIO(U2))
     print(hmm.predictIO(U3))
@@ -108,7 +116,7 @@ def testIOHMM():
 def testIOHMMSimulation():
     U = np.arange(1, 51).reshape(25, 2)
     Y = np.arange(1, 51).reshape(25, 2) + 25
-    hmm = AdaptiveHMM(10, has_io = True)
+    hmm = AdaptiveHMM(7, has_io = True)
     print(hmm.fit([U], targets = [Y], n_iterations = 5, n_epochs = 1, is_classifier = False))
 
 
