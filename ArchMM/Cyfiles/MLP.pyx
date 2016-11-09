@@ -167,7 +167,7 @@ class PiStateSubnetwork(MLP):
         # TODO : re-use prob because it has already been computed
 
         results, updates = theano.scan(lambda v, w: v[:, 0] * \
-            theano.tensor.log(self.processOutput(w[0, :])), sequences = [self.gamma, self.train_set_x])
+            theano.tensor.log(self.processOutput(w[0, :])[0]), sequences = [self.gamma, self.train_set_x])
         self.cost = - results.sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
@@ -207,7 +207,7 @@ class StateSubnetwork(MLP):
         self.train_set_x = theano.tensor.fmatrix('x')
         self.xi = theano.tensor.tensor3('xi')
         
-        phi = self.processOutput(self.symbolic_x_j[self.t, :]) # TODO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        phi = self.processOutput(self.symbolic_x_j[self.t, :])[0] # TODO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         self.cost = - (self.symbolic_xi_j[self.state_id, self.t, :] * theano.tensor.log(phi)).sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]

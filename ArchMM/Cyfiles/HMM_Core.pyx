@@ -8,18 +8,30 @@ import numpy as np
 include "HMM.pyx"
 
 
-def convertToMultiSpace(data):
-    k = 0
-    obs = dict()
-    for el in data:
-        if not isinstance(el, numbers.Number):
-            if not el in obs.keys():
-                obs[el] = k
-                k += 1
-            # TODO
+class IOConfig:
+    def __init__(self):
+        """ Parameters of the initial state subnetwork """ 
+        self.p_nepochs = 5
+        self.p_learning_rate = 0.05
+        self.p_in = 1
+        self.p_nhidden = 1
+        self.p_nout = 1
+        
+        """ Parameters of the transition states subnetworks """
+        self.s_nepochs = 5 
+        self.s_learning_rate = 0.05
+        self.s_in = 1
+        self.s_nhidden = 1
+        self.s_nout = 1
+        
+        """ Parameters of the output subnetworks """
+        self.o_nepochs = 5 
+        self.o_learning_rate = 0.05
+        self.o_in = 1
+        self.o_nhidden = 1
+        self.o_nout = 1
 
 class AdaptiveHMM:
-
     arch_names = collections.defaultdict()
     arch_names["linear"] = ARCHITECTURE_LINEAR
     arch_names["right"] = ARCHITECTURE_LEFT_TO_RIGHT
