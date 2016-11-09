@@ -564,7 +564,8 @@ cdef class BaseHMM:
             self.logFit(obs, mu, sigma, **kwargs)
         
     def fitIO(self, inputs, targets = None, mu = None, sigma = None, n_iterations = 5, n_epochs = 1,
-              dynamic_features = False, delta_window = 1, is_classifier = True, n_classes = 2):
+              dynamic_features = False, delta_window = 1, is_classifier = True, n_classes = 2,
+              pi_learning_rate = 0.01, s_learning_rate = 0.01, o_learning_rate = 0.01):
         """
         Expectation step  : the likelihood of each output sequence is computing, knowing the input sequence
         Maximization step : the gradient descent is used to adjust the model's parameters in such a way
@@ -580,17 +581,22 @@ cdef class BaseHMM:
         for p in range(n_sequences):
             T[p] = len(inputs[p])
         cdef size_t T_max = T.max()
-        cdef cnp.ndarray U = typedListTo3DPaddedTensor(inputs, T)
+        cdef cnp.ndarray U = typedListToPaddedTensor(inputs, T, is_3D = True)
+        targets = typedListToPaddedTensor(targets, T, is_3D = False)
         cdef size_t m = U[0].shape[1]
         cdef size_t n = self.n_states
         cdef size_t output_dim = targets[0].shape[1] if len(targets[0].shape) == 2 else 1
         cdef size_t r = n_classes if is_classifier else output_dim
         cdef size_t n_hidden = 4 # Number of hidden units must be determined with the validation set
-        cdef object N = newStateSubnetworks(n, m, n_hidden, n, network_type = SUBNETWORK_STATE)
+        cdef object N = list()
+        for i in range(n):
+            N.append(StateSubnetwork(i, m, n_hidden, n, learning_rate = s_learning_rate))
         self.state_subnetworks = N
-        cdef object O = newStateSubnetworks(n, m, n_hidden, r, network_type = SUBNETWORK_OUTPUT)
+        cdef object O = list()
+        for i in range(n):
+            O.append(OutputSubnetwork(i, m, n_hidden, r, learning_rate = o_learning_rate))
         self.output_subnetworks = O
-        piN = newStateSubnetworks(1, m, n_hidden, n, network_type = SUBNETWORK_PI_STATE)[0]
+        piN = PiStateSubnetwork(m, n_hidden, n, learning_rate = s_learning_rate)
         self.pi_state_subnetwork = piN
         cdef cnp.ndarray[cnp.double_t,ndim = 2] loglikelihood = np.zeros((n_iterations, n_sequences), dtype = np.double)
         cdef cnp.ndarray[cnp.double_t,ndim = 1] pistate_cost  = np.zeros(n_iterations, dtype = np.double)
@@ -662,7 +668,7 @@ cdef class BaseHMM:
             pistate_cost[iter] = piN.train(U, gamma, n_epochs = n_epochs)
             for j in range(n):
                 state_cost[iter, j]  = N[j].train(U, xi, n_epochs = n_epochs)
-                output_cost[iter, j] = O[j].train(U, memory, n_epochs = n_epochs)
+                output_cost[iter, j] = O[j].train(U, targets, memory, n_epochs = n_epochs)
             printf("\tEnd of maximization step\n")
         return loglikelihood, pistate_cost, state_cost, output_cost
     

@@ -207,8 +207,7 @@ class StateSubnetwork(MLP):
         self.train_set_x = theano.tensor.fmatrix('x')
         self.xi = theano.tensor.tensor3('xi')
         
-        # TODO : re-use prob because it has already been computed
-        phi = self.processOutput(self.symbolic_x_j[self.t, :])
+        phi = self.processOutput(self.symbolic_x_j[self.t, :]) # TODO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         self.cost = - (self.symbolic_xi_j[self.state_id, self.t, :] * theano.tensor.log(phi)).sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
@@ -254,12 +253,14 @@ class OutputSubnetwork(MLP):
         self.index = theano.tensor.lscalar('index')
         self.t = theano.tensor.lscalar('t')
         self.symbolic_memory = theano.tensor.fmatrix('memory')
+        self.symbolic_targets = theano.tensor.ivector('targets')
         self.symbolic_x_j = theano.tensor.fmatrix('x_j')
         self.train_set_x = theano.tensor.fmatrix('x')
         
-        # TODO : re-use prob because it has already been computed
-        eta = self.processOutput(self.symbolic_x_j[self.t, :])
-        self.cost = - (self.symbolic_memory[self.t, self.state_id] * theano.tensor.log(eta)).sum()
+        eta = self.processOutput(self.symbolic_x_j[self.t, :])[0] # TODO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # eta = self.processOutput(self.symbolic_x_j[self.t, :])
+        self.cost = - (self.symbolic_memory[self.t, self.state_id] * \
+                       theano.tensor.log(eta[self.symbolic_targets[self.t]])).sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = [
@@ -268,7 +269,7 @@ class OutputSubnetwork(MLP):
         ]
         
         self.train_model = theano.function(
-            inputs = [self.symbolic_x_j, self.symbolic_memory, self.t],
+            inputs = [self.symbolic_x_j, self.symbolic_targets, self.symbolic_memory, self.t],
             outputs = self.cost,
             updates = self.updates
         )
@@ -277,10 +278,12 @@ class OutputSubnetwork(MLP):
             debugfile = open("theano_outputnetwork_graph.txt", "w")
             theano.printing.debugprint(self.cost, file = debugfile)
         
-    def train(self, train_set_x, memory_array, n_epochs = 1):
+    def train(self, train_set_x, target_set, memory_array, n_epochs = 1):
         N = len(train_set_x)
+        assert(N == len(target_set))
         train_values_x = np.asarray(train_set_x, dtype = theano.config.floatX)
-        memory_values = np.asarray(memory_array, dtype = theano.config.floatX)
+        target_values  = target_set
+        memory_values  = np.asarray(memory_array, dtype = theano.config.floatX)
         
         epoch = 0
         while (epoch < n_epochs):
@@ -289,25 +292,11 @@ class OutputSubnetwork(MLP):
             avg_cost = 0
             for sequence_id in range(N):
                 for j in range(len(train_values_x[sequence_id])):
-                    cost = self.train_model(train_values_x[sequence_id], memory_values[sequence_id], j)
+                    cost = self.train_model(train_values_x[sequence_id], target_values[sequence_id],
+                                            memory_values[sequence_id], j)
                     avg_cost += cost
                     M += 1
         return avg_cost / float(M)
-
-def newStateSubnetworks(n_networks, n_in, n_hidden, n_out, network_type = SUBNETWORK_STATE):
-    nets = []
-    if network_type == SUBNETWORK_PI_STATE:
-        for i in range(n_networks):
-            nets.append(PiStateSubnetwork(n_in, n_hidden, n_out))
-    elif network_type == SUBNETWORK_STATE:
-        for i in range(n_networks):
-            nets.append(StateSubnetwork(i, n_in, n_hidden, n_out))
-    elif network_type == SUBNETWORK_OUTPUT:
-        for i in range(n_networks):
-            nets.append(OutputSubnetwork(i, n_in, n_hidden, n_out))
-    else:
-        raise NotImplementedError()
-    return nets
 
 def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.double):
     if isinstance(ndim, int):
@@ -320,14 +309,20 @@ def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.double):
     else:
         return np.random.rand(P, T, ndim.max(), ndim_2)
 
-def typedListTo3DPaddedTensor(typed_list, T):
+def typedListToPaddedTensor(typed_list, T, is_3D = True):
+    assert(len(typed_list) > 0)
     if isinstance(typed_list, list):
         P = len(T)
         n_max = T.max()
-        n_dim = typed_list[0].shape[1]
-        new_tensor = np.random.rand(P, n_max, n_dim)
-        for p in range(P):
-            new_tensor[p, :T[p], :] = typed_list[p][:, :]
+        if is_3D:
+            n_dim = typed_list[0].shape[1]
+            new_tensor = np.zeros((P, n_max, n_dim), dtype = typed_list[0].dtype)
+            for p in range(P):
+                new_tensor[p, :T[p], :] = typed_list[p][:, :]
+        else:
+            new_tensor = np.zeros((P, n_max), dtype = typed_list[0].dtype)
+            for p in range(P):
+                new_tensor[p, :T[p]] = typed_list[p][:]
         return new_tensor
     else:
         return typed_list

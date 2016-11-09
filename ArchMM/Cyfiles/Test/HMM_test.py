@@ -89,15 +89,16 @@ def testIOHMM():
     U5 = np.arange(51, 101).reshape(25, 2)
     U6 = np.random.rand(25, 2)
     
-    Y = np.ones(25)
-    Y2 = np.zeros(25)
-    Y3 = np.ones(25)
-    Y4 = np.zeros(25)
-    Y5 = np.ones(25)
-    Y6 = np.zeros(25)
+    Y = np.ones(25, dtype = np.int32)
+    Y2 = np.zeros(25, dtype = np.int32)
+    Y3 = np.ones(25, dtype = np.int32)
+    Y4 = np.zeros(25, dtype = np.int32)
+    Y5 = np.ones(25, dtype = np.int32)
+    Y6 = np.zeros(25, dtype = np.int32)
     hmm = AdaptiveHMM(5, has_io = True)
     fit = hmm.fit([U, U2, U3, U4, U5, U6], targets = [Y, Y2, Y3, Y4, Y5, Y6], 
-                  n_iterations = 20, n_epochs = 5, n_classes = 2, is_classifier = True)
+                  n_iterations = 20, n_epochs = 5, n_classes = 2, is_classifier = True,
+                  s_learning_rate = 0.006, o_learning_rate = 0.01)
     print(fit[0])
     print(fit[1])
     print(fit[2])
