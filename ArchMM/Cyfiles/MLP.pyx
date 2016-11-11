@@ -3,8 +3,7 @@
 import numpy as np
 import os, timeit
 
-from Utils import *
-
+RELEASE_MODE = False
 os.environ["THEANO_FLAGS"] = "floatX=float32,exception_verbosity=high" # TODO : doesn't work
 
 import theano
@@ -16,6 +15,9 @@ SUBNETWORK_OUTPUT   = 302
 
 ERGODIC_LAYER = 401
 LINEAR_LAYER  = 402
+
+DEBUG_MODE = theano.compile.MonitorMode(
+    post_func = theano.compile.monitormode.detect_nan).excluding('local_elemwise_fusion', 'inplace')
 
 class Layer:  
     def processOutput(self, X):
@@ -32,22 +34,24 @@ class Layer:
 
 class LogisticRegression(Layer):
     def __init__(self, input, n_in, n_out, rng = np.random.RandomState(1234)):
+        self.input = input
+        self.n_in = n_in
+        self.n_out = n_out
         W_values = np.asarray(
             rng.uniform(
                 low  = -np.sqrt(6. / (n_in + n_out)),
                 high = np.sqrt(6. / (n_in + n_out)),
                 size = (n_in, n_out)
             ),
-            dtype=theano.config.floatX)
+            dtype = theano.config.floatX)
         W_values *= 4
-        self.W = theano.shared(value = W_values, name='W', borrow=True)
+        self.W = theano.shared(value = W_values, name = 'W', borrow=True)
         b_values = np.asarray(np.random.rand(n_out), dtype=theano.config.floatX)
-        self.b = theano.shared(value = b_values, name='b', borrow=True)
+        self.b = theano.shared(value = b_values, name = 'b', borrow=True)
         
         self.p_y_given_x = theano.tensor.nnet.softmax(theano.tensor.dot(input, self.W) + self.b)
-        self.y_pred = theano.tensor.argmax(self.p_y_given_x, axis=1)
+        self.y_pred = theano.tensor.argmax(self.p_y_given_x, axis = 1)
         self.params = [self.W, self.b]
-        self.input = input
         self.activation = theano.tensor.nnet.softmax
     def negative_log_likelihood(self, y):
         return -theano.tensor.mean(theano.tensor.log(self.p_y_given_x)[theano.tensor.arange(y.shape[0]), y])
@@ -63,8 +67,9 @@ class LogisticRegression(Layer):
         
         
 class HiddenLayer(Layer):
-    def __init__(self, rng, input, n_in, n_out, W=None, b=None,
-                 activation=theano.tensor.nnet.nnet.sigmoid):
+    def __init__(self, input, n_in, n_out, W = None, b = None,
+                 activation = theano.tensor.nnet.nnet.sigmoid,
+                 rng = np.random.RandomState(1234)):
         self.input = input
         self.activation = activation
         if W is None:
@@ -84,7 +89,7 @@ class HiddenLayer(Layer):
         if b is None:
             b_values = np.asarray(np.random.rand(n_out), dtype=theano.config.floatX)
             b = theano.shared(value = b_values, name='b', borrow=True)
-
+        
         self.W = W
         self.b = b
 
@@ -104,17 +109,11 @@ class MLP(object):
         self.input = self.x = theano.tensor.matrix('x')
         self.rng = rng
         self.hiddenLayer = HiddenLayer(
-            rng=self.rng,
-            input=self.input,
-            n_in=n_in,
-            n_out=n_hidden,
-            activation=theano.tensor.tanh
+            self.input, n_in, n_hidden, 
+            rng = self.rng,
+            activation = theano.tensor.tanh
         )
-        self.logRegressionLayer = LogisticRegression(
-            input = self.hiddenLayer.output,
-            n_in = n_hidden,
-            n_out = n_out
-        )
+        self.logRegressionLayer = LogisticRegression(self.hiddenLayer.output, n_hidden, n_out)
         self.layers = [self.hiddenLayer, self.logRegressionLayer]
         self.L1 = (
             np.abs(self.hiddenLayer.W).sum()
@@ -130,6 +129,16 @@ class MLP(object):
         self.errors = self.logRegressionLayer.errors
         self.params = self.hiddenLayer.params + self.logRegressionLayer.params
         self.input = input
+        
+        symbolic_X_j_k = theano.tensor.vector(name = "X", dtype = theano.config.floatX)
+        next_layer_input = symbolic_X_j_k 
+        for layer in self.layers:
+            next_layer_input = layer.processOutput(next_layer_input)
+        self.computeOutputFunction = theano.function(inputs = [symbolic_X_j_k], outputs = next_layer_input)
+    
+    def computeOutput(self, X):
+        X = np.asarray(X, dtype = theano.config.floatX)
+        return self.computeOutputFunction(X)
     
     def processOutput(self, X):
         for layer in self.layers:
@@ -157,14 +166,12 @@ class PiStateSubnetwork(MLP):
     def __init__(self, n_in, n_hidden, n_out, learning_rate = 0.01):
         MLP.__init__(self, n_in, n_hidden, n_out)
         self.state_id = 0
-        
         self.index = theano.tensor.lscalar('index')
         self.symbolic_gamma_j = theano.tensor.fmatrix('gamma_j')
         self.symbolic_x_j = theano.tensor.fmatrix('x_j')    
         self.train_set_x = theano.tensor.tensor3('x')
         self.gamma = theano.tensor.tensor3('gamma')
-        
-        # TODO : re-use prob because it has already been computed
+        self.learning_rate = theano.tensor.fscalar("learning_rate")
 
         results, updates = theano.scan(lambda v, w: v[:, 0] * \
             theano.tensor.log(self.processOutput(w[0, :])[0]), sequences = [self.gamma, self.train_set_x])
@@ -172,12 +179,12 @@ class PiStateSubnetwork(MLP):
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = [
-            (param, param - learning_rate * gparam)
+            (param, param - self.learning_rate * gparam)
             for param, gparam in zip(self.params, self.gparams)
         ]
         
         self.train_model = theano.function(
-            inputs = [self.train_set_x, self.gamma],
+            inputs = [self.train_set_x, self.gamma, self.learning_rate],
             outputs = self.cost,
             updates = self.updates
         )
@@ -186,33 +193,33 @@ class PiStateSubnetwork(MLP):
             debugfile = open("theano_pistatenetwork_graph.txt", "w")
             theano.printing.debugprint(self.cost, file = debugfile)
             debugfile.close()
-    def train(self, train_set_x, gamma, n_epochs = 1):
+    def train(self, train_set_x, gamma, n_epochs = 1, learning_rate = 0.01):
         train_values_x = np.asarray(train_set_x, dtype = theano.config.floatX)
         gamma_values = np.asarray(gamma, dtype = theano.config.floatX)
         epoch = 0
         while (epoch < n_epochs):
             epoch += 1
-            avg_cost = self.train_model(train_values_x, gamma_values)
+            avg_cost = self.train_model(train_values_x, gamma_values, learning_rate)
         return avg_cost
 
 class StateSubnetwork(MLP):
     def __init__(self, state_id, n_in, n_hidden, n_out, architecture = "ergodic", learning_rate = 0.01):
         MLP.__init__(self, n_in, n_hidden, n_out)
         self.state_id = state_id
-        
         self.index = theano.tensor.lscalar('index')
         self.t = theano.tensor.lscalar('t')
         self.symbolic_xi_j = theano.tensor.tensor3('xi_j')
         self.symbolic_x_j = theano.tensor.fmatrix('x_j')
         self.train_set_x = theano.tensor.fmatrix('x')
         self.xi = theano.tensor.tensor3('xi')
+        self.learning_rate = theano.tensor.fscalar("learning_rate")
         
-        phi = self.processOutput(self.symbolic_x_j[self.t, :])[0] # TODO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        phi = self.processOutput(self.symbolic_x_j[self.t, :])[0]
         self.cost = - (self.symbolic_xi_j[self.state_id, self.t, :] * theano.tensor.log(phi)).sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = [
-            (param, param - learning_rate * gparam)
+            (param, param - self.learning_rate * gparam)
             for param, gparam in zip(self.params, self.gparams)
         ]
         
@@ -221,12 +228,12 @@ class StateSubnetwork(MLP):
             theano.printing.debugprint(self.cost, file = debugfile)
             
         self.train_model = theano.function(
-            inputs = [self.symbolic_x_j, self.symbolic_xi_j, self.t],
+            inputs = [self.symbolic_x_j, self.symbolic_xi_j, self.t, self.learning_rate],
             outputs = self.cost,
             updates = self.updates
         )
         
-    def train(self, train_set_x, xi, n_epochs = 1):
+    def train(self, train_set_x, xi, n_epochs = 1, learning_rate = 0.01):
         N = len(train_set_x)
         train_values_x = np.asarray(train_set_x, dtype = theano.config.floatX)
         xi_values = np.asarray(xi, dtype = theano.config.floatX)
@@ -237,7 +244,7 @@ class StateSubnetwork(MLP):
             avg_cost = 0
             for sequence_id in range(N):
                 for j in range(len(train_values_x[sequence_id])):
-                    cost = self.train_model(train_values_x[sequence_id], xi_values[sequence_id], j)
+                    cost = self.train_model(train_values_x[sequence_id], xi_values[sequence_id], j, learning_rate)
                     avg_cost += cost
                     M += 1
         return avg_cost / float(M)
@@ -249,27 +256,27 @@ class OutputSubnetwork(MLP):
         self.state_id = state_id
         self.is_classifier = is_classifier
         self.memory = None
-        
         self.index = theano.tensor.lscalar('index')
         self.t = theano.tensor.lscalar('t')
         self.symbolic_memory = theano.tensor.fmatrix('memory')
         self.symbolic_targets = theano.tensor.ivector('targets')
         self.symbolic_x_j = theano.tensor.fmatrix('x_j')
         self.train_set_x = theano.tensor.fmatrix('x')
+        self.learning_rate = theano.tensor.fscalar("learning_rate")
         
-        eta = self.processOutput(self.symbolic_x_j[self.t, :])[0] # TODO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        eta = self.processOutput(self.symbolic_x_j[self.t, :])[0]
         # eta = self.processOutput(self.symbolic_x_j[self.t, :])
         self.cost = - (self.symbolic_memory[self.t, self.state_id] * \
                        theano.tensor.log(eta[self.symbolic_targets[self.t]])).sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = [
-            (param, param - learning_rate * gparam)
+            (param, param - self.learning_rate * gparam)
             for param, gparam in zip(self.params, self.gparams)
         ]
         
         self.train_model = theano.function(
-            inputs = [self.symbolic_x_j, self.symbolic_targets, self.symbolic_memory, self.t],
+            inputs = [self.symbolic_x_j, self.symbolic_targets, self.symbolic_memory, self.t, self.learning_rate],
             outputs = self.cost,
             updates = self.updates
         )
@@ -278,7 +285,7 @@ class OutputSubnetwork(MLP):
             debugfile = open("theano_outputnetwork_graph.txt", "w")
             theano.printing.debugprint(self.cost, file = debugfile)
         
-    def train(self, train_set_x, target_set, memory_array, n_epochs = 1):
+    def train(self, train_set_x, target_set, memory_array, n_epochs = 1, learning_rate = 0.05):
         N = len(train_set_x)
         assert(N == len(target_set))
         train_values_x = np.asarray(train_set_x, dtype = theano.config.floatX)
@@ -293,7 +300,7 @@ class OutputSubnetwork(MLP):
             for sequence_id in range(N):
                 for j in range(len(train_values_x[sequence_id])):
                     cost = self.train_model(train_values_x[sequence_id], target_values[sequence_id],
-                                            memory_values[sequence_id], j)
+                                            memory_values[sequence_id], j, learning_rate)
                     avg_cost += cost
                     M += 1
         return avg_cost / float(M)

@@ -565,7 +565,8 @@ cdef class BaseHMM:
         
     def fitIO(self, inputs, targets = None, mu = None, sigma = None, n_iterations = 5, n_epochs = 1,
               dynamic_features = False, delta_window = 1, is_classifier = True, n_classes = 2,
-              pi_learning_rate = 0.01, s_learning_rate = 0.01, o_learning_rate = 0.01):
+              pi_learning_rate = 0.01, s_learning_rate = 0.01, o_learning_rate = 0.01,
+              n_hidden = 4):
         """
         Expectation step  : the likelihood of each output sequence is computing, knowing the input sequence
         Maximization step : the gradient descent is used to adjust the model's parameters in such a way
@@ -577,7 +578,7 @@ cdef class BaseHMM:
         cdef Py_ssize_t i, j, k, l, p, iter
         cdef size_t n_sequences = len(inputs)
         assert(n_sequences == len(targets))
-        cdef cnp.ndarray T = np.empty(n_sequences)
+        cdef cnp.ndarray T = np.empty(n_sequences, dtype = np.int32)
         for p in range(n_sequences):
             T[p] = len(inputs[p])
         cdef size_t T_max = T.max()
@@ -587,7 +588,6 @@ cdef class BaseHMM:
         cdef size_t n = self.n_states
         cdef size_t output_dim = targets[0].shape[1] if len(targets[0].shape) == 2 else 1
         cdef size_t r = n_classes if is_classifier else output_dim
-        cdef size_t n_hidden = 4 # Number of hidden units must be determined with the validation set
         cdef object N = list()
         for i in range(n):
             N.append(StateSubnetwork(i, m, n_hidden, n, learning_rate = s_learning_rate))
@@ -614,11 +614,13 @@ cdef class BaseHMM:
         for iter in range(n_iterations):
             print("Iteration number %i..." % iter)
             """ Forward procedure """
+            
             for j in range(n_sequences):
                 for i in range(n):
                     for k in range(T[j]):
-                        B[j, i, k, :] = O[i].processOutput(U[j][k, :]).eval()
-                        A[j, k, i, :] = N[i].processOutput(U[j][k, :]).eval()
+                        B[j, i, k, :] = O[i].computeOutput(U[j][k, :])[0] 
+                        A[j, k, i, :] = N[i].computeOutput(U[j][k, :])[0]
+
             printf("\tDensities computed\n")
             for j in range(n_sequences):
                 initial_probs = piN.processOutput(U[j][0, :]).eval() # Processing sequence j for all times t
@@ -665,10 +667,10 @@ cdef class BaseHMM:
             xi[j, i, k, l] measures the expectation that, for the sequence j, the current state at
             time k is i and the current state at time k - 1 is l 
             """
-            pistate_cost[iter] = piN.train(U, gamma, n_epochs = n_epochs)
+            pistate_cost[iter] = piN.train(U, gamma, n_epochs = n_epochs, learning_rate = pi_learning_rate)
             for j in range(n):
-                state_cost[iter, j]  = N[j].train(U, xi, n_epochs = n_epochs)
-                output_cost[iter, j] = O[j].train(U, targets, memory, n_epochs = n_epochs)
+                state_cost[iter, j]  = N[j].train(U, xi, n_epochs = n_epochs, learning_rate = s_learning_rate)
+                output_cost[iter, j] = O[j].train(U, targets, memory, n_epochs = n_epochs, learning_rate = o_learning_rate)
             printf("\tEnd of maximization step\n")
         return loglikelihood, pistate_cost, state_cost, output_cost
     
@@ -689,7 +691,7 @@ cdef class BaseHMM:
         for i in range(self.n_states):
             current_eta[i, :] = O[i].processOutput(input[0]).eval()
             best_outputs[i] = current_eta[i, :].max()
-        memory += np.log2(current)
+        memory += np.log2(current_eta)
         state_sequence[0] = memory.argmax()
         for t in range(1, T):
             pass # TODO
@@ -706,18 +708,18 @@ cdef class BaseHMM:
         cdef cnp.ndarray memory
         cdef Py_ssize_t i, t
         if binary_prediction:
-            memory = np.tile(np.log2(piN.processOutput(input[0]).eval()), (self.n_classes, 1))
+            memory = np.tile(np.log2(piN.computeOutput(input[0])[0]), (self.n_classes, 1))
             for i in range(self.n_states):
-                current_eta[i, :] = O[i].processOutput(input[0]).eval()
+                current_eta[i, :] = O[i].computeOutput(input[0])[0]
             for i in range(self.n_classes):
                 memory[i] += np.log2(current_eta[:, i])
                 state_sequence[i, 0] = memory[i].argmax()
                 memory[i, :] = memory[i, state_sequence[i, 0]]
             for t in range(1, T):
                 for i in range(self.n_classes):
-                    memory[i, :] += np.log2(N[state_sequence[i, t - 1]].processOutput(input[t]).eval().reshape(self.n_states))
+                    memory[i, :] += np.log2(N[state_sequence[i, t - 1]].computeOutput(input[t])[0].reshape(self.n_states))
                 for i in range(self.n_states):
-                    current_eta[i, :] = O[i].processOutput(input[t]).eval()
+                    current_eta[i, :] = O[i].computeOutput(input[t])[0]
                 for i in range(self.n_classes):
                     memory[i, :] += np.log2(current_eta[:, i])
                     state_sequence[i, t] = memory[i].argmax()

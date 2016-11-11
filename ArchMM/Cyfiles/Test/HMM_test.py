@@ -4,6 +4,8 @@ import sys, pickle
 import numpy as np
 # import matplotlib.pyplot as plt
 
+import theano
+
 sys.path.insert(0, '..')
 sys.path.insert(0, '../..')
 from ArchMM.Cyfiles.HMM_Core import *
