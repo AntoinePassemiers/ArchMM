@@ -563,10 +563,9 @@ cdef class BaseHMM:
         else:
             self.logFit(obs, mu, sigma, **kwargs)
         
-    def fitIO(self, inputs, targets = None, mu = None, sigma = None, n_iterations = 5, n_epochs = 1,
+    def fitIO(self, inputs, targets = None, mu = None, sigma = None, n_iterations = 5,
               dynamic_features = False, delta_window = 1, is_classifier = True, n_classes = 2,
-              pi_learning_rate = 0.01, s_learning_rate = 0.01, o_learning_rate = 0.01,
-              n_hidden = 4):
+              parameters = None):
         """
         Expectation step  : the likelihood of each output sequence is computing, knowing the input sequence
         Maximization step : the gradient descent is used to adjust the model's parameters in such a way
@@ -574,10 +573,12 @@ cdef class BaseHMM:
         """
         self.MU = mu
         self.SIGMA = sigma
+        self.missing_value = parameters.missing_value_sym
         self.n_classes = n_classes
         cdef Py_ssize_t i, j, k, l, p, iter
         cdef size_t n_sequences = len(inputs)
         assert(n_sequences == len(targets))
+        assert(parameters is not None)
         cdef cnp.ndarray T = np.empty(n_sequences, dtype = np.int32)
         for p in range(n_sequences):
             T[p] = len(inputs[p])
@@ -590,13 +591,16 @@ cdef class BaseHMM:
         cdef size_t r = n_classes if is_classifier else output_dim
         cdef object N = list()
         for i in range(n):
-            N.append(StateSubnetwork(i, m, n_hidden, n, learning_rate = s_learning_rate))
+            N.append(StateSubnetwork(i, m, parameters.s_nhidden, n, learning_rate = parameters.s_learning_rate,
+                                     hidden_activation_function = parameters.s_activation))
         self.state_subnetworks = N
         cdef object O = list()
         for i in range(n):
-            O.append(OutputSubnetwork(i, m, n_hidden, r, learning_rate = o_learning_rate))
+            O.append(OutputSubnetwork(i, m, parameters.o_nhidden, r, learning_rate = parameters.o_learning_rate,
+                                      hidden_activation_function = parameters.o_activation))
         self.output_subnetworks = O
-        piN = PiStateSubnetwork(m, n_hidden, n, learning_rate = s_learning_rate)
+        piN = PiStateSubnetwork(m, parameters.pi_nhidden, n, learning_rate = parameters.pi_learning_rate,
+                                hidden_activation_function = parameters.pi_activation)
         self.pi_state_subnetwork = piN
         cdef cnp.ndarray[cnp.double_t,ndim = 2] loglikelihood = np.zeros((n_iterations, n_sequences), dtype = np.double)
         cdef cnp.ndarray[cnp.double_t,ndim = 1] pistate_cost  = np.zeros(n_iterations, dtype = np.double)
@@ -611,42 +615,60 @@ cdef class BaseHMM:
         cdef cnp.ndarray[cnp.float_t, ndim = 3] memory = np.empty((n_sequences, T_max, n), dtype = np.float)
         cdef cnp.ndarray[cnp.float_t, ndim = 1] new_internal_state = np.empty(n, dtype = np.float)
         cdef cnp.ndarray[cnp.double_t,ndim = 4] B = new3DVLMArray(n_sequences, n, T, r, dtype = np.double)
+        cdef cnp.ndarray is_mv = hasMissingValues(U, parameters.missing_value_sym)
+        
         for iter in range(n_iterations):
             print("Iteration number %i..." % iter)
             """ Forward procedure """
             
             for j in range(n_sequences):
-                for i in range(n):
-                    for k in range(T[j]):
-                        B[j, i, k, :] = O[i].computeOutput(U[j][k, :])[0] 
-                        A[j, k, i, :] = N[i].computeOutput(U[j][k, :])[0]
+                for k in range(T[j]):
+                    if not is_mv[j, k]:
+                        for i in range(n):
+                            B[j, i, k, :] = O[i].computeOutput(U[j][k, :])[0] 
+                            A[j, k, i, :] = N[i].computeOutput(U[j][k, :])[0]
 
             printf("\tDensities computed\n")
             for j in range(n_sequences):
-                initial_probs = piN.processOutput(U[j][0, :]).eval() # Processing sequence j for all times t
-                memory[j, 0, :] = initial_probs    
-                sequence_probs = np.multiply(B[j, :, 0, targets[j][0]], initial_probs)
+                if not is_mv[j, 0]:
+                    initial_probs = piN.processOutput(U[j][0, :]).eval()
+                    memory[j, 0, :] = initial_probs    
+                    sequence_probs = np.multiply(B[j, :, 0, targets[j][0]], initial_probs)
+                else:
+                    memory[j, 0, :] = sequence_probs = np.ones(n) # TODO : random numbers ?
                 loglikelihood[iter, j] = np.log(np.sum(sequence_probs))
                 for k in range(1, T[j]):
                     new_internal_state[:] = 0
                     for i in range(n):
                         new_internal_state[:] += memory[j, k - 1, i] * A[j, k, i, :]
                     memory[j, k, :] = new_internal_state
-                    for i in range(n):
-                        alpha[j, i, k] = 0
-                        for l in range(n):
-                            alpha[j, i, k] += alpha[j, l, k - 1] * A[j, k, l, i]
-                        alpha[j, i, k] *= B[j, i, k, targets[j][k]]
+                    if not is_mv[j, k]:
+                        for i in range(n):
+                            alpha[j, i, k] = 0
+                            for l in range(n):
+                                alpha[j, i, k] += alpha[j, l, k - 1] * A[j, k, l, i]
+                            alpha[j, i, k] *= B[j, i, k, targets[j][k]]
+                    else: # If value is missing
+                        for i in range(n):
+                            alpha[j, i, k] = 0
+                            for l in range(n):
+                                alpha[j, i, k] += alpha[j, l, k - 1]
                     loglikelihood[iter, j] += np.log(np.sum(alpha[j, :, k]))
             printf("\t\tAlpha probabilities computed\n")
             """ Backward procedure """
             for j in range(n_sequences):
                 beta[j, :, -1] = 1
                 for k in range(T[j] - 2, -1, -1):
-                    for i in range(n):
-                        beta[j, i, k] = 0
-                        for l in range(n):
-                            beta[j, i, k] += beta[j, l, k + 1] * A[j, k + 1, i, l] * B[j, l, k, targets[j][k]]
+                    if not is_mv[j, k]:
+                        for i in range(n):
+                            beta[j, i, k] = 0
+                            for l in range(n):
+                                beta[j, i, k] += beta[j, l, k + 1] * A[j, k + 1, i, l] * B[j, l, k, targets[j][k]]
+                    else: # If value is missing
+                        for i in range(n):
+                            beta[j, i, k] = 0
+                            for l in range(n):
+                                beta[j, i, k] += beta[j, l, k + 1]
             printf("\t\tBeta probabilities computed\n")
             """ Forward-Backward xi computation """
             for j in range(n_sequences):
@@ -667,10 +689,13 @@ cdef class BaseHMM:
             xi[j, i, k, l] measures the expectation that, for the sequence j, the current state at
             time k is i and the current state at time k - 1 is l 
             """
-            pistate_cost[iter] = piN.train(U, gamma, n_epochs = n_epochs, learning_rate = pi_learning_rate)
+            pistate_cost[iter] = piN.train(U, gamma, n_epochs = parameters.pi_nepochs, 
+                                           learning_rate = parameters.pi_learning_rate)
             for j in range(n):
-                state_cost[iter, j]  = N[j].train(U, xi, n_epochs = n_epochs, learning_rate = s_learning_rate)
-                output_cost[iter, j] = O[j].train(U, targets, memory, n_epochs = n_epochs, learning_rate = o_learning_rate)
+                state_cost[iter, j]  = N[j].train(U, xi, is_mv, n_epochs = parameters.s_nepochs, 
+                                                  learning_rate = parameters.s_learning_rate)
+                output_cost[iter, j] = O[j].train(U, targets, memory, is_mv, n_epochs = parameters.o_nepochs, 
+                                                  learning_rate = parameters.o_learning_rate)
             printf("\tEnd of maximization step\n")
         return loglikelihood, pistate_cost, state_cost, output_cost
     
@@ -707,23 +732,28 @@ cdef class BaseHMM:
         cdef cnp.ndarray current_eta = np.empty((self.n_states, self.n_classes), dtype = np.float16)
         cdef cnp.ndarray memory
         cdef Py_ssize_t i, t
+        cdef cnp.ndarray is_mv = hasMissingValues(input, self.missing_value, n_datadim = 1)
         if binary_prediction:
-            memory = np.tile(np.log2(piN.computeOutput(input[0])[0]), (self.n_classes, 1))
-            for i in range(self.n_states):
-                current_eta[i, :] = O[i].computeOutput(input[0])[0]
-            for i in range(self.n_classes):
-                memory[i] += np.log2(current_eta[:, i])
-                state_sequence[i, 0] = memory[i].argmax()
-                memory[i, :] = memory[i, state_sequence[i, 0]]
-            for t in range(1, T):
-                for i in range(self.n_classes):
-                    memory[i, :] += np.log2(N[state_sequence[i, t - 1]].computeOutput(input[t])[0].reshape(self.n_states))
+            if not is_mv[0]:
+                memory = np.tile(np.log2(piN.computeOutput(input[0])[0]), (self.n_classes, 1))
                 for i in range(self.n_states):
-                    current_eta[i, :] = O[i].computeOutput(input[t])[0]
+                    current_eta[i, :] = O[i].computeOutput(input[0])[0]
                 for i in range(self.n_classes):
-                    memory[i, :] += np.log2(current_eta[:, i])
-                    state_sequence[i, t] = memory[i].argmax()
-                    memory[i, :] = memory[i, state_sequence[i, t]]
+                    memory[i] += np.log2(current_eta[:, i])
+                    state_sequence[i, 0] = memory[i].argmax()
+                    memory[i, :] = memory[i, state_sequence[i, 0]]
+            else:
+                memory = np.zeros((self.n_classes, T), dtype = np.float64)
+            for t in range(1, T):
+                if not is_mv[t]:
+                    for i in range(self.n_classes):
+                        memory[i, :] += np.log2(N[state_sequence[i, t - 1]].computeOutput(input[t])[0].reshape(self.n_states))
+                    for i in range(self.n_states):
+                        current_eta[i, :] = O[i].computeOutput(input[t])[0]
+                    for i in range(self.n_classes):
+                        memory[i, :] += np.log2(current_eta[:, i])
+                        state_sequence[i, t] = memory[i].argmax()
+                        memory[i, :] = memory[i, state_sequence[i, t]]
             return np.argmax(memory.max(axis = 1))
         else:
             raise NotImplementedError("Probability prediction not implemented")

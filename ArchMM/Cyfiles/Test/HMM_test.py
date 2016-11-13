@@ -97,10 +97,20 @@ def testIOHMM():
     Y4 = np.zeros(25, dtype = np.int32)
     Y5 = np.ones(25, dtype = np.int32)
     Y6 = np.zeros(25, dtype = np.int32)
+    
+    config = IOConfig()
+    config.s_learning_rate = 0.006
+    config.o_learning_rate = 0.01
+    config.pi_learning_rate = 0.01
+    config.s_nhidden = 4
+    config.o_nhidden = 4
+    config.pi_nhidden = 4
+    config.pi_nepochs = 5
+    config.s_nepochs = 5
+    config.o_nepochs = 5
     hmm = AdaptiveHMM(5, has_io = True)
     fit = hmm.fit([U, U2, U3, U4, U5, U6], targets = [Y, Y2, Y3, Y4, Y5, Y6], 
-                  n_iterations = 20, n_epochs = 5, n_classes = 2, is_classifier = True,
-                  s_learning_rate = 0.006, o_learning_rate = 0.01)
+                  n_iterations = 20, n_classes = 2, is_classifier = True, parameters = config)
     print(fit[0])
     print(fit[1])
     print(fit[2])

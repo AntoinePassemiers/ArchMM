@@ -10,26 +10,29 @@ include "HMM.pyx"
 
 class IOConfig:
     def __init__(self):
+        """ Parameters of the whole model """
+        self.missing_value_sym = np.nan
+        
         """ Parameters of the initial state subnetwork """ 
-        self.p_nepochs = 5
-        self.p_learning_rate = 0.05
-        self.p_in = 1
-        self.p_nhidden = 1
-        self.p_nout = 1
+        self.pi_nepochs = 5
+        self.pi_learning_rate = 0.05
+        self.pi_nhidden = 1
+        self.pi_activation = "sigmoid"
+        self.pi_nepochs = 1
         
         """ Parameters of the transition states subnetworks """
         self.s_nepochs = 5 
         self.s_learning_rate = 0.05
-        self.s_in = 1
         self.s_nhidden = 1
-        self.s_nout = 1
+        self.s_activation = "sigmoid"
+        self.s_nepochs = 1
         
         """ Parameters of the output subnetworks """
         self.o_nepochs = 5 
         self.o_learning_rate = 0.05
-        self.o_in = 1
         self.o_nhidden = 1
-        self.o_nout = 1
+        self.o_activation = "sigmoid"
+        self.o_epochs = 1
 
 class AdaptiveHMM:
     arch_names = collections.defaultdict()
@@ -76,8 +79,6 @@ class AdaptiveHMM:
         return self.hmm.getA()
         
     def fit(self, observations, **kwargs):
-        assert(not np.any(np.isnan(observations)))
-        assert(not np.any(np.isinf(observations)))
         if not self.has_io:
             self.sigma = np.cov(observations.T)
             self.stdvs = np.sqrt(np.diag(self.sigma))

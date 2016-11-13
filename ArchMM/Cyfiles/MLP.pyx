@@ -26,7 +26,7 @@ class Layer:
             output = self.activation(linear_output)
         else:
             output = linear_output
-        return output
+        return theano.tensor.switch(theano.tensor.isnan(output), 0.001, output)
     def __getstate__(self):
         return (self.W, self.b)
     def __setstate__(self, state):
@@ -75,11 +75,11 @@ class HiddenLayer(Layer):
         if W is None:
             W_values = np.asarray(
                 rng.uniform(
-                    low=-np.sqrt(6. / (n_in + n_out)),
-                    high=np.sqrt(6. / (n_in + n_out)),
-                    size=(n_in, n_out)
+                    low = -np.sqrt(6. / (n_in + n_out)),
+                    high = np.sqrt(6. / (n_in + n_out)),
+                    size = (n_in, n_out)
                 ),
-                dtype=theano.config.floatX
+                dtype = theano.config.floatX
             )
             if activation == theano.tensor.nnet.sigmoid:
                 W_values *= 4
@@ -87,8 +87,8 @@ class HiddenLayer(Layer):
             W = theano.shared(value=W_values, name='W', borrow=True)
 
         if b is None:
-            b_values = np.asarray(np.random.rand(n_out), dtype=theano.config.floatX)
-            b = theano.shared(value = b_values, name='b', borrow=True)
+            b_values = np.asarray(np.random.rand(n_out), dtype = theano.config.floatX)
+            b = theano.shared(value = b_values, name = 'b', borrow = True)
         
         self.W = W
         self.b = b
@@ -102,16 +102,21 @@ class HiddenLayer(Layer):
 
 
 class MLP(object):
-    def __init__(self, n_in, n_hidden, n_out, rng = np.random.RandomState(1234)):
+    def __init__(self, n_in, n_hidden, n_out, rng = np.random.RandomState(1234),
+                 hidden_activation_function = "sigmoid"):
         self.n_in = n_in
         self.n_hidden = n_hidden
         self.n_out = n_out
         self.input = self.x = theano.tensor.matrix('x')
         self.rng = rng
+        if hidden_activation_function == "tanh":
+            self.activation = theano.tensor.tanh
+        else:
+            self.activation =  theano.tensor.nnet.nnet.sigmoid
         self.hiddenLayer = HiddenLayer(
             self.input, n_in, n_hidden, 
             rng = self.rng,
-            activation = theano.tensor.tanh
+            activation = self.activation
         )
         self.logRegressionLayer = LogisticRegression(self.hiddenLayer.output, n_hidden, n_out)
         self.layers = [self.hiddenLayer, self.logRegressionLayer]
@@ -163,25 +168,25 @@ class MLP(object):
             i += 1
     
 class PiStateSubnetwork(MLP):
-    def __init__(self, n_in, n_hidden, n_out, learning_rate = 0.01):
-        MLP.__init__(self, n_in, n_hidden, n_out)
+    def __init__(self, n_in, n_hidden, n_out, 
+                 hidden_activation_function = "sigmoid", learning_rate = 0.01):
+        MLP.__init__(self, n_in, n_hidden, n_out, 
+                     hidden_activation_function = hidden_activation_function)
         self.state_id = 0
         self.index = theano.tensor.lscalar('index')
         self.symbolic_gamma_j = theano.tensor.fmatrix('gamma_j')
-        self.symbolic_x_j = theano.tensor.fmatrix('x_j')    
-        self.train_set_x = theano.tensor.tensor3('x')
-        self.gamma = theano.tensor.tensor3('gamma')
+        self.train_set_x = theano.tensor.fvector('x')
+        self.gamma = theano.tensor.fvector('gamma')
         self.learning_rate = theano.tensor.fscalar("learning_rate")
 
-        results, updates = theano.scan(lambda v, w: v[:, 0] * \
-            theano.tensor.log(self.processOutput(w[0, :])[0]), sequences = [self.gamma, self.train_set_x])
-        self.cost = - results.sum()
+        self.cost = - theano.tensor.dot(self.gamma, theano.tensor.log(self.processOutput(self.train_set_x)[0]))
         
+        # http://deeplearning.net/software/theano/sandbox/randomnumbers.html
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
-        self.updates = [
-            (param, param - self.learning_rate * gparam)
-            for param, gparam in zip(self.params, self.gparams)
-        ]
+        self.updates = list()
+        for param, gparam in zip(self.params, self.gparams):
+            weight_update = param - self.learning_rate * gparam
+            self.updates.append((param, theano.tensor.switch(theano.tensor.isnan(weight_update), 0, weight_update)))
         
         self.train_model = theano.function(
             inputs = [self.train_set_x, self.gamma, self.learning_rate],
@@ -197,14 +202,20 @@ class PiStateSubnetwork(MLP):
         train_values_x = np.asarray(train_set_x, dtype = theano.config.floatX)
         gamma_values = np.asarray(gamma, dtype = theano.config.floatX)
         epoch = 0
+        N = len(train_set_x)
         while (epoch < n_epochs):
             epoch += 1
-            avg_cost = self.train_model(train_values_x, gamma_values, learning_rate)
+            avg_cost = 0
+            for j in range(N):
+                avg_cost += self.train_model(train_values_x[j][0], gamma_values[j][:, 0], learning_rate)
+            avg_cost /= N
         return avg_cost
 
 class StateSubnetwork(MLP):
-    def __init__(self, state_id, n_in, n_hidden, n_out, architecture = "ergodic", learning_rate = 0.01):
-        MLP.__init__(self, n_in, n_hidden, n_out)
+    def __init__(self, state_id, n_in, n_hidden, n_out, architecture = "ergodic", 
+                 hidden_activation_function = "sigmoid", learning_rate = 0.01):
+        MLP.__init__(self, n_in, n_hidden, n_out, 
+                     hidden_activation_function = hidden_activation_function)
         self.state_id = state_id
         self.index = theano.tensor.lscalar('index')
         self.t = theano.tensor.lscalar('t')
@@ -218,10 +229,10 @@ class StateSubnetwork(MLP):
         self.cost = - (self.symbolic_xi_j[self.state_id, self.t, :] * theano.tensor.log(phi)).sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
-        self.updates = [
-            (param, param - self.learning_rate * gparam)
-            for param, gparam in zip(self.params, self.gparams)
-        ]
+        self.updates = list()
+        for param, gparam in zip(self.params, self.gparams):
+            weight_update = param - self.learning_rate * gparam
+            self.updates.append((param, theano.tensor.switch(theano.tensor.isnan(weight_update), 0, weight_update)))
         
         if not RELEASE_MODE:
             debugfile = open("theano_statenetwork_graph.txt", "w")
@@ -233,7 +244,7 @@ class StateSubnetwork(MLP):
             updates = self.updates
         )
         
-    def train(self, train_set_x, xi, n_epochs = 1, learning_rate = 0.01):
+    def train(self, train_set_x, xi, is_mv, n_epochs = 1, learning_rate = 0.01):
         N = len(train_set_x)
         train_values_x = np.asarray(train_set_x, dtype = theano.config.floatX)
         xi_values = np.asarray(xi, dtype = theano.config.floatX)
@@ -244,15 +255,18 @@ class StateSubnetwork(MLP):
             avg_cost = 0
             for sequence_id in range(N):
                 for j in range(len(train_values_x[sequence_id])):
-                    cost = self.train_model(train_values_x[sequence_id], xi_values[sequence_id], j, learning_rate)
-                    avg_cost += cost
-                    M += 1
+                    if not is_mv[sequence_id, j]:
+                        cost = self.train_model(train_values_x[sequence_id], xi_values[sequence_id], j, learning_rate)
+                        avg_cost += cost
+                        M += 1
         return avg_cost / float(M)
                     
         
 class OutputSubnetwork(MLP):
-    def __init__(self, state_id, n_in, n_hidden, n_out, is_classifier = True, learning_rate = 0.01):
-        MLP.__init__(self, n_in, n_hidden, n_out)
+    def __init__(self, state_id, n_in, n_hidden, n_out, is_classifier = True, 
+                 hidden_activation_function = "sigmoid", learning_rate = 0.01):
+        MLP.__init__(self, n_in, n_hidden, n_out, 
+                     hidden_activation_function = hidden_activation_function)
         self.state_id = state_id
         self.is_classifier = is_classifier
         self.memory = None
@@ -270,10 +284,10 @@ class OutputSubnetwork(MLP):
                        theano.tensor.log(eta[self.symbolic_targets[self.t]])).sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
-        self.updates = [
-            (param, param - self.learning_rate * gparam)
-            for param, gparam in zip(self.params, self.gparams)
-        ]
+        self.updates = list()
+        for param, gparam in zip(self.params, self.gparams):
+            weight_update = param - self.learning_rate * gparam
+            self.updates.append((param, theano.tensor.switch(theano.tensor.isnan(weight_update), 0, weight_update)))
         
         self.train_model = theano.function(
             inputs = [self.symbolic_x_j, self.symbolic_targets, self.symbolic_memory, self.t, self.learning_rate],
@@ -285,7 +299,7 @@ class OutputSubnetwork(MLP):
             debugfile = open("theano_outputnetwork_graph.txt", "w")
             theano.printing.debugprint(self.cost, file = debugfile)
         
-    def train(self, train_set_x, target_set, memory_array, n_epochs = 1, learning_rate = 0.05):
+    def train(self, train_set_x, target_set, memory_array, is_mv, n_epochs = 1, learning_rate = 0.05):
         N = len(train_set_x)
         assert(N == len(target_set))
         train_values_x = np.asarray(train_set_x, dtype = theano.config.floatX)
@@ -299,10 +313,11 @@ class OutputSubnetwork(MLP):
             avg_cost = 0
             for sequence_id in range(N):
                 for j in range(len(train_values_x[sequence_id])):
-                    cost = self.train_model(train_values_x[sequence_id], target_values[sequence_id],
-                                            memory_values[sequence_id], j, learning_rate)
-                    avg_cost += cost
-                    M += 1
+                    if not is_mv[sequence_id, j]:
+                        cost = self.train_model(train_values_x[sequence_id], target_values[sequence_id],
+                                                memory_values[sequence_id], j, learning_rate)
+                        avg_cost += cost
+                        M += 1
         return avg_cost / float(M)
 
 def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.double):
