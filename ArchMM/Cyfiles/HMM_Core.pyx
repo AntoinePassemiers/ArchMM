@@ -12,6 +12,7 @@ class IOConfig:
     def __init__(self):
         """ Parameters of the whole model """
         self.missing_value_sym = np.nan
+        self.n_iterations = 50
         
         """ Parameters of the initial state subnetwork """ 
         self.pi_nepochs = 5
@@ -128,7 +129,7 @@ class AdaptiveHMM:
     def randomSequence(self, *args, **kwargs):
         return self.hmm.randomSequence(*args, **kwargs)
         
-    def pySave(self, filename): # Save the whole object
+    def pySave(self, filename):
         attributes = {
             "MU" : self.mu, 
             "SIGMA" : self.sigma,
@@ -137,16 +138,22 @@ class AdaptiveHMM:
             "has_io" : self.has_io
         }
         pickle.dump(attributes, open(filename + "_adapt", "wb"))
-        self.hmm.pySave(<char*>filename)
+        if not self.has_io:
+            self.hmm.pySave(<char*>filename)
+        else:
+            self.hmm.saveIO(<char*>filename)
         
-    def pyLoad(self, filename): # Load the whole object
+    def pyLoad(self, filename):
         attributes = pickle.load(open(filename + "_adapt", "rb"))
         self.mu = attributes["MU"]
         self.sigma = attributes["SIGMA"]
         self.stdvs = attributes["stdvs"]
         self.standardize = attributes["standardize"]
         self.has_io = attributes["has_io"]
-        self.hmm.pyLoad(<char*>filename)
+        if not self.has_io:
+            self.hmm.pyLoad(<char*>filename)
+        else:
+            self.hmm.loadIO(<char*>filename)
     
     def cSave(self, filepath):
         self.hmm.cSave(<char*>filepath)

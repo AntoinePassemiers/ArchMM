@@ -11,7 +11,8 @@ cimport libc.math
 include "Artifacts.pyx"
 include "KMeans.pyx"
 include "ChangePointDetection.pyx"
-include "MLP.pyx"
+
+from MLP import *
 
 theano_support = False
 
@@ -244,7 +245,8 @@ cdef class BaseHMM:
     cdef cnp.ndarray mv_indexes
     # Arguments for the input-output HMM architecture
     cdef object pi_state_subnetwork, state_subnetworks, output_subnetworks
-    cdef size_t n_classes
+    cdef object parameters
+    cdef size_t n_classes, m, n, r
 
     def __cinit__(self, n_states, distribution = DISTRIBUTION_GAUSSIAN,
                   architecture = ARCHITECTURE_LINEAR, missing_value = DEFAULT_MISSING_VALUE,
@@ -563,7 +565,7 @@ cdef class BaseHMM:
         else:
             self.logFit(obs, mu, sigma, **kwargs)
         
-    def fitIO(self, inputs, targets = None, mu = None, sigma = None, n_iterations = 5,
+    def fitIO(self, inputs, weights = None, targets = None, mu = None, sigma = None,
               dynamic_features = False, delta_window = 1, is_classifier = True, n_classes = 2,
               parameters = None):
         """
@@ -589,6 +591,8 @@ cdef class BaseHMM:
         cdef size_t n = self.n_states
         cdef size_t output_dim = targets[0].shape[1] if len(targets[0].shape) == 2 else 1
         cdef size_t r = n_classes if is_classifier else output_dim
+        self.m, self.n, self.r = m, n, r
+        self.parameters = parameters
         cdef object N = list()
         for i in range(n):
             N.append(StateSubnetwork(i, m, parameters.s_nhidden, n, learning_rate = parameters.s_learning_rate,
@@ -602,10 +606,10 @@ cdef class BaseHMM:
         piN = PiStateSubnetwork(m, parameters.pi_nhidden, n, learning_rate = parameters.pi_learning_rate,
                                 hidden_activation_function = parameters.pi_activation)
         self.pi_state_subnetwork = piN
-        cdef cnp.ndarray[cnp.double_t,ndim = 2] loglikelihood = np.zeros((n_iterations, n_sequences), dtype = np.double)
-        cdef cnp.ndarray[cnp.double_t,ndim = 1] pistate_cost  = np.zeros(n_iterations, dtype = np.double)
-        cdef cnp.ndarray[cnp.double_t,ndim = 2] state_cost    = np.zeros((n_iterations, n), dtype = np.double)
-        cdef cnp.ndarray[cnp.double_t,ndim = 2] output_cost   = np.zeros((n_iterations, n), dtype = np.double)
+        cdef cnp.ndarray[cnp.double_t,ndim = 2] loglikelihood = np.zeros((parameters.n_iterations, n_sequences), dtype = np.double)
+        cdef cnp.ndarray[cnp.double_t,ndim = 1] pistate_cost  = np.zeros(parameters.n_iterations, dtype = np.double)
+        cdef cnp.ndarray[cnp.double_t,ndim = 2] state_cost    = np.zeros((parameters.n_iterations, n), dtype = np.double)
+        cdef cnp.ndarray[cnp.double_t,ndim = 2] output_cost   = np.zeros((parameters.n_iterations, n), dtype = np.double)
         cdef cnp.ndarray[cnp.float_t, ndim = 3] alpha = new3DVLMArray(n_sequences, n, T, dtype = np.float)
         cdef cnp.ndarray[cnp.float_t, ndim = 3] beta  = new3DVLMArray(n_sequences, n, T, dtype = np.float)
         cdef cnp.ndarray[cnp.float_t, ndim = 3] gamma = new3DVLMArray(n_sequences, n, T, dtype = np.float)
@@ -617,18 +621,15 @@ cdef class BaseHMM:
         cdef cnp.ndarray[cnp.double_t,ndim = 4] B = new3DVLMArray(n_sequences, n, T, r, dtype = np.double)
         cdef cnp.ndarray is_mv = hasMissingValues(U, parameters.missing_value_sym)
         
-        for iter in range(n_iterations):
+        for iter in range(parameters.n_iterations):
             print("Iteration number %i..." % iter)
             """ Forward procedure """
-            
             for j in range(n_sequences):
                 for k in range(T[j]):
                     if not is_mv[j, k]:
                         for i in range(n):
                             B[j, i, k, :] = O[i].computeOutput(U[j][k, :])[0] 
                             A[j, k, i, :] = N[i].computeOutput(U[j][k, :])[0]
-
-            printf("\tDensities computed\n")
             for j in range(n_sequences):
                 if not is_mv[j, 0]:
                     initial_probs = piN.processOutput(U[j][0, :]).eval()
@@ -654,7 +655,6 @@ cdef class BaseHMM:
                             for l in range(n):
                                 alpha[j, i, k] += alpha[j, l, k - 1]
                     loglikelihood[iter, j] += np.log(np.sum(alpha[j, :, k]))
-            printf("\t\tAlpha probabilities computed\n")
             """ Backward procedure """
             for j in range(n_sequences):
                 beta[j, :, -1] = 1
@@ -669,7 +669,6 @@ cdef class BaseHMM:
                             beta[j, i, k] = 0
                             for l in range(n):
                                 beta[j, i, k] += beta[j, l, k + 1]
-            printf("\t\tBeta probabilities computed\n")
             """ Forward-Backward xi computation """
             for j in range(n_sequences):
                 gamma[j] = np.multiply(alpha[j], beta[j]) # TO REMOVE IF USELESS
@@ -681,22 +680,28 @@ cdef class BaseHMM:
                         for l in range(n):
                             # xi[j, :, k, :] = np.multiply(A, alpha[j, :, k] * np.multiply(B[j, :, k + 1, targets[j][k + 1]], beta[j, :, k + 1]))
                             xi[j, i, k + 1, l] = beta[j, i, k + 1] * alpha[j, l, k] * A[j, k + 1, i, l] / denominator
-            printf("\t\tXi tensor computed\n")
-            printf("\tEnd of expectation step\n")
+            print("\tEnd of expectation step")
+            print("\t\t-> Average log-likelihood : %f" % loglikelihood[iter].mean())
             """ M-Step """
             """ 
             memory[j, k, i] is the probability that the current state for the sequence j at time k is i 
             xi[j, i, k, l] measures the expectation that, for the sequence j, the current state at
             time k is i and the current state at time k - 1 is l 
             """
-            pistate_cost[iter] = piN.train(U, gamma, n_epochs = parameters.pi_nepochs, 
-                                           learning_rate = parameters.pi_learning_rate)
-            for j in range(n):
-                state_cost[iter, j]  = N[j].train(U, xi, is_mv, n_epochs = parameters.s_nepochs, 
-                                                  learning_rate = parameters.s_learning_rate)
-                output_cost[iter, j] = O[j].train(U, targets, memory, is_mv, n_epochs = parameters.o_nepochs, 
-                                                  learning_rate = parameters.o_learning_rate)
-            printf("\tEnd of maximization step\n")
+            try:
+                pistate_cost[iter] = piN.train(U, gamma, weights, n_epochs = parameters.pi_nepochs, 
+                                               learning_rate = parameters.pi_learning_rate)
+                for j in range(n):
+                    state_cost[iter, j]  = N[j].train(U, xi, weights, is_mv, n_epochs = parameters.s_nepochs, 
+                                                      learning_rate = parameters.s_learning_rate)
+                    output_cost[iter, j] = O[j].train(U, targets, memory, weights, is_mv, n_epochs = parameters.o_nepochs, 
+                                                      learning_rate = parameters.o_learning_rate)
+                print("\tEnd of maximization step")
+                print("\t\t-> Average cost of the state subnetworks : %f" % state_cost[iter].mean())
+                print("\t\t-> Average cost of the output subnetworks : %f" % output_cost[iter].mean())
+            except MemoryError:
+                print("\tMemory error : the maximization step had to be skipped")
+                return loglikelihood[:iter], pistate_cost[:iter], state_cost[:iter], output_cost[:iter]
         return loglikelihood, pistate_cost, state_cost, output_cost
     
     def simulateIO(self, input):
@@ -932,9 +937,47 @@ cdef class BaseHMM:
         self.MU = self.mu = attributes["MU"]
         self.SIGMA = self.sigma = attributes["SIGMA"]
         self.missing_value = attributes["missing_value"]
-        self.pi_state_subnetwork = attributes["piN"]
-        self.state_subnetworks = attributes["N"]
-        self.output_subnetworks = attributes["O"]
         
+    def loadIO(self, filename):
+        attributes = pickle.load(open(filename, "rb"))
+        m = attributes["m"]
+        n = attributes["n"]
+        r = attributes["r"]
+        pi_state = attributes["pi_state"]
+        N_states = attributes["N_states"]
+        O_states = attributes["O_states"]
+        parameters = attributes["parameters"]
+        N, O = list(), list()
+        for i in range(n):
+            N.append(StateSubnetwork(i, m, parameters.s_nhidden, n, learning_rate = parameters.s_learning_rate,
+                                     hidden_activation_function = parameters.s_activation))
+            N[i].__setstate__(N_states[i])
+            O.append(OutputSubnetwork(i, m, parameters.o_nhidden, r, learning_rate = parameters.o_learning_rate,
+                                      hidden_activation_function = parameters.o_activation))
+            O[i].__setstate__(O_states[i])
+        piN = PiStateSubnetwork(m, parameters.pi_nhidden, n, learning_rate = parameters.pi_learning_rate,
+                                hidden_activation_function = parameters.pi_activation)
+        piN.__setstate__(pi_state)
+        self.pi_state_subnetwork = piN
+        self.state_subnetworks = N
+        self.output_subnetworks = O
+        self.n_states = n
+        self.n_classes = r
         
+    def saveIO(self, filename):
+        pi_state = self.pi_state_subnetwork.__getstate__()
+        N_states, O_states = list(), list()
+        for i in range(self.n_states):
+            N_states.append(self.state_subnetworks[i].__getstate__())
+            O_states.append(self.output_subnetworks[i].__getstate__())
+        attributes = {
+            "m" : self.m,
+            "n" : self.n,
+            "r" : self.r,
+            "parameters" : self.parameters,
+            "pi_state" : pi_state,
+            "N_states" : N_states,
+            "O_states" : O_states
+        }
+        pickle.dump(attributes, open(filename, "wb"))
 
