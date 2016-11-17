@@ -99,6 +99,7 @@ def testIOHMM():
     Y6 = np.zeros(25, dtype = np.int32)
     
     config = IOConfig()
+    config.n_iterations = 20
     config.s_learning_rate = 0.006
     config.o_learning_rate = 0.01
     config.pi_learning_rate = 0.01
@@ -110,7 +111,7 @@ def testIOHMM():
     config.o_nepochs = 5
     hmm = AdaptiveHMM(5, has_io = True)
     fit = hmm.fit([U, U2, U3, U4, U5, U6], targets = [Y, Y2, Y3, Y4, Y5, Y6], 
-                  n_iterations = 20, n_classes = 2, is_classifier = True, parameters = config)
+                  n_classes = 2, is_classifier = True, parameters = config)
     print(fit[0])
     print(fit[1])
     print(fit[2])
@@ -118,6 +119,14 @@ def testIOHMM():
     for i in range(4):
         np.save(open("iohmm_training_%i" % i, "wb"), fit[i])
 
+    U7  = np.arange(7, 57).reshape(25, 2)
+    U8  = np.random.rand(25, 2)
+    U9  = np.arange(3, 53).reshape(25, 2)
+    U10 = np.random.rand(25, 2)
+    U11 = np.arange(31, 81).reshape(25, 2)
+    U12 = np.random.rand(25, 2)
+    U13 = np.arange(18, 68).reshape(25, 2)
+    U14 = np.random.rand(25, 2)
     
     print(hmm.predictIO(U))
     print(hmm.predictIO(U2))
@@ -125,6 +134,14 @@ def testIOHMM():
     print(hmm.predictIO(U4))
     print(hmm.predictIO(U5))
     print(hmm.predictIO(U6))
+    print(hmm.predictIO(U7))
+    print(hmm.predictIO(U8))
+    print(hmm.predictIO(U9))
+    print(hmm.predictIO(U10))
+    print(hmm.predictIO(U11))
+    print(hmm.predictIO(U12))
+    print(hmm.predictIO(U13))
+    print(hmm.predictIO(U14))
     
 def testIOHMMSimulation():
     U = np.arange(1, 51).reshape(25, 2)

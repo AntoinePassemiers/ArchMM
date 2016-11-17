@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
+#cython: boundscheck=False, initializedcheck=True
 
-import ctypes, pickle
+import ctypes, pickle, gc
 import numpy as np
 from numpy.random import randn, random, dirichlet
 from scipy.spatial.distance import cdist # TO REMOVE
 from cpython cimport array 
 from libc.stdio cimport *
 cimport libc.math
+from cpython.mem cimport PyMem_Malloc, PyMem_Free
 
 include "Artifacts.pyx"
 include "KMeans.pyx"
@@ -258,6 +260,9 @@ cdef class BaseHMM:
         self.distribution = distribution
         self.n_states = n_states
         self.missing_value = missing_value
+        self.pi_state_subnetwork = None
+        self.state_subnetworks = None
+        self.output_subnetworks = None
         if distribution == DISTRIBUTION_GAUSSIAN:
             self.numParameters = &numParametersGaussian
             self.loglikelihood = &GaussianLoglikelihood
@@ -565,7 +570,7 @@ cdef class BaseHMM:
         else:
             self.logFit(obs, mu, sigma, **kwargs)
         
-    def fitIO(self, inputs, weights = None, targets = None, mu = None, sigma = None,
+    def fitIO(self, inputs, targets = None, mu = None, sigma = None,
               dynamic_features = False, delta_window = 1, is_classifier = True, n_classes = 2,
               parameters = None):
         """
@@ -585,8 +590,8 @@ cdef class BaseHMM:
         for p in range(n_sequences):
             T[p] = len(inputs[p])
         cdef size_t T_max = T.max()
-        cdef cnp.ndarray U = typedListToPaddedTensor(inputs, T, is_3D = True)
-        targets = typedListToPaddedTensor(targets, T, is_3D = False)
+        cdef cnp.ndarray U = typedListToPaddedTensor(inputs, T, is_3D = True, dtype = np.float32)
+        targets = typedListToPaddedTensor(targets, T, is_3D = False, dtype = np.int)
         cdef size_t m = U[0].shape[1]
         cdef size_t n = self.n_states
         cdef size_t output_dim = targets[0].shape[1] if len(targets[0].shape) == 2 else 1
@@ -594,29 +599,34 @@ cdef class BaseHMM:
         self.m, self.n, self.r = m, n, r
         self.parameters = parameters
         cdef object N = list()
-        for i in range(n):
-            N.append(StateSubnetwork(i, m, parameters.s_nhidden, n, learning_rate = parameters.s_learning_rate,
-                                     hidden_activation_function = parameters.s_activation))
-        self.state_subnetworks = N
         cdef object O = list()
-        for i in range(n):
-            O.append(OutputSubnetwork(i, m, parameters.o_nhidden, r, learning_rate = parameters.o_learning_rate,
-                                      hidden_activation_function = parameters.o_activation))
-        self.output_subnetworks = O
-        piN = PiStateSubnetwork(m, parameters.pi_nhidden, n, learning_rate = parameters.pi_learning_rate,
-                                hidden_activation_function = parameters.pi_activation)
-        self.pi_state_subnetwork = piN
+        if self.output_subnetworks == None:
+            for i in range(n):
+                N.append(StateSubnetwork(i, m, parameters.s_nhidden, n, learning_rate = parameters.s_learning_rate,
+                                         hidden_activation_function = parameters.s_activation))
+            self.state_subnetworks = N
+            for i in range(n):
+                O.append(OutputSubnetwork(i, m, parameters.o_nhidden, r, learning_rate = parameters.o_learning_rate,
+                                          hidden_activation_function = parameters.o_activation))
+            self.output_subnetworks = O
+            piN = PiStateSubnetwork(m, parameters.pi_nhidden, n, learning_rate = parameters.pi_learning_rate,
+                                    hidden_activation_function = parameters.pi_activation)
+            self.pi_state_subnetwork = piN
+        else:
+            piN = self.pi_state_subnetwork
+            N = self.state_subnetworks
+            O = self.output_subnetworks
         cdef cnp.ndarray[cnp.double_t,ndim = 2] loglikelihood = np.zeros((parameters.n_iterations, n_sequences), dtype = np.double)
         cdef cnp.ndarray[cnp.double_t,ndim = 1] pistate_cost  = np.zeros(parameters.n_iterations, dtype = np.double)
         cdef cnp.ndarray[cnp.double_t,ndim = 2] state_cost    = np.zeros((parameters.n_iterations, n), dtype = np.double)
         cdef cnp.ndarray[cnp.double_t,ndim = 2] output_cost   = np.zeros((parameters.n_iterations, n), dtype = np.double)
         cdef cnp.ndarray[cnp.float_t, ndim = 3] alpha = new3DVLMArray(n_sequences, n, T, dtype = np.float)
         cdef cnp.ndarray[cnp.float_t, ndim = 3] beta  = new3DVLMArray(n_sequences, n, T, dtype = np.float)
-        cdef cnp.ndarray[cnp.float_t, ndim = 3] gamma = new3DVLMArray(n_sequences, n, T, dtype = np.float)
-        cdef cnp.ndarray[cnp.double_t,ndim = 4] xi    = new3DVLMArray(n_sequences, n, T, n, dtype = np.double)
+        cdef cnp.ndarray[cnp.float32_t, ndim = 3] gamma = new3DVLMArray(n_sequences, n, T, dtype = np.float32)
+        cdef cnp.ndarray[cnp.float32_t,ndim = 4] xi    = new3DVLMArray(n_sequences, n, T, n, dtype = np.float32)
         cdef cnp.ndarray[cnp.float_t, ndim = 4] A = np.empty((n_sequences, T_max, n, n), dtype = np.float)
-        cdef cnp.ndarray[cnp.float_t, ndim = 2] initial_probs
-        cdef cnp.ndarray[cnp.float_t, ndim = 3] memory = np.empty((n_sequences, T_max, n), dtype = np.float)
+        cdef cnp.ndarray[cnp.float32_t, ndim = 2] initial_probs
+        cdef cnp.ndarray[cnp.float32_t, ndim = 3] memory = np.empty((n_sequences, T_max, n), dtype = np.float32)
         cdef cnp.ndarray[cnp.float_t, ndim = 1] new_internal_state = np.empty(n, dtype = np.float)
         cdef cnp.ndarray[cnp.double_t,ndim = 4] B = new3DVLMArray(n_sequences, n, T, r, dtype = np.double)
         cdef cnp.ndarray is_mv = hasMissingValues(U, parameters.missing_value_sym)
@@ -636,7 +646,7 @@ cdef class BaseHMM:
                     memory[j, 0, :] = initial_probs    
                     sequence_probs = np.multiply(B[j, :, 0, targets[j][0]], initial_probs)
                 else:
-                    memory[j, 0, :] = sequence_probs = np.ones(n) # TODO : random numbers ?
+                    memory[j, 0, :] = sequence_probs = np.ones(n) / n
                 loglikelihood[iter, j] = np.log(np.sum(sequence_probs))
                 for k in range(1, T[j]):
                     new_internal_state[:] = 0
@@ -689,12 +699,12 @@ cdef class BaseHMM:
             time k is i and the current state at time k - 1 is l 
             """
             try:
-                pistate_cost[iter] = piN.train(U, gamma, weights, n_epochs = parameters.pi_nepochs, 
+                pistate_cost[iter] = piN.train(U, gamma, n_epochs = parameters.pi_nepochs, 
                                                learning_rate = parameters.pi_learning_rate)
                 for j in range(n):
-                    state_cost[iter, j]  = N[j].train(U, xi, weights, is_mv, n_epochs = parameters.s_nepochs, 
+                    state_cost[iter, j]  = N[j].train(U, xi, is_mv, n_epochs = parameters.s_nepochs, 
                                                       learning_rate = parameters.s_learning_rate)
-                    output_cost[iter, j] = O[j].train(U, targets, memory, weights, is_mv, n_epochs = parameters.o_nepochs, 
+                    output_cost[iter, j] = O[j].train(U, targets, memory, is_mv, n_epochs = parameters.o_nepochs, 
                                                       learning_rate = parameters.o_learning_rate)
                 print("\tEnd of maximization step")
                 print("\t\t-> Average cost of the state subnetworks : %f" % state_cost[iter].mean())
@@ -738,6 +748,7 @@ cdef class BaseHMM:
         cdef cnp.ndarray memory
         cdef Py_ssize_t i, t
         cdef cnp.ndarray is_mv = hasMissingValues(input, self.missing_value, n_datadim = 1)
+        input = np.asarray(input, dtype = np.float32)
         if binary_prediction:
             if not is_mv[0]:
                 memory = np.tile(np.log2(piN.computeOutput(input[0])[0]), (self.n_classes, 1))
@@ -938,6 +949,25 @@ cdef class BaseHMM:
         self.SIGMA = self.sigma = attributes["SIGMA"]
         self.missing_value = attributes["missing_value"]
         
+    def saveIO(self, filename):
+        pi_state = self.pi_state_subnetwork.__getstate__()
+        N_states, O_states = list(), list()
+        for i in range(self.n_states):
+            N_states.append(self.state_subnetworks[i].__getstate__())
+            O_states.append(self.output_subnetworks[i].__getstate__())
+        attributes = {
+            "m" : self.m,
+            "n" : self.n,
+            "r" : self.r,
+            "parameters" : self.parameters,
+            "pi_state" : pi_state,
+            "N_states" : N_states,
+            "O_states" : O_states
+        }
+        save_file = open(filename, "wb")
+        pickle.dump(attributes, save_file)
+        save_file.close()
+        
     def loadIO(self, filename):
         attributes = pickle.load(open(filename, "rb"))
         m = attributes["m"]
@@ -963,21 +993,3 @@ cdef class BaseHMM:
         self.output_subnetworks = O
         self.n_states = n
         self.n_classes = r
-        
-    def saveIO(self, filename):
-        pi_state = self.pi_state_subnetwork.__getstate__()
-        N_states, O_states = list(), list()
-        for i in range(self.n_states):
-            N_states.append(self.state_subnetworks[i].__getstate__())
-            O_states.append(self.output_subnetworks[i].__getstate__())
-        attributes = {
-            "m" : self.m,
-            "n" : self.n,
-            "r" : self.r,
-            "parameters" : self.parameters,
-            "pi_state" : pi_state,
-            "N_states" : N_states,
-            "O_states" : O_states
-        }
-        pickle.dump(attributes, open(filename, "wb"))
-

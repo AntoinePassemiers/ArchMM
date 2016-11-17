@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
-# cython: profile=True
+# cython: boundscheck=False
 
 import collections, numbers, pickle
 import numpy as np
 
-
 include "HMM.pyx"
-
 
 class IOConfig:
     def __init__(self):
