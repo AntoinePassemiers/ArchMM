@@ -681,7 +681,9 @@ cdef class BaseHMM:
                                 beta[j, i, k] += beta[j, l, k + 1]
             """ Forward-Backward xi computation """
             for j in range(n_sequences):
-                gamma[j] = np.multiply(alpha[j], beta[j]) # TO REMOVE IF USELESS
+                for k in range(T[j]):
+                    temp = np.multiply(alpha[j, :, k], beta[j, :, k])
+                    gamma[j, :, k] = np.divide(temp, temp.sum())
             for j in range(n_sequences):
                 denominator = np.sum(alpha[j, :, -1])
                 xi[j, :, 0, :] = 0 # TODO ???

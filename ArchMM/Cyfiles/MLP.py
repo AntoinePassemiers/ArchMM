@@ -196,8 +196,8 @@ class PiStateSubnetwork(MLP):
         self.learning_rate = theano.tensor.fscalar("learning_rate")
         self.s = theano.tensor.lscalar('s')
 
-        self.cost = - theano.tensor.dot(self.gamma[self.s, :, 0], 
-                        theano.tensor.log(self.processOutput(self.train_set_x[self.s, 0, :])[0]))
+        self.cost = - theano.tensor.dot(self.gamma[self.s, :, 0],
+            theano.tensor.log(self.processOutput(self.train_set_x[self.s, 0, :])[0]))
         
         # http://deeplearning.net/software/theano/sandbox/randomnumbers.html
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
@@ -245,7 +245,7 @@ class StateSubnetwork(MLP):
         self.learning_rate = theano.tensor.fscalar("learning_rate")
         
         phi = self.processOutput(self.symbolic_x[self.s, self.t, :])[0]
-        self.cost = - (self.symbolic_xi[self.s, self.state_id, self.t, :] * theano.tensor.log(phi)).sum()
+        self.cost = - (theano.tensor.dot(self.symbolic_xi[self.s, self.state_id, self.t, :], theano.tensor.log(phi))).sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = list()
@@ -266,13 +266,14 @@ class StateSubnetwork(MLP):
         
     def train(self, train_set_x, xi, is_mv, n_epochs = 1, learning_rate = 0.01):
         N = len(train_set_x)
+        T = len(train_set_x[0]) # Warning : Sequence length is supposed to be constant
         epoch = 0
         while (epoch < n_epochs):
             epoch += 1
             M = 0
             avg_cost = 0
-            for sequence_id in range(N):
-                for j in range(len(train_set_x[sequence_id])):
+            for j in range(T):
+                for sequence_id in range(N):
                     if not is_mv[sequence_id, j]:
                         cost = self.train_model(train_set_x, xi, sequence_id, j, learning_rate)
                         avg_cost += cost
@@ -300,8 +301,8 @@ class OutputSubnetwork(MLP):
         self.symbolic_target = theano.tensor.imatrix(name = "target")
         
         eta = self.processOutput(self.symbolic_x[self.s, self.t, :])[0]
-        self.cost = - (self.symbolic_memory[self.s, self.t, self.state_id] * \
-                       theano.tensor.log(eta[self.symbolic_target[self.s, self.t]])).sum()
+        self.cost = - (theano.tensor.dot(self.symbolic_memory[self.s, self.t, self.state_id],
+                       theano.tensor.log(eta[self.symbolic_target[self.s, self.t]]))).sum()
         
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = list()
@@ -323,14 +324,15 @@ class OutputSubnetwork(MLP):
         
     def train(self, train_set_x, target_set, memory_array, is_mv, n_epochs = 1, learning_rate = 0.05):
         N = len(train_set_x)
+        T = len(train_set_x[0]) # Warning : Sequence length is supposed to be constant
         assert(N == len(target_set))
         epoch = 0
         while (epoch < n_epochs):
             epoch += 1
             M = 0
             avg_cost = 0
-            for sequence_id in range(N):
-                for j in range(len(train_set_x[sequence_id])):
+            for j in range(T):
+                for sequence_id in range(N):
                     if not is_mv[sequence_id, j]:
                         cost = self.train_model(train_set_x, target_set,
                                 memory_array, sequence_id, j, learning_rate)
