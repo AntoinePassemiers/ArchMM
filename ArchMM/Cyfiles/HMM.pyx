@@ -590,7 +590,7 @@ cdef class BaseHMM:
         for p in range(n_sequences):
             T[p] = len(inputs[p])
         cdef size_t T_max = T.max()
-        cdef cnp.ndarray U = typedListToPaddedTensor(inputs, T, is_3D = True, dtype = np.float32)
+        cdef cnp.ndarray U = typedListToPaddedTensor(inputs, T, is_3D = True, dtype = np.float64)
         targets = typedListToPaddedTensor(targets, T, is_3D = False, dtype = np.int)
         cdef size_t m = U[0].shape[1]
         cdef size_t n = self.n_states
@@ -620,13 +620,13 @@ cdef class BaseHMM:
         cdef cnp.ndarray[cnp.double_t,ndim = 1] pistate_cost  = np.zeros(parameters.n_iterations, dtype = np.double)
         cdef cnp.ndarray[cnp.double_t,ndim = 2] state_cost    = np.zeros((parameters.n_iterations, n), dtype = np.double)
         cdef cnp.ndarray[cnp.double_t,ndim = 2] output_cost   = np.zeros((parameters.n_iterations, n), dtype = np.double)
-        cdef cnp.ndarray[cnp.float_t, ndim = 3] alpha = new3DVLMArray(n_sequences, n, T, dtype = np.float)
-        cdef cnp.ndarray[cnp.float_t, ndim = 3] beta  = new3DVLMArray(n_sequences, n, T, dtype = np.float)
-        cdef cnp.ndarray[cnp.float32_t, ndim = 3] gamma = new3DVLMArray(n_sequences, n, T, dtype = np.float32)
-        cdef cnp.ndarray[cnp.float32_t,ndim = 4] xi    = new3DVLMArray(n_sequences, n, T, n, dtype = np.float32)
+        cdef cnp.ndarray[cnp.float64_t, ndim = 3] alpha = new3DVLMArray(n_sequences, n, T, dtype = np.float64)
+        cdef cnp.ndarray[cnp.float64_t, ndim = 3] beta  = new3DVLMArray(n_sequences, n, T, dtype = np.float64)
+        cdef cnp.ndarray[cnp.float64_t, ndim = 3] gamma = new3DVLMArray(n_sequences, n, T, dtype = np.float64)
+        cdef cnp.ndarray[cnp.float64_t,ndim = 4] xi    = new3DVLMArray(n_sequences, n, T, n, dtype = np.float64)
         cdef cnp.ndarray[cnp.float_t, ndim = 4] A = np.empty((n_sequences, T_max, n, n), dtype = np.float)
-        cdef cnp.ndarray[cnp.float32_t, ndim = 2] initial_probs
-        cdef cnp.ndarray[cnp.float32_t, ndim = 3] memory = np.empty((n_sequences, T_max, n), dtype = np.float32)
+        cdef cnp.ndarray[cnp.float64_t, ndim = 2] initial_probs
+        cdef cnp.ndarray[cnp.float64_t, ndim = 3] memory = np.empty((n_sequences, T_max, n), dtype = np.float64)
         cdef cnp.ndarray[cnp.float_t, ndim = 1] new_internal_state = np.empty(n, dtype = np.float)
         cdef cnp.ndarray[cnp.double_t,ndim = 4] B = new3DVLMArray(n_sequences, n, T, r, dtype = np.double)
         cdef cnp.ndarray is_mv = hasMissingValues(U, parameters.missing_value_sym)
@@ -645,8 +645,10 @@ cdef class BaseHMM:
                     initial_probs = piN.processOutput(U[j][0, :]).eval()
                     memory[j, 0, :] = initial_probs    
                     sequence_probs = np.multiply(B[j, :, 0, targets[j][0]], initial_probs)
+                    alpha[j, :, 0] = sequence_probs[:]
                 else:
-                    memory[j, 0, :] = sequence_probs = np.ones(n) / n
+                    memory[j, 0, :] = sequence_probs = np.ones(n, np.float64)
+                    alpha[j, :, 0] = np.ones(n, dtype = np.float64)
                 loglikelihood[iter, j] = np.log(np.sum(sequence_probs))
                 for k in range(1, T[j]):
                     new_internal_state[:] = 0
@@ -682,6 +684,8 @@ cdef class BaseHMM:
             """ Forward-Backward xi computation """
             for j in range(n_sequences):
                 for k in range(T[j]):
+                    print(alpha[j, :, k])
+                    print(beta[j, :, k])
                     temp = np.multiply(alpha[j, :, k], beta[j, :, k])
                     gamma[j, :, k] = np.divide(temp, temp.sum())
             for j in range(n_sequences):

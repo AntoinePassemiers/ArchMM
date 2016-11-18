@@ -4,11 +4,11 @@ import numpy as np
 import os, timeit
 
 import theano
-import theano.typed_list
 from theano.tensor.shared_randomstreams import RandomStreams
 
 from Theano_ops import *
 
+theano.config.floatX = 'float64'
 theano.config.allow_gc = True
 theano.config.scan.allow_gc = True
 theano.config.scan.allow_output_prealloc = False
@@ -54,10 +54,10 @@ class LogisticRegression(Layer):
                 high = np.sqrt(6. / (n_in + n_out)),
                 size = (n_in, n_out)
             ),
-            dtype = np.float32)
+            dtype = np.float64)
         W_values *= 4
         self.W = theano.shared(value = W_values, name = 'W', borrow = True)
-        b_values = np.asarray(np.random.rand(n_out), dtype = np.float32)
+        b_values = np.asarray(np.random.rand(n_out), dtype = np.float64)
         self.b = theano.shared(value = b_values, name = 'b', borrow = True)
         
         self.p_y_given_x = theano.tensor.nnet.softmax(theano.tensor.dot(input, self.W) + self.b)
@@ -90,7 +90,7 @@ class HiddenLayer(Layer):
                     high = np.sqrt(6. / (n_in + n_out)),
                     size = (n_in, n_out)
                 ),
-                dtype = np.float32
+                dtype = np.float64
             )
             if activation == theano.tensor.nnet.sigmoid:
                 W_values *= 4
@@ -98,7 +98,7 @@ class HiddenLayer(Layer):
             W = theano.shared(value = W_values, name = 'W', borrow = True)
 
         if b is None:
-            b_values = np.asarray(np.random.rand(n_out), dtype = np.float32)
+            b_values = np.asarray(np.random.rand(n_out), dtype = np.float64)
             b = theano.shared(value = b_values, name = 'b', borrow = True)
         
         self.W = W
@@ -118,7 +118,7 @@ class MLP(object):
         self.n_in = n_in
         self.n_hidden = n_hidden
         self.n_out = n_out
-        self.input = self.x = theano.tensor.matrix(name = 'x', dtype = 'float32')
+        self.input = self.x = theano.tensor.matrix(name = 'x', dtype = theano.config.floatX)
         self.rng = rng
         if hidden_activation_function == "tanh":
             self.activation = theano.tensor.tanh
@@ -146,7 +146,7 @@ class MLP(object):
         self.params = self.hiddenLayer.params + self.logRegressionLayer.params
         self.input = input
         
-        symbolic_X_j_k = theano.tensor.vector(name = "X", dtype = 'float32')
+        symbolic_X_j_k = theano.tensor.vector(name = "X", dtype = theano.config.floatX)
         next_layer_input = symbolic_X_j_k 
         for layer in self.layers:
             next_layer_input = layer.processOutput(next_layer_input)
@@ -163,7 +163,7 @@ class MLP(object):
     def processOutput(self, X):
         for layer in self.layers:
             X = layer.processOutput(X)
-        return X
+        return X # theano.tensor.switch(theano.tensor.isnan(X), 0.0001, X)
     
     def predict(self, test_X):
         X_values = np.asarray(test_X, dtype = np.float32)
@@ -190,9 +190,9 @@ class PiStateSubnetwork(MLP):
                      dropout_threshold = dropout_threshold)
         self.state_id = 0
         self.index = theano.tensor.lscalar('index')
-        self.symbolic_gamma_j = theano.tensor.matrix(name = 'gamma_j', dtype = 'float32')
-        self.train_set_x = theano.tensor.tensor3(name = 'x', dtype = 'float32')
-        self.gamma = theano.tensor.tensor3(name = 'gamma', dtype = 'float32')
+        self.symbolic_gamma_j = theano.tensor.matrix(name = 'gamma_j', dtype = theano.config.floatX)
+        self.train_set_x = theano.tensor.tensor3(name = 'x', dtype = theano.config.floatX)
+        self.gamma = theano.tensor.tensor3(name = 'gamma', dtype = theano.config.floatX)
         self.learning_rate = theano.tensor.fscalar("learning_rate")
         self.s = theano.tensor.lscalar('s')
 
@@ -225,7 +225,9 @@ class PiStateSubnetwork(MLP):
             epoch += 1
             avg_cost = 0
             for j in range(N):
-                avg_cost += self.train_model(train_set_x, gamma, j, learning_rate)
+                cost = self.train_model(train_set_x, gamma, j, learning_rate)
+                avg_cost += cost
+                print(cost)
             avg_cost /= N
         return avg_cost
 
@@ -240,8 +242,8 @@ class StateSubnetwork(MLP):
         self.index = theano.tensor.lscalar('index')
         self.t = theano.tensor.lscalar('t')
         self.s = theano.tensor.lscalar('s')
-        self.symbolic_xi = theano.tensor.tensor4(name = 'xi', dtype = 'float32')
-        self.symbolic_x = theano.tensor.tensor3(name = 'x', dtype = 'float32')
+        self.symbolic_xi = theano.tensor.tensor4(name = 'xi', dtype = theano.config.floatX)
+        self.symbolic_x = theano.tensor.tensor3(name = 'x', dtype = theano.config.floatX)
         self.learning_rate = theano.tensor.fscalar("learning_rate")
         
         phi = self.processOutput(self.symbolic_x[self.s, self.t, :])[0]
@@ -294,9 +296,9 @@ class OutputSubnetwork(MLP):
         self.index = theano.tensor.lscalar('index')
         self.t = theano.tensor.lscalar('t')
         self.s = theano.tensor.lscalar('s')
-        self.symbolic_memory = theano.tensor.tensor3(name = 'memory', dtype = 'float32')
-        self.symbolic_x = theano.tensor.tensor3(name = 'x_j', dtype = 'float32')
-        self.train_set_x = theano.tensor.matrix(name = 'x', dtype = 'float32')
+        self.symbolic_memory = theano.tensor.tensor3(name = 'memory', dtype = theano.config.floatX)
+        self.symbolic_x = theano.tensor.tensor3(name = 'x_j', dtype = theano.config.floatX)
+        self.train_set_x = theano.tensor.matrix(name = 'x', dtype = theano.config.floatX)
         self.learning_rate = theano.tensor.fscalar("learning_rate")
         self.symbolic_target = theano.tensor.imatrix(name = "target")
         
@@ -351,7 +353,7 @@ def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.double):
     else:
         return np.empty((P, T, ndim.max(), ndim_2), dtype = dtype)
 
-def typedListToPaddedTensor(typed_list, T, is_3D = True, dtype = np.float32):
+def typedListToPaddedTensor(typed_list, T, is_3D = True, dtype = np.float64):
     assert(len(typed_list) > 0)
     if isinstance(typed_list, list):
         P = len(T)
