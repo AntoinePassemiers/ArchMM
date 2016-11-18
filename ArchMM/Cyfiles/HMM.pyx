@@ -62,6 +62,12 @@ cdef ieexp2d(M):
             M[i][j] = libc.math.exp(M[i][j]) if M[i][j] != LOG_ZERO else 0.0
     return M
 
+def logsum(vec):
+    return np.log(np.sum(np.exp(vec)))
+
+def binaryLogsum(x, y):
+    return np.log(np.exp(x) + np.exp(y))
+
 ctypedef double signal_t
 ctypedef cnp.double_t data_t
 
@@ -166,7 +172,7 @@ cdef cnp.ndarray GaussianLoglikelihood(cnp.ndarray obs, cnp.ndarray mu, cnp.ndar
         lnf[:, k] = -0.5 * (dln2pi + lndetV + q) # TODO : check the log-likelihood constraints
     return lnf
 
-cdef logsum(matrix, axis = None):
+cdef elogsum(matrix, axis = None):
     M = matrix.max(axis)
     if axis and matrix.ndim > 1:
         shape = list(matrix.shape)
@@ -342,9 +348,9 @@ cdef class BaseHMM:
         with np.errstate(over = 'ignore'):
             ln_alpha[0, :] = np.nan_to_num(self.ln_initial_probs + lnf[0, :])
             for t in range(1, T):
-                ln_alpha[t, :] = logsum(ln_alpha[t - 1, :] + self.ln_transition_probs.T, 1) + lnf[t, :]
+                ln_alpha[t, :] = elogsum(ln_alpha[t - 1, :] + self.ln_transition_probs.T, 1) + lnf[t, :]
             ln_alpha = np.nan_to_num(ln_alpha)
-        return logsum(ln_alpha[-1, :])
+        return elogsum(ln_alpha[-1, :])
 
     cdef backwardProcedure(self, lnf, ln_beta):
         """ Implementation of the backward procedure 
@@ -363,9 +369,9 @@ cdef class BaseHMM:
         with np.errstate(over = 'ignore'):
             ln_beta[T - 1, :] = 0.0
             for t in range(T - 2, -1, -1):
-                ln_beta[t, :] = logsum(self.ln_transition_probs + lnf[t + 1, :] + ln_beta[t + 1, :], 1)
+                ln_beta[t, :] = elogsum(self.ln_transition_probs + lnf[t + 1, :] + ln_beta[t + 1, :], 1)
             ln_beta = np.nan_to_num(ln_beta)
-        return logsum(ln_beta[0, :] + lnf[0, :] + self.ln_initial_probs)
+        return elogsum(ln_beta[0, :] + lnf[0, :] + self.ln_initial_probs)
     
     def E_step(self, lnf, ln_alpha, ln_beta, ln_eta):
         cdef Py_ssize_t i, j, t, T = len(lnf)
@@ -590,7 +596,7 @@ cdef class BaseHMM:
         for p in range(n_sequences):
             T[p] = len(inputs[p])
         cdef size_t T_max = T.max()
-        cdef cnp.ndarray U = typedListToPaddedTensor(inputs, T, is_3D = True, dtype = np.float64)
+        cdef cnp.ndarray U = typedListToPaddedTensor(inputs, T, is_3D = True, dtype = np.float32)
         targets = typedListToPaddedTensor(targets, T, is_3D = False, dtype = np.int)
         cdef size_t m = U[0].shape[1]
         cdef size_t n = self.n_states
@@ -616,17 +622,18 @@ cdef class BaseHMM:
             piN = self.pi_state_subnetwork
             N = self.state_subnetworks
             O = self.output_subnetworks
+        cdef object supervisor = Supervisor(targets, parameters.n_iterations, n_sequences)
         cdef cnp.ndarray[cnp.double_t,ndim = 2] loglikelihood = np.zeros((parameters.n_iterations, n_sequences), dtype = np.double)
         cdef cnp.ndarray[cnp.double_t,ndim = 1] pistate_cost  = np.zeros(parameters.n_iterations, dtype = np.double)
         cdef cnp.ndarray[cnp.double_t,ndim = 2] state_cost    = np.zeros((parameters.n_iterations, n), dtype = np.double)
         cdef cnp.ndarray[cnp.double_t,ndim = 2] output_cost   = np.zeros((parameters.n_iterations, n), dtype = np.double)
-        cdef cnp.ndarray[cnp.float64_t, ndim = 3] alpha = new3DVLMArray(n_sequences, n, T, dtype = np.float64)
-        cdef cnp.ndarray[cnp.float64_t, ndim = 3] beta  = new3DVLMArray(n_sequences, n, T, dtype = np.float64)
-        cdef cnp.ndarray[cnp.float64_t, ndim = 3] gamma = new3DVLMArray(n_sequences, n, T, dtype = np.float64)
-        cdef cnp.ndarray[cnp.float64_t,ndim = 4] xi    = new3DVLMArray(n_sequences, n, T, n, dtype = np.float64)
+        cdef cnp.ndarray[cnp.float32_t, ndim = 3] alpha = new3DVLMArray(n_sequences, n, T, dtype = np.float32)
+        cdef cnp.ndarray[cnp.float32_t, ndim = 3] beta  = new3DVLMArray(n_sequences, n, T, dtype = np.float32)
+        cdef cnp.ndarray[cnp.float32_t, ndim = 3] gamma = new3DVLMArray(n_sequences, n, T, dtype = np.float32)
+        cdef cnp.ndarray[cnp.float32_t,ndim = 4] xi    = new3DVLMArray(n_sequences, n, T, n, dtype = np.float32)
         cdef cnp.ndarray[cnp.float_t, ndim = 4] A = np.empty((n_sequences, T_max, n, n), dtype = np.float)
-        cdef cnp.ndarray[cnp.float64_t, ndim = 2] initial_probs
-        cdef cnp.ndarray[cnp.float64_t, ndim = 3] memory = np.empty((n_sequences, T_max, n), dtype = np.float64)
+        cdef cnp.ndarray[cnp.float32_t, ndim = 2] initial_probs
+        cdef cnp.ndarray[cnp.float32_t, ndim = 3] memory = np.empty((n_sequences, T_max, n), dtype = np.float32)
         cdef cnp.ndarray[cnp.float_t, ndim = 1] new_internal_state = np.empty(n, dtype = np.float)
         cdef cnp.ndarray[cnp.double_t,ndim = 4] B = new3DVLMArray(n_sequences, n, T, r, dtype = np.double)
         cdef cnp.ndarray is_mv = hasMissingValues(U, parameters.missing_value_sym)
@@ -647,8 +654,8 @@ cdef class BaseHMM:
                     sequence_probs = np.multiply(B[j, :, 0, targets[j][0]], initial_probs)
                     alpha[j, :, 0] = sequence_probs[:]
                 else:
-                    memory[j, 0, :] = sequence_probs = np.ones(n, np.float64)
-                    alpha[j, :, 0] = np.ones(n, dtype = np.float64)
+                    memory[j, 0, :] = sequence_probs = np.ones(n, np.float32)
+                    alpha[j, :, 0] = np.ones(n, dtype = np.float32)
                 loglikelihood[iter, j] = np.log(np.sum(sequence_probs))
                 for k in range(1, T[j]):
                     new_internal_state[:] = 0
@@ -683,11 +690,13 @@ cdef class BaseHMM:
                                 beta[j, i, k] += beta[j, l, k + 1]
             """ Forward-Backward xi computation """
             for j in range(n_sequences):
+                """
                 for k in range(T[j]):
-                    print(alpha[j, :, k])
-                    print(beta[j, :, k])
                     temp = np.multiply(alpha[j, :, k], beta[j, :, k])
                     gamma[j, :, k] = np.divide(temp, temp.sum())
+                """
+                temp = np.multiply(alpha[j, :, 0], beta[j, :, 0])
+                gamma[j, :, 0] = np.divide(temp, temp.sum())
             for j in range(n_sequences):
                 denominator = np.sum(alpha[j, :, -1])
                 xi[j, :, 0, :] = 0 # TODO ???
@@ -704,15 +713,17 @@ cdef class BaseHMM:
             xi[j, i, k, l] measures the expectation that, for the sequence j, the current state at
             time k is i and the current state at time k - 1 is l 
             """
+            weights = supervisor.next(loglikelihood[iter])
             try:
-                pistate_cost[iter] = piN.train(U, gamma, n_epochs = parameters.pi_nepochs, 
+                pistate_cost[iter] = piN.train(U, gamma, weights, n_epochs = parameters.pi_nepochs, 
                                                learning_rate = parameters.pi_learning_rate)
                 for j in range(n):
-                    state_cost[iter, j]  = N[j].train(U, xi, is_mv, n_epochs = parameters.s_nepochs, 
+                    state_cost[iter, j]  = N[j].train(U, xi, weights, is_mv, n_epochs = parameters.s_nepochs, 
                                                       learning_rate = parameters.s_learning_rate)
-                    output_cost[iter, j] = O[j].train(U, targets, memory, is_mv, n_epochs = parameters.o_nepochs, 
+                    output_cost[iter, j] = O[j].train(U, targets, memory, weights, is_mv, n_epochs = parameters.o_nepochs, 
                                                       learning_rate = parameters.o_learning_rate)
                 print("\tEnd of maximization step")
+                print("\t\t-> Cost of the initial state subnetwork : %f" % pistate_cost[iter])
                 print("\t\t-> Average cost of the state subnetworks : %f" % state_cost[iter].mean())
                 print("\t\t-> Average cost of the output subnetworks : %f" % output_cost[iter].mean())
             except MemoryError:
@@ -765,7 +776,7 @@ cdef class BaseHMM:
                     state_sequence[i, 0] = memory[i].argmax()
                     memory[i, :] = memory[i, state_sequence[i, 0]]
             else:
-                memory = np.zeros((self.n_classes, T), dtype = np.float64)
+                memory = np.zeros((self.n_classes, T), dtype = np.float32)
             for t in range(1, T):
                 if not is_mv[t]:
                     for i in range(self.n_classes):

@@ -8,7 +8,7 @@ from theano.tensor.shared_randomstreams import RandomStreams
 
 from Theano_ops import *
 
-theano.config.floatX = 'float64'
+theano.config.floatX = 'float32'
 theano.config.allow_gc = True
 theano.config.scan.allow_gc = True
 theano.config.scan.allow_output_prealloc = False
@@ -54,10 +54,10 @@ class LogisticRegression(Layer):
                 high = np.sqrt(6. / (n_in + n_out)),
                 size = (n_in, n_out)
             ),
-            dtype = np.float64)
+            dtype = np.float32)
         W_values *= 4
         self.W = theano.shared(value = W_values, name = 'W', borrow = True)
-        b_values = np.asarray(np.random.rand(n_out), dtype = np.float64)
+        b_values = np.asarray(np.random.rand(n_out), dtype = np.float32)
         self.b = theano.shared(value = b_values, name = 'b', borrow = True)
         
         self.p_y_given_x = theano.tensor.nnet.softmax(theano.tensor.dot(input, self.W) + self.b)
@@ -90,7 +90,7 @@ class HiddenLayer(Layer):
                     high = np.sqrt(6. / (n_in + n_out)),
                     size = (n_in, n_out)
                 ),
-                dtype = np.float64
+                dtype = np.float32
             )
             if activation == theano.tensor.nnet.sigmoid:
                 W_values *= 4
@@ -98,7 +98,7 @@ class HiddenLayer(Layer):
             W = theano.shared(value = W_values, name = 'W', borrow = True)
 
         if b is None:
-            b_values = np.asarray(np.random.rand(n_out), dtype = np.float64)
+            b_values = np.asarray(np.random.rand(n_out), dtype = np.float32)
             b = theano.shared(value = b_values, name = 'b', borrow = True)
         
         self.W = W
@@ -193,7 +193,7 @@ class PiStateSubnetwork(MLP):
         self.symbolic_gamma_j = theano.tensor.matrix(name = 'gamma_j', dtype = theano.config.floatX)
         self.train_set_x = theano.tensor.tensor3(name = 'x', dtype = theano.config.floatX)
         self.gamma = theano.tensor.tensor3(name = 'gamma', dtype = theano.config.floatX)
-        self.learning_rate = theano.tensor.fscalar("learning_rate")
+        self.learning_rate = theano.tensor.scalar("learning_rate", dtype = theano.config.floatX)
         self.s = theano.tensor.lscalar('s')
 
         self.cost = - theano.tensor.dot(self.gamma[self.s, :, 0],
@@ -218,16 +218,15 @@ class PiStateSubnetwork(MLP):
             debugfile = open("theano_pistatenetwork_graph.txt", "w")
             theano.printing.debugprint(self.cost, file = debugfile)
             debugfile.close()
-    def train(self, train_set_x, gamma, n_epochs = 1, learning_rate = 0.01):
+    def train(self, train_set_x, gamma, weights, n_epochs = 1, learning_rate = 0.01):
         epoch = 0
         N = len(train_set_x)
         while (epoch < n_epochs):
             epoch += 1
             avg_cost = 0
-            for j in range(N):
-                cost = self.train_model(train_set_x, gamma, j, learning_rate)
+            for sequence_id in range(N):
+                cost = self.train_model(train_set_x, gamma, sequence_id, float(learning_rate * weights[sequence_id]))
                 avg_cost += cost
-                print(cost)
             avg_cost /= N
         return avg_cost
 
@@ -266,7 +265,7 @@ class StateSubnetwork(MLP):
             updates = self.updates
         )
         
-    def train(self, train_set_x, xi, is_mv, n_epochs = 1, learning_rate = 0.01):
+    def train(self, train_set_x, xi, weights, is_mv, n_epochs = 1, learning_rate = 0.01):
         N = len(train_set_x)
         T = len(train_set_x[0]) # Warning : Sequence length is supposed to be constant
         epoch = 0
@@ -277,7 +276,7 @@ class StateSubnetwork(MLP):
             for j in range(T):
                 for sequence_id in range(N):
                     if not is_mv[sequence_id, j]:
-                        cost = self.train_model(train_set_x, xi, sequence_id, j, learning_rate)
+                        cost = self.train_model(train_set_x, xi, sequence_id, j, float(learning_rate * weights[sequence_id]))
                         avg_cost += cost
                         M += 1
         return avg_cost / float(M)
@@ -324,7 +323,7 @@ class OutputSubnetwork(MLP):
             theano.printing.debugprint(self.cost, file = debugfile)
         
         
-    def train(self, train_set_x, target_set, memory_array, is_mv, n_epochs = 1, learning_rate = 0.05):
+    def train(self, train_set_x, target_set, memory_array, weights, is_mv, n_epochs = 1, learning_rate = 0.05):
         N = len(train_set_x)
         T = len(train_set_x[0]) # Warning : Sequence length is supposed to be constant
         assert(N == len(target_set))
@@ -337,10 +336,47 @@ class OutputSubnetwork(MLP):
                 for sequence_id in range(N):
                     if not is_mv[sequence_id, j]:
                         cost = self.train_model(train_set_x, target_set,
-                                memory_array, sequence_id, j, learning_rate)
+                                memory_array, sequence_id, j, float(learning_rate * weights[sequence_id]))
                         avg_cost += cost
                         M += 1
         return avg_cost / float(M)
+    
+class Supervisor:
+    def __init__(self, targets, n_iterations, n_examples):
+        self.n_examples = n_examples
+        self.n_iterations = n_iterations
+        self.history = np.empty((n_iterations + 1, n_examples), dtype = np.float32)
+        self.history[0, :] = - np.inf
+        self.weights = np.ones((n_iterations + 1, n_examples), dtype = np.float32)
+        self.labels = np.empty(n_examples, dtype = np.int32)
+        for i in range(n_examples):
+            self.labels[i] = targets[i, -1]
+        self.current_iter = 0
+    def next(self, loglikelihoods):
+        self.current_iter += 1
+        self.history[self.current_iter] = loglikelihoods
+        signs = np.sign(loglikelihoods - self.history[self.current_iter - 1])
+        signs[np.isnan(signs)] = 0
+        indexes = (signs <= 0)
+        decay = float(self.n_iterations - self.current_iter - 1) / float(self.n_iterations)
+        self.weights[self.current_iter, indexes] = decay * self.weights[self.current_iter - 1, indexes] + 1
+        print(loglikelihoods, self.weights[self.current_iter])
+        return self.weights[self.current_iter]
+    
+class Optimizer:
+    AnnealingDecay = 1 # Faster at the beginning, slower at the end
+    NesterovMomentum = 2
+    AdaGrad = 3
+    """ Divide the learning rate by the euclidean distance of the gradient vector
+    AdaGrad can be combined with the momentum method """
+    AdaDelta = 4
+    """ delta_x_t = - gradient * RMS(delta_x_t-1) / RMS(g_t)
+    where RMS(g_t) = sqrt(E(g_t**2) + epsilon)
+    and E(g_t**2) = rho * E(g_t-1**2) + (1 - rho) * g_t**2
+    """
+    VSGD = 5
+    CG = 6
+    L_BFGS = 7
 
 def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.double):
     if isinstance(ndim, int):
@@ -353,7 +389,7 @@ def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.double):
     else:
         return np.empty((P, T, ndim.max(), ndim_2), dtype = dtype)
 
-def typedListToPaddedTensor(typed_list, T, is_3D = True, dtype = np.float64):
+def typedListToPaddedTensor(typed_list, T, is_3D = True, dtype = np.float32):
     assert(len(typed_list) > 0)
     if isinstance(typed_list, list):
         P = len(T)
