@@ -29,6 +29,9 @@ LINEAR_LAYER  = 402
 
 DEBUG_MODE = theano.compile.MonitorMode(
     post_func = theano.compile.monitormode.detect_nan).excluding('local_elemwise_fusion', 'inplace')
+    
+def expsum(x):
+    return theano.tensor.sum(theano.tensor.exp(x))
 
 class Layer:  
     def processOutput(self, X):
@@ -179,6 +182,7 @@ class MLP(object):
     def __setstate__(self, state):
         i = 0
         for layer in self.layers:
+            W, b = state[i]
             layer.__setstate__(state[i])
             i += 1
     
@@ -198,26 +202,18 @@ class PiStateSubnetwork(MLP):
 
         self.cost = - theano.tensor.dot(self.gamma[self.s, :, 0],
             theano.tensor.log(self.processOutput(self.train_set_x[self.s, 0, :])[0]))
-        
-        # http://deeplearning.net/software/theano/sandbox/randomnumbers.html
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = list()
-
         for param, gparam in zip(self.params, self.gparams):
             weight_update = param - self.learning_rate * gparam
             self.updates.append((param, theano.tensor.switch(theano.tensor.isnan(weight_update), 
-                                self.dropout_or_nan_to_num, weight_update)))
-        
+                                self.dropout_or_nan_to_num, weight_update)))        
         self.train_model = theano.function(
             inputs = [self.train_set_x, self.gamma, self.s, self.learning_rate],
             outputs = self.cost,
             updates = self.updates
         )
-        
-        if not RELEASE_MODE:
-            debugfile = open("theano_pistatenetwork_graph.txt", "w")
-            theano.printing.debugprint(self.cost, file = debugfile)
-            debugfile.close()
+
     def train(self, train_set_x, gamma, weights, n_epochs = 1, learning_rate = 0.01):
         epoch = 0
         N = len(train_set_x)
@@ -246,29 +242,38 @@ class StateSubnetwork(MLP):
         self.learning_rate = theano.tensor.fscalar("learning_rate")
         
         phi = self.processOutput(self.symbolic_x[self.s, self.t, :])[0]
-        self.cost = - (theano.tensor.dot(self.symbolic_xi[self.s, self.state_id, self.t, :], theano.tensor.log(phi))).sum()
-        
+        self.cost = - (self.symbolic_xi[self.s, self.state_id, self.t, :] * theano.tensor.log(phi)).sum()
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = list()
         for param, gparam in zip(self.params, self.gparams):
             weight_update = param - self.learning_rate * gparam
             self.updates.append((param, theano.tensor.switch(theano.tensor.isnan(weight_update), 
                                 self.dropout_or_nan_to_num, weight_update)))
-        
-        if not RELEASE_MODE:
-            debugfile = open("theano_statenetwork_graph.txt", "w")
-            theano.printing.debugprint(self.cost, file = debugfile)
-            
         self.train_model = theano.function(
             inputs = [self.symbolic_x, self.symbolic_xi, self.s, self.t, self.learning_rate],
             outputs = self.cost,
             updates = self.updates
         )
         
+        phi = self.processOutput(self.symbolic_x[self.s, self.t, :])[0]
+        self.log_cost = - expsum(self.symbolic_xi[self.s, self.state_id, self.t, :] + theano.tensor.log(phi))
+        self.log_gparams = [theano.tensor.grad(self.log_cost, param) for param in self.params]
+        self.log_updates = list()
+        for param, gparam in zip(self.params, self.log_gparams):
+            weight_update = param - self.learning_rate * gparam
+            self.log_updates.append((param, theano.tensor.switch(theano.tensor.isnan(weight_update), 
+                                self.dropout_or_nan_to_num, weight_update)))
+        self.train_log_model = theano.function(
+            inputs = [self.symbolic_x, self.symbolic_xi, self.s, self.t, self.learning_rate],
+            outputs = self.log_cost,
+            updates = self.log_updates
+        )
+        
     def train(self, train_set_x, xi, weights, is_mv, n_epochs = 1, learning_rate = 0.01):
         N = len(train_set_x)
         T = len(train_set_x[0]) # Warning : Sequence length is supposed to be constant
         epoch = 0
+        print("xi", np.isnan(xi).any())
         while (epoch < n_epochs):
             epoch += 1
             M = 0
@@ -302,25 +307,19 @@ class OutputSubnetwork(MLP):
         self.symbolic_target = theano.tensor.imatrix(name = "target")
         
         eta = self.processOutput(self.symbolic_x[self.s, self.t, :])[0]
-        self.cost = - (theano.tensor.dot(self.symbolic_memory[self.s, self.t, self.state_id],
-                       theano.tensor.log(eta[self.symbolic_target[self.s, self.t]]))).sum()
-        
+        self.cost = - (self.symbolic_memory[self.s, self.t, self.state_id] * \
+                       theano.tensor.log(eta[self.symbolic_target[self.s, self.t]])).sum()
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = list()
         for param, gparam in zip(self.params, self.gparams):
             weight_update = param - self.learning_rate * gparam
             self.updates.append((param, theano.tensor.switch(theano.tensor.isnan(weight_update), 
                                 self.dropout_or_nan_to_num, weight_update)))
-        
         self.train_model = theano.function(
             inputs = [self.symbolic_x, self.symbolic_target, self.symbolic_memory, self.s, self.t, self.learning_rate],
             outputs = self.cost,
             updates = self.updates
         )
-        
-        if not RELEASE_MODE:
-            debugfile = open("theano_outputnetwork_graph.txt", "w")
-            theano.printing.debugprint(self.cost, file = debugfile)
         
         
     def train(self, train_set_x, target_set, memory_array, weights, is_mv, n_epochs = 1, learning_rate = 0.05):
@@ -328,6 +327,7 @@ class OutputSubnetwork(MLP):
         T = len(train_set_x[0]) # Warning : Sequence length is supposed to be constant
         assert(N == len(target_set))
         epoch = 0
+        print("memory", np.isnan(memory_array).any())
         while (epoch < n_epochs):
             epoch += 1
             M = 0
