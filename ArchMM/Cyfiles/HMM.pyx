@@ -577,7 +577,7 @@ cdef class BaseHMM:
         self.SIGMA = sigma
         self.missing_value = parameters.missing_value_sym
         self.n_classes = n_classes
-        piN, N, O, loglikelihood, pistate_cost, state_cost, output_cost = IOHMMLinFit(inputs, targets = targets, 
+        piN, N, O, loglikelihood, pistate_cost, state_cost, output_cost, weights = IOHMMLinFit(inputs, targets = targets, 
               n_states = self.n_states, dynamic_features = dynamic_features, delta_window = 1, 
               is_classifier = is_classifier, n_classes = n_classes, parameters = parameters)
         self.parameters = parameters
@@ -588,7 +588,7 @@ cdef class BaseHMM:
         self.pi_state_subnetwork = piN
         self.state_subnetworks = N
         self.output_subnetworks = O
-        return loglikelihood, pistate_cost, state_cost, output_cost
+        return loglikelihood, pistate_cost, state_cost, output_cost, weights
     
     def simulateIO(self, input):
         """ Generate an output sequence using the Viterbi algorithm """

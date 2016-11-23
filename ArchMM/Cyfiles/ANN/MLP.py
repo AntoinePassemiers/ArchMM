@@ -126,6 +126,8 @@ class MLP(object):
         self.rng = rng
         if hidden_activation_function == "tanh":
             self.activation = theano.tensor.tanh
+        elif hidden_activation_function == "relu":
+            self.activation = theano.tensor.nnet.relu
         else:
             self.activation =  theano.tensor.nnet.nnet.sigmoid
         self.hiddenLayer = HiddenLayer(
@@ -222,8 +224,9 @@ class PiStateSubnetwork(MLP):
             epoch += 1
             avg_cost = 0
             for sequence_id in range(N):
-                cost = self.train_model(train_set_x, gamma, sequence_id, float(learning_rate * weights[sequence_id]))
-                avg_cost += cost
+                if weights[sequence_id] != 0:
+                    cost = self.train_model(train_set_x, gamma, sequence_id, float(learning_rate * weights[sequence_id]))
+                    avg_cost += cost
             avg_cost /= N
         return avg_cost
 
@@ -281,8 +284,9 @@ class StateSubnetwork(MLP):
             for j in range(T):
                 for sequence_id in range(N):
                     if not is_mv[sequence_id, j]:
-                        cost = self.train_model(train_set_x, xi, sequence_id, j, float(learning_rate * weights[sequence_id]))
-                        avg_cost += cost
+                        if weights[sequence_id] != 0:
+                            cost = self.train_model(train_set_x, xi, sequence_id, j, float(learning_rate * weights[sequence_id]))
+                            avg_cost += cost
                         M += 1
         return avg_cost / float(M)
                     
@@ -334,10 +338,11 @@ class OutputSubnetwork(MLP):
             for j in range(T):
                 for sequence_id in range(N):
                     if not is_mv[sequence_id, j]:
-                        cost = self.train_model(train_set_x, target_set,
-                                memory_array, sequence_id, j, float(learning_rate * weights[sequence_id]))
-                        avg_cost += cost
-                        M += 1
+                        if weights[sequence_id] != 0:
+                            cost = self.train_model(train_set_x, target_set,
+                                    memory_array, sequence_id, j, float(learning_rate * weights[sequence_id]))
+                            avg_cost += cost
+                            M += 1
         return avg_cost / float(M)
     
 class Supervisor:
@@ -356,26 +361,13 @@ class Supervisor:
         self.history[self.current_iter] = loglikelihoods
         signs = np.sign(loglikelihoods - self.history[self.current_iter - 1])
         signs[np.isnan(signs)] = 0
-        indexes = (signs <= 0)
-        decay = float(self.n_iterations - self.current_iter - 1) / float(self.n_iterations)
-        self.weights[self.current_iter, indexes] = decay * self.weights[self.current_iter - 1, indexes] + 1
+        # indexes = (signs <= 0)
+        indexes = (loglikelihoods < 0)
+        decay = float(self.n_iterations - self.current_iter) / float(self.n_iterations)
+        self.weights[self.current_iter, indexes] = 2.5 * decay * self.weights[self.current_iter - 1, indexes] + 1
+        self.weights[self.current_iter, loglikelihoods > 0] = 0
         print(loglikelihoods, self.weights[self.current_iter])
         return self.weights[self.current_iter]
-    
-class Optimizer:
-    AnnealingDecay = 1 # Faster at the beginning, slower at the end
-    NesterovMomentum = 2
-    AdaGrad = 3
-    """ Divide the learning rate by the euclidean distance of the gradient vector
-    AdaGrad can be combined with the momentum method """
-    AdaDelta = 4
-    """ delta_x_t = - gradient * RMS(delta_x_t-1) / RMS(g_t)
-    where RMS(g_t) = sqrt(E(g_t**2) + epsilon)
-    and E(g_t**2) = rho * E(g_t-1**2) + (1 - rho) * g_t**2
-    """
-    VSGD = 5
-    CG = 6
-    L_BFGS = 7
 
 def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.double):
     if isinstance(ndim, int):
