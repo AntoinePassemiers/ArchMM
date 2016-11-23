@@ -42,9 +42,10 @@ class Layer:
             output = linear_output
         return output
     def __getstate__(self):
-        return (self.W, self.b)
+        return (self.W.get_value(), self.b.get_value())
     def __setstate__(self, state):
-        self.W, self.b = state
+        self.W.set_value(state[0])
+        self.b.set_value(state[1])
 
 class LogisticRegression(Layer):
     def __init__(self, input, n_in, n_out, rng = np.random.RandomState(1234)):
@@ -273,7 +274,6 @@ class StateSubnetwork(MLP):
         N = len(train_set_x)
         T = len(train_set_x[0]) # Warning : Sequence length is supposed to be constant
         epoch = 0
-        print("xi", np.isnan(xi).any())
         while (epoch < n_epochs):
             epoch += 1
             M = 0
@@ -327,7 +327,6 @@ class OutputSubnetwork(MLP):
         T = len(train_set_x[0]) # Warning : Sequence length is supposed to be constant
         assert(N == len(target_set))
         epoch = 0
-        print("memory", np.isnan(memory_array).any())
         while (epoch < n_epochs):
             epoch += 1
             M = 0

@@ -626,7 +626,7 @@ cdef class BaseHMM:
         cdef cnp.ndarray is_mv = hasMissingValues(input, self.missing_value, n_datadim = 1)
         input = np.asarray(input, dtype = np.float32)
         if binary_prediction:
-            memory = np.zeros((self.n_classes, self.n_states), dtype = np.int32)
+            memory = np.zeros((self.n_classes, self.n_states), dtype = np.float32)
             if not is_mv[0]:
                 has_nan = False
                 temp = np.tile(np.log2(piN.computeOutput(input[0])[0]), (self.n_classes, 1))
@@ -665,8 +665,11 @@ cdef class BaseHMM:
                             memory[i, :] = memory[i, state_sequence[i, t]]
                         else:
                             state_sequence[i, t] = state_sequence[i, t - 1]
-            print(memory)
-            return np.argmax(memory.max(axis = 1))
+            print(memory[:, 0])
+            print(state_sequence)
+            if memory.sum() == 0:
+                return 0.5, memory, state_sequence
+            return np.argmax(memory.max(axis = 1)), memory, state_sequence
         else:
             raise NotImplementedError("Probability prediction not implemented")
 
