@@ -1,22 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import numpy as np
-import os, timeit
-
-import theano
-from theano.tensor.shared_randomstreams import RandomStreams
-
-from Theano_ops import *
-
-theano.config.floatX = 'float32'
-theano.config.allow_gc = True
-theano.config.scan.allow_gc = True
-theano.config.scan.allow_output_prealloc = False
-theano.config.exception_verbosity = 'high'
-theano.config.profile = False
-theano.config.profile_memory = False
-theano.config.NanGuardMode.nan_is_error = False
-theano.config.NanGuardMode.inf_is_error = True
+from Layers import *
+from CNN import *
 
 RELEASE_MODE = False
 
@@ -33,92 +18,9 @@ DEBUG_MODE = theano.compile.MonitorMode(
 def expsum(x):
     return theano.tensor.sum(theano.tensor.exp(x))
 
-class Layer:  
-    def processOutput(self, X):
-        linear_output = theano.tensor.dot(X, self.W) + self.b
-        if self.activation is not None:
-            output = self.activation(linear_output)
-        else:
-            output = linear_output
-        return output
-    def __getstate__(self):
-        return (self.W.get_value(), self.b.get_value())
-    def __setstate__(self, state):
-        self.W.set_value(state[0])
-        self.b.set_value(state[1])
-
-class LogisticRegression(Layer):
-    def __init__(self, input, n_in, n_out, rng = np.random.RandomState(1234)):
-        self.input = input
-        self.n_in = n_in
-        self.n_out = n_out
-        W_values = np.asarray(
-            rng.uniform(
-                low  = -np.sqrt(6. / (n_in + n_out)),
-                high = np.sqrt(6. / (n_in + n_out)),
-                size = (n_in, n_out)
-            ),
-            dtype = np.float32)
-        W_values *= 4
-        self.W = theano.shared(value = W_values, name = 'W', borrow = True)
-        b_values = np.asarray(np.random.rand(n_out), dtype = np.float32)
-        self.b = theano.shared(value = b_values, name = 'b', borrow = True)
-        
-        self.p_y_given_x = theano.tensor.nnet.softmax(theano.tensor.dot(input, self.W) + self.b)
-        self.y_pred = theano.tensor.argmax(self.p_y_given_x, axis = 1)
-        self.params = [self.W, self.b]
-        self.activation = theano.tensor.nnet.softmax
-    def negative_log_likelihood(self, y):
-        return -theano.tensor.mean(theano.tensor.log(self.p_y_given_x)[theano.tensor.arange(y.shape[0]), y])
-    def errors(self, y):
-        if y.ndim != self.y_pred.ndim:
-            raise TypeError(
-                'y should have the same shape as self.y_pred',
-                ('y', y.type, 'y_pred', self.y_pred.type))
-        if y.dtype.startswith('int'):
-            return theano.tensor.mean(theano.tensor.neq(self.y_pred, y))
-        else:
-            raise NotImplementedError()
-        
-        
-class HiddenLayer(Layer):
-    def __init__(self, input, n_in, n_out, W = None, b = None,
-                 activation = theano.tensor.nnet.nnet.sigmoid,
-                 rng = np.random.RandomState(1234)):
-        self.input = input
-        self.activation = activation
-        if W is None:
-            W_values = np.asarray(
-                rng.uniform(
-                    low = -np.sqrt(6. / (n_in + n_out)),
-                    high = np.sqrt(6. / (n_in + n_out)),
-                    size = (n_in, n_out)
-                ),
-                dtype = np.float32
-            )
-            if activation == theano.tensor.nnet.sigmoid:
-                W_values *= 4
-
-            W = theano.shared(value = W_values, name = 'W', borrow = True)
-
-        if b is None:
-            b_values = np.asarray(np.random.rand(n_out), dtype = np.float32)
-            b = theano.shared(value = b_values, name = 'b', borrow = True)
-        
-        self.W = W
-        self.b = b
-
-        lin_output = theano.tensor.dot(input, self.W) + self.b
-        self.output = (
-            lin_output if activation is None
-            else activation(lin_output)
-        )
-        self.params = [self.W, self.b]
-
-
 class MLP(object):
     def __init__(self, n_in, n_hidden, n_out, rng = np.random.RandomState(1234), dropout_threshold = 0.5,
-                 hidden_activation_function = "sigmoid"):
+                 hidden_activation_function = "sigmoid", add_conv_layer = False):
         self.n_in = n_in
         self.n_hidden = n_hidden
         self.n_out = n_out
@@ -130,13 +32,27 @@ class MLP(object):
             self.activation = theano.tensor.nnet.relu
         else:
             self.activation =  theano.tensor.nnet.nnet.sigmoid
-        self.hiddenLayer = HiddenLayer(
-            self.input, n_in, n_hidden, 
-            rng = self.rng,
-            activation = self.activation
-        )
+        
+        if add_conv_layer:
+            self.convLayer = Conv2DLayer(self.input.dimshuffle('x', 'x', 0, 1), 16, 16, pool_shp = (2, 2))
+            conv_out = self.convLayer.output
+            conv_n_out = 16 ** 2
+            self.hiddenLayer = HiddenLayer(
+                conv_out, conv_n_out, n_hidden, 
+                rng = self.rng,
+                activation = self.activation
+            )
+        else:
+            self.hiddenLayer = HiddenLayer(
+                self.input, n_in, n_hidden, 
+                rng = self.rng, activation = self.activation
+            )
+            
         self.logRegressionLayer = LogisticRegression(self.hiddenLayer.output, n_hidden, n_out)
-        self.layers = [self.hiddenLayer, self.logRegressionLayer]
+        if add_conv_layer:
+            self.layers = [self.convLayer, self.hiddenLayer, self.logRegressionLayer]
+        else:
+            self.layers = [self.hiddenLayer, self.logRegressionLayer]
         self.L1 = (
             np.abs(self.hiddenLayer.W).sum()
             + np.abs(self.logRegressionLayer.W).sum()
@@ -150,7 +66,6 @@ class MLP(object):
         )
         self.errors = self.logRegressionLayer.errors
         self.params = self.hiddenLayer.params + self.logRegressionLayer.params
-        self.input = input
         
         symbolic_X_j_k = theano.tensor.vector(name = "X", dtype = theano.config.floatX)
         next_layer_input = symbolic_X_j_k 
@@ -170,11 +85,6 @@ class MLP(object):
         for layer in self.layers:
             X = layer.processOutput(X)
         return X # theano.tensor.switch(theano.tensor.isnan(X), 0.0001, X)
-    
-    def predict(self, test_X):
-        X_values = np.asarray(test_X, dtype = np.float32)
-        test_X = theano.shared(name = "X_test", borrow = True, value = X_values)
-        return self.processOutput(test_X).eval()
     
     def __getstate__(self):
         state = list()
@@ -364,7 +274,7 @@ class Supervisor:
         # indexes = (signs <= 0)
         indexes = (loglikelihoods < 0)
         decay = float(self.n_iterations - self.current_iter) / float(self.n_iterations)
-        self.weights[self.current_iter, indexes] = 2.5 * decay * self.weights[self.current_iter - 1, indexes] + 1
+        self.weights[self.current_iter, indexes] = 3 * decay * np.sqrt(self.weights[self.current_iter - 1, indexes]) + 1
         self.weights[self.current_iter, loglikelihoods > 0] = 0
         print(loglikelihoods, self.weights[self.current_iter])
         return self.weights[self.current_iter]
