@@ -6,6 +6,8 @@ from theano.tensor.signal import pool
 
 from Layers import *
 
+# http://deeplearning.net/tutorial/code/convolutional_mlp.py
+
 class Conv2DLayer(Layer):
     def __init__(self, input, height, width, pool_shp = (2, 2), W = None, b = None,
                  activation = theano.tensor.tanh,

@@ -26,6 +26,9 @@ class MLP(object):
         self.n_out = n_out
         self.input = self.x = theano.tensor.matrix(name = 'x', dtype = theano.config.floatX)
         self.rng = rng
+        self.dropout_threshold = dropout_threshold
+        srng = RandomStreams(seed = 1234)
+        self.rnd_number = srng.uniform(ndim = 0, low = 0.0, high = 1.0)
         if hidden_activation_function == "tanh":
             self.activation = theano.tensor.tanh
         elif hidden_activation_function == "relu":
@@ -39,8 +42,7 @@ class MLP(object):
             conv_n_out = 16 ** 2
             self.hiddenLayer = HiddenLayer(
                 conv_out, conv_n_out, n_hidden, 
-                rng = self.rng,
-                activation = self.activation
+                rng = self.rng, activation = self.activation
             )
         else:
             self.hiddenLayer = HiddenLayer(
@@ -68,22 +70,28 @@ class MLP(object):
         self.params = self.hiddenLayer.params + self.logRegressionLayer.params
         
         symbolic_X_j_k = theano.tensor.vector(name = "X", dtype = theano.config.floatX)
-        next_layer_input = symbolic_X_j_k 
+        next_layer_input = symbolic_X_j_k
+        i = 0 
         for layer in self.layers:
+            if i == 1:
+                next_layer_input = theano.tensor.switch(self.rnd_number < 0.1, 0, next_layer_input)
             next_layer_input = layer.processOutput(next_layer_input)
+            i += 1
+        
         self.computeOutputFunction = theano.function(inputs = [symbolic_X_j_k], outputs = next_layer_input)
         
-        self.dropout_threshold = dropout_threshold
-        srng = RandomStreams(seed = 1234)
-        rnd_number = srng.uniform(ndim = 0, low = 0.0, high = 1.0)
-        self.dropout_or_nan_to_num = theano.tensor.switch(rnd_number > dropout_threshold, 0.00001, 0)
+        self.dropout_or_nan_to_num = theano.tensor.switch(self.rnd_number < dropout_threshold, 0.00001, 0)
     
     def computeOutput(self, X):
         return self.computeOutputFunction(X)
     
     def processOutput(self, X):
+        i = 0
         for layer in self.layers:
+            if i == 1:
+                X = theano.tensor.switch(self.rnd_number < 0.4, 0, X)
             X = layer.processOutput(X)
+            i += 1
         return X # theano.tensor.switch(theano.tensor.isnan(X), 0.0001, X)
     
     def __getstate__(self):
@@ -256,8 +264,9 @@ class OutputSubnetwork(MLP):
         return avg_cost / float(M)
     
 class Supervisor:
-    def __init__(self, targets, n_iterations, n_examples):
+    def __init__(self, targets, n_iterations, n_examples, n_states):
         self.n_examples = n_examples
+        self.n_states = n_states
         self.n_iterations = n_iterations
         self.history = np.empty((n_iterations + 1, n_examples), dtype = np.float32)
         self.history[0, :] = - np.inf
@@ -266,18 +275,23 @@ class Supervisor:
         for i in range(n_examples):
             self.labels[i] = targets[i, -1]
         self.current_iter = 0
-    def next(self, loglikelihoods):
+        self.hardworker = 0
+    def next(self, loglikelihoods, pi_state_costs, state_costs, output_costs):
+        self.hardworker = output_costs.argmax()
         self.current_iter += 1
         self.history[self.current_iter] = loglikelihoods
         signs = np.sign(loglikelihoods - self.history[self.current_iter - 1])
         signs[np.isnan(signs)] = 0
         # indexes = (signs <= 0)
-        indexes = (loglikelihoods < 0)
+        indexes = np.less(loglikelihoods, 0)
         decay = float(self.n_iterations - self.current_iter) / float(self.n_iterations)
         self.weights[self.current_iter, indexes] = 3 * decay * np.sqrt(self.weights[self.current_iter - 1, indexes]) + 1
         self.weights[self.current_iter, loglikelihoods > 0] = 0
         print(loglikelihoods, self.weights[self.current_iter])
-        return self.weights[self.current_iter]
+        t_weights = np.ones(2, dtype = np.float32)
+        o_weights = np.ones(self.n_states, dtype = np.float32)
+        # o_weights[self.hardworker] = 1.0
+        return self.weights[self.current_iter], t_weights, o_weights
 
 def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.double):
     if isinstance(ndim, int):
