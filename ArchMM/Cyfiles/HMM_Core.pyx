@@ -136,19 +136,25 @@ class AdaptiveHMM:
             "standardize" : self.standardize,
             "has_io" : self.has_io
         }
-        pickle.dump(attributes, open(filename + "_adapt", "wb"))
         if not self.has_io:
             self.hmm.pySave(<char*>filename)
         else:
             self.hmm.saveIO(<char*>filename)
+        try:
+            pickle.dump(attributes, open(filename + "_adapt", "wb"))
+        except MemoryError:
+            pickle.dump(dict(), open(filename + "_adapt", "wb"))
         
     def pyLoad(self, filename):
-        attributes = pickle.load(open(filename + "_adapt", "rb"))
-        self.mu = attributes["MU"]
-        self.sigma = attributes["SIGMA"]
-        self.stdvs = attributes["stdvs"]
-        self.standardize = attributes["standardize"]
-        self.has_io = attributes["has_io"]
+        try:
+            attributes = pickle.load(open(filename + "_adapt", "rb"))
+            self.mu = attributes["MU"]
+            self.sigma = attributes["SIGMA"]
+            self.stdvs = attributes["stdvs"]
+            self.standardize = attributes["standardize"]
+            self.has_io = attributes["has_io"]
+        except:
+            pass
         if not self.has_io:
             self.hmm.pyLoad(<char*>filename)
         else:

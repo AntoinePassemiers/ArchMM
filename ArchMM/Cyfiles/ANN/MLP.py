@@ -20,7 +20,7 @@ def expsum(x):
 
 class MLP(object):
     def __init__(self, n_in, n_hidden, n_out, rng = np.random.RandomState(1234), dropout_threshold = 0.5,
-                 hidden_activation_function = "sigmoid", add_conv_layer = False):
+                 hidden_activation_function = "sigmoid"):
         self.n_in = n_in
         self.n_hidden = n_hidden
         self.n_out = n_out
@@ -36,25 +36,14 @@ class MLP(object):
         else:
             self.activation =  theano.tensor.nnet.nnet.sigmoid
         
-        if add_conv_layer:
-            self.convLayer = Conv2DLayer(self.input.dimshuffle('x', 'x', 0, 1), 16, 16, pool_shp = (2, 2))
-            conv_out = self.convLayer.output
-            conv_n_out = 16 ** 2
-            self.hiddenLayer = HiddenLayer(
-                conv_out, conv_n_out, n_hidden, 
-                rng = self.rng, activation = self.activation
-            )
-        else:
-            self.hiddenLayer = HiddenLayer(
-                self.input, n_in, n_hidden, 
-                rng = self.rng, activation = self.activation
-            )
+        self.hiddenLayer = HiddenLayer(
+            self.input, n_in, n_hidden, 
+            rng = self.rng, activation = self.activation
+        )
             
         self.logRegressionLayer = LogisticRegression(self.hiddenLayer.output, n_hidden, n_out)
-        if add_conv_layer:
-            self.layers = [self.convLayer, self.hiddenLayer, self.logRegressionLayer]
-        else:
-            self.layers = [self.hiddenLayer, self.logRegressionLayer]
+
+        self.layers = [self.hiddenLayer, self.logRegressionLayer]
         self.L1 = (
             np.abs(self.hiddenLayer.W).sum()
             + np.abs(self.logRegressionLayer.W).sum()
