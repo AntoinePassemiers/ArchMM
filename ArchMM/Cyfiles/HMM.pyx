@@ -876,16 +876,18 @@ cdef class BaseHMM:
         N_states = attributes["N_states"]
         O_states = attributes["O_states"]
         parameters = attributes["parameters"]
+        if not hasattr(parameters, 'architecture'):
+            parameters.architecture = "ergodic"
         N, O = list(), list()
         for i in range(n):
             N.append(StateSubnetwork(i, m, parameters.s_nhidden, n, learning_rate = parameters.s_learning_rate,
-                                     hidden_activation_function = parameters.s_activation))
+                                     hidden_activation_function = parameters.s_activation, architecture = parameters.architecture))
             N[i].__setstate__(N_states[i])
             O.append(OutputSubnetwork(i, m, parameters.o_nhidden, r, learning_rate = parameters.o_learning_rate,
                                       hidden_activation_function = parameters.o_activation))
             O[i].__setstate__(O_states[i])
         piN = PiStateSubnetwork(m, parameters.pi_nhidden, n, learning_rate = parameters.pi_learning_rate,
-                                hidden_activation_function = parameters.pi_activation)
+                                hidden_activation_function = parameters.pi_activation, architecture = parameters.architecture)
         piN.__setstate__(pi_state)
         self.pi_state_subnetwork = piN
         self.state_subnetworks = N

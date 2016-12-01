@@ -22,7 +22,7 @@ class BinarySVM:
         self.learning_rate = theano.tensor.fscalar("learning_rate")
         self.symbolic_target = theano.tensor.imatrix(name = "target")
         
-        eta = theano.tensor.dot(self.symbolic_x[self.s, self.t, :], self.W)
+        eta = theano.tensor.switch(theano.tensor.dot(self.symbolic_x[self.s, self.t, :], self.W) > 0.0, 1.0, 0.0)
         iohmm_cost = - (self.symbolic_memory[self.s, self.t, self.state_id] * \
                        theano.tensor.log(eta[self.symbolic_target[self.s, self.t]])).sum()
         self.cost = (lambda_par / 2.0) * theano.pow(W).sum() + iohmm_cost

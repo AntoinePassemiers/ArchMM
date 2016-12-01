@@ -81,10 +81,10 @@ class MLP(object):
         self.computeOutputFunction = theano.function(inputs = [symbolic_X_j_k], outputs = next_layer_input)
         
         self.dropout_or_nan_to_num = theano.tensor.switch(self.rnd_number < dropout_threshold, 0.00001, 0)
-    
+
     def computeOutput(self, X):
         return self.computeOutputFunction(X)
-    
+
     def processOutput(self, X):
         i = 0
         for layer in self.layers:
@@ -109,10 +109,14 @@ class MLP(object):
     
 class PiStateSubnetwork(MLP):
     def __init__(self, n_in, n_hidden, n_out, dropout_threshold = 0.5,
-                 hidden_activation_function = "sigmoid", learning_rate = 0.01):
+                 hidden_activation_function = "sigmoid", learning_rate = 0.01, architecture = "ergodic"):
+        assert(architecture in ["ergodic", "linear"])
+        # self.architecture = ERGODIC_LAYER if architecture == "ergodic" else LINEAR_LAYER
+        self.architecture = ERGODIC_LAYER
         MLP.__init__(self, n_in, n_hidden, n_out, 
                      hidden_activation_function = hidden_activation_function,
                      dropout_threshold = dropout_threshold)
+        self.n_in, self.n_hidden, self.n_out = n_in, n_hidden, n_out
         self.state_id = 0
         self.index = theano.tensor.lscalar('index')
         self.symbolic_gamma_j = theano.tensor.matrix(name = 'gamma_j', dtype = theano.config.floatX)
@@ -136,25 +140,49 @@ class PiStateSubnetwork(MLP):
         )
 
     def train(self, train_set_x, gamma, weights, n_epochs = 1, learning_rate = 0.01):
-        epoch = 0
-        N = len(train_set_x)
-        while (epoch < n_epochs):
-            epoch += 1
-            avg_cost = 0
-            for sequence_id in range(N):
-                if weights[sequence_id] != 0:
-                    cost = self.train_model(train_set_x, gamma, sequence_id, float(learning_rate * weights[sequence_id]))
-                    avg_cost += cost
-            avg_cost /= N
-        return avg_cost
+        if self.architecture == ERGODIC_LAYER:
+            epoch = 0
+            N = len(train_set_x)
+            while (epoch < n_epochs):
+                epoch += 1
+                avg_cost = 0
+                for sequence_id in range(N):
+                    if weights[sequence_id] != 0:
+                        cost = self.train_model(train_set_x, 
+                            gamma, sequence_id, float(learning_rate * weights[sequence_id]))
+                        avg_cost += cost
+                avg_cost /= N
+            return avg_cost
+        else:
+            return 0.0
+    
+    def computeOutput(self, X):
+        if self.architecture == ERGODIC_LAYER:
+            return MLP.computeOutput(self, X)
+        else:
+            output = np.zeros(self.n_out, dtype = theano.config.floatX)
+            output[0] = 1.0
+            return np.array([output])
+            
+    def processOutput(self, X):
+        if self.architecture == ERGODIC_LAYER:
+            return MLP.processOutput(self, X)
+        else:
+            output = np.zeros(self.n_out, dtype = theano.config.floatX)
+            output[0] = 1.0
+            return theano.tensor.switch(self.rnd_number > 0.0, np.array([output]), MLP.processOutput(self, X))
 
 class StateSubnetwork(MLP):
     def __init__(self, state_id, n_in, n_hidden, n_out, architecture = "ergodic", 
                  dropout_threshold = 0.5,
                  hidden_activation_function = "sigmoid", learning_rate = 0.01):
-        MLP.__init__(self, n_in, n_hidden, n_out, 
+        assert(architecture in ["ergodic", "linear"])
+        self.architecture = ERGODIC_LAYER if architecture == "ergodic" else LINEAR_LAYER
+        n_out_to_compute = n_out if self.architecture == ERGODIC_LAYER else 2
+        MLP.__init__(self, n_in, n_hidden, n_out_to_compute, 
                      hidden_activation_function = hidden_activation_function,
                      dropout_threshold = dropout_threshold)
+        self.n_in, self.n_hidden, self.n_out = n_in, n_hidden, n_out
         self.state_id = state_id
         self.index = theano.tensor.lscalar('index')
         self.t = theano.tensor.lscalar('t')
@@ -192,22 +220,51 @@ class StateSubnetwork(MLP):
         )
         
     def train(self, train_set_x, xi, weights, is_mv, n_epochs = 1, learning_rate = 0.01):
-        N = len(train_set_x)
-        T = len(train_set_x[0]) # Warning : Sequence length is supposed to be constant
-        epoch = 0
-        while (epoch < n_epochs):
-            epoch += 1
-            M = 0
-            avg_cost = 0
-            for j in range(T):
-                for sequence_id in range(N):
-                    if not is_mv[sequence_id, j]:
-                        if weights[sequence_id] != 0:
-                            cost = self.train_model(train_set_x, xi, sequence_id, j, float(learning_rate * weights[sequence_id]))
-                            avg_cost += cost
-                        M += 1
-        return avg_cost / float(M)
-                    
+        if not (self.architecture == LINEAR_LAYER and self.state_id == self.n_out - 1):
+            N = len(train_set_x)
+            T = len(train_set_x[0]) # Warning : Sequence length is supposed to be constant
+            epoch = 0
+            while (epoch < n_epochs):
+                epoch += 1
+                M = 0
+                avg_cost = 0
+                for j in range(T):
+                    for sequence_id in range(N):
+                        if not is_mv[sequence_id, j]:
+                            if weights[sequence_id] != 0:
+                                cost = self.train_model(train_set_x, xi, sequence_id, j, float(learning_rate * weights[sequence_id]))
+                                avg_cost += cost
+                            M += 1
+            return avg_cost / float(M)
+        else:
+            return 0.0
+
+    def computeOutput(self, X):
+        if self.architecture == ERGODIC_LAYER:
+            return MLP.computeOutput(self, X)
+        else:
+            if self.state_id >= self.n_out - 1:
+                output = np.zeros(self.n_out, dtype = theano.config.floatX)
+                output[-1] = 1.0
+                return np.array([output])
+            else:
+                begin = np.zeros(self.state_id, dtype = theano.config.floatX)
+                output = MLP.computeOutput(self, X)[0]
+                end = np.zeros(self.n_out - 2 - self.state_id, dtype = theano.config.floatX)
+                return np.array([np.concatenate([begin, output, end])])
+           
+    def processOutput(self, X):
+        if self.architecture == ERGODIC_LAYER:
+            return MLP.processOutput(self, X)
+        else:
+            if self.state_id >= self.n_out - 1:
+                return MLP.processOutput(self, X)
+            else:
+                begin = np.zeros(self.state_id, dtype = theano.config.floatX)
+                output = MLP.processOutput(self, X)[0]
+                end = np.zeros(self.n_out - 2 + self.state_id, dtype = theano.config.floatX)
+                return theano.tensor.concatenate([begin, output, end])
+
         
 class OutputSubnetwork(MLP):
     def __init__(self, state_id, n_in, n_hidden, n_out, is_classifier = True,
@@ -216,6 +273,7 @@ class OutputSubnetwork(MLP):
         MLP.__init__(self, n_in, n_hidden, n_out, 
                      hidden_activation_function = hidden_activation_function,
                      dropout_threshold = dropout_threshold)
+        self.n_in, self.n_hidden, self.n_out = n_in, n_hidden, n_out
         self.state_id = state_id
         self.is_classifier = is_classifier
         self.memory = None

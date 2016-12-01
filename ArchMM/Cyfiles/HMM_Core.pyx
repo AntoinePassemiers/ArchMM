@@ -11,6 +11,7 @@ class IOConfig:
         """ Parameters of the whole model """
         self.missing_value_sym = np.nan
         self.n_iterations = 50
+        self.architecture = "ergodic"
         
         """ Parameters of the initial state subnetwork """ 
         self.pi_nepochs = 5
