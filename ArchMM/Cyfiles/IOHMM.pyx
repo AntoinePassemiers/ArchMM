@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
-#cython: boundscheck=False, initializedcheck=True
+#cython: boundscheck=False, wraparound=False, initializedcheck=True
+#@PydevCodeAnalysisIgnore
 
 import numpy as np
 from libc.stdio cimport *
+from cython.parallel import parallel, prange
 
-include "Artifacts.pyx"
 
 from ANN.MLP import *
+
+include "structs.pyx"
+include "Artifacts.pyx"
+
 
 def IOHMMLinFit(inputs, targets = None, n_states = 2, dynamic_features = False, delta_window = 1, 
                 is_classifier = True, n_classes = 2, parameters = None):
@@ -61,7 +66,7 @@ def IOHMMLinFit(inputs, targets = None, n_states = 2, dynamic_features = False, 
             for k in range(T[j]):
                 if not is_mv[j, k]:
                     for i in range(n):
-                        B[j, i, k, :] = O[i].computeOutput(U[j][k, :])[0] 
+                        B[j, i, k, :] = O[i].computeOutput(U[j][k, :])[0]
                         A[j, k, i, :] = N[i].computeOutput(U[j][k, :])[0]
         for j in range(n_sequences):
             if not is_mv[j, 0]:

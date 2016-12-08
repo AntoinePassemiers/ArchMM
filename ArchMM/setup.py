@@ -13,7 +13,8 @@ setup(
             "Cyfiles/Queue.pyx",
             "Cyfiles/IOHMM.pyx",
             "Cyfiles/HMM.pyx",
-            "Cyfiles/HMM_Core.pyx"
+            "Cyfiles/HMM_Core.pyx",
+            "Cyfiles/structs.pyx"
         ],
         language="c"),
     include_dirs = [numpy.get_include()]

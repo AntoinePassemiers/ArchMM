@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-#cython: boundscheck=False, initializedcheck=True
+#cython: boundscheck=False, wraparound=False, initializedcheck=True
+#@PydevCodeAnalysisIgnore
 
 import ctypes, pickle
 import numpy as np
@@ -8,6 +9,8 @@ from scipy.spatial.distance import cdist # TO REMOVE
 from cpython cimport array 
 from libc.stdio cimport *
 cimport libc.math
+
+from cpython.object cimport PyObject
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 
 include "KMeans.pyx"

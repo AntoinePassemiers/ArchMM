@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+#@PydevCodeAnalysisIgnore
 
 import sys, pickle
 import numpy as np
@@ -6,9 +7,9 @@ import numpy as np
 
 import theano
 
-sys.path.insert(0, '..')
+sys.path.insert(0, '../../Cyfiles')
 sys.path.insert(0, '../..')
-from ArchMM.Cyfiles.HMM_Core import *
+from HMM_Core import *
 
 
 def testHMM():
@@ -99,6 +100,7 @@ def testIOHMM():
     Y6 = np.zeros(25, dtype = np.int32)
     
     config = IOConfig()
+    config.architecture = "linear"
     config.n_iterations = 20
     config.s_learning_rate = 0.006
     config.o_learning_rate = 0.01
@@ -109,15 +111,20 @@ def testIOHMM():
     config.pi_nepochs = 5
     config.s_nepochs = 5
     config.o_nepochs = 5
-    hmm = AdaptiveHMM(5, has_io = True)
-    fit = hmm.fit([U, U2, U3, U4, U5, U6], targets = [Y, Y2, Y3, Y4, Y5, Y6], 
+    hmm = AdaptiveHMM(5, has_io = True, standardize = False)
+    inputs  = [U, U2, U3, U4, U5, U6]
+    outputs = [Y, Y2, Y3, Y4, Y5, Y6]
+    fit = hmm.fit(inputs, targets = outputs, 
+                  dynamic_features = False,
                   n_classes = 2, is_classifier = True, parameters = config)
+    """
     print(fit[0])
     print(fit[1])
     print(fit[2])
     print(fit[3])
     for i in range(4):
         np.save(open("iohmm_training_%i" % i, "wb"), fit[i])
+    """
 
     U7  = np.arange(7, 57).reshape(25, 2)
     U8  = np.random.rand(25, 2)
@@ -128,20 +135,20 @@ def testIOHMM():
     U13 = np.arange(18, 68).reshape(25, 2)
     U14 = np.random.rand(25, 2)
     
-    print(hmm.predictIO(U))
-    print(hmm.predictIO(U2))
-    print(hmm.predictIO(U3))
-    print(hmm.predictIO(U4))
-    print(hmm.predictIO(U5))
-    print(hmm.predictIO(U6))
-    print(hmm.predictIO(U7))
-    print(hmm.predictIO(U8))
-    print(hmm.predictIO(U9))
-    print(hmm.predictIO(U10))
-    print(hmm.predictIO(U11))
-    print(hmm.predictIO(U12))
-    print(hmm.predictIO(U13))
-    print(hmm.predictIO(U14))
+    print(hmm.predictIO(U)[0])
+    print(hmm.predictIO(U2)[0])
+    print(hmm.predictIO(U3)[0])
+    print(hmm.predictIO(U4)[0])
+    print(hmm.predictIO(U5)[0])
+    print(hmm.predictIO(U6)[0])
+    print(hmm.predictIO(U7)[0])
+    print(hmm.predictIO(U8)[0])
+    print(hmm.predictIO(U9)[0])
+    print(hmm.predictIO(U10)[0])
+    print(hmm.predictIO(U11)[0])
+    print(hmm.predictIO(U12)[0])
+    print(hmm.predictIO(U13)[0])
+    print(hmm.predictIO(U14)[0])
     
 def testIOHMMSimulation():
     U = np.arange(1, 51).reshape(25, 2)

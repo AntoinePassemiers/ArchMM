@@ -8,6 +8,7 @@ theano.config.allow_gc = True
 theano.config.scan.allow_gc = True
 theano.config.scan.allow_output_prealloc = False
 
+
 class MLLR:
     def __init__(self):
         gamma   = theano.tensor.matrix(name = "gamma", dtype = theano.config.floatX)
@@ -17,8 +18,8 @@ class MLLR:
         M = theano.tensor.matrix(name = "M", dtype = theano.config.floatX)
         b = theano.tensor.vector(name = "b", dtype = theano.config.floatX)
         
-        s = theano.tensor.scalar(name = "s", dtype = np.int) # Current hidden state
-        t = theano.tensor.scalar(name = "t", dtype = np.int) # Current time
+        s = theano.tensor.iscalar(name = "s") # Current hidden state
+        t = theano.tensor.iscalar(name = "t") # Current time
         
         distance_to_centroid = X[t, :] - mu_hat[s, :]
         mahalanobis_distance = distance_to_centroid.T * sigma_T[s, :, :] * distance_to_centroid

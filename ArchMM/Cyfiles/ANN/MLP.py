@@ -113,7 +113,6 @@ class PiStateSubnetwork(MLP):
         self.gamma = theano.tensor.tensor3(name = 'gamma', dtype = theano.config.floatX)
         self.learning_rate = theano.tensor.scalar("learning_rate", dtype = theano.config.floatX)
         self.s = theano.tensor.lscalar('s')
-
         self.cost = - theano.tensor.dot(self.gamma[self.s, :, 0],
             theano.tensor.log(self.processOutput(self.train_set_x[self.s, 0, :])[0]))
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
@@ -213,6 +212,7 @@ class StateSubnetwork(MLP):
             N = len(train_set_x)
             T = len(train_set_x[0]) # Warning : Sequence length is supposed to be constant
             epoch = 0
+            avg_cost = 0
             while (epoch < n_epochs):
                 epoch += 1
                 M = 0

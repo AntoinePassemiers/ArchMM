@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-# cython: boundscheck=False
+#cython: boundscheck=False, wraparound=False, initializedcheck=True
+#@PydevCodeAnalysisIgnore
 
 import collections, numbers, pickle
 import numpy as np
@@ -101,7 +102,7 @@ class AdaptiveHMM:
             self.sigma = np.cov(observations[0].T)
             self.stdvs = np.sqrt(np.diag(self.sigma))
             self.mu = np.mean(observations[0], axis = 0)
-            if self.standardize:
+            if 0 and self.standardize:
                 for i in range(len(observations)):
                     observations[i] = (observations[i] - self.mu) / self.stdvs
             return self.hmm.fitIO(observations, mu = self.mu, sigma = self.sigma, **kwargs)
