@@ -5,7 +5,7 @@ import numpy as np
 
 sys.path.insert(0, '..')
 sys.path.insert(0, '../..')
-from ArchMM.Cyfiles.HMM_Core import *
+from HMM_Core import *
 
 
 
@@ -258,10 +258,9 @@ if __name__ == "__main__":
         if k == 2:
             break
     pickle.dump((X_traning, y_training), open("temp", "wb"))
+    print(X_traning[0].shape)
 
     iohmm = AdaptiveHMM(config.n_states, config.architecture, has_io = True)
-    print("c")
     fit = iohmm.fit(X_traning, targets = y_training, n_classes = 24,
                 is_classifier = True, parameters = config)
-    print("t")
     iohmm.pySave(os.path.join("classifier"))

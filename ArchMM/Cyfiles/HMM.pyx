@@ -580,7 +580,7 @@ cdef class BaseHMM:
         self.SIGMA = sigma
         self.missing_value = parameters.missing_value_sym
         self.n_classes = n_classes
-        piN, N, O, loglikelihood, pistate_cost, state_cost, output_cost, weights = IOHMMLinFit(inputs, targets = targets, 
+        piN, N, O, loglikelihood, pistate_cost, state_cost, output_cost, weights = IOHMMLogFit(inputs, targets = targets, 
               n_states = self.n_states, dynamic_features = dynamic_features, delta_window = 1, 
               is_classifier = is_classifier, n_classes = n_classes, parameters = parameters)
         self.parameters = parameters
