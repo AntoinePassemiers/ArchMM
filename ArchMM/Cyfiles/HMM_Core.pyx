@@ -125,7 +125,7 @@ class AdaptiveHMM:
     
     def predictIO(self, *args, **kwargs):
         return self.hmm.predictIO(*args, **kwargs)
-        
+    
     def randomSequence(self, *args, **kwargs):
         return self.hmm.randomSequence(*args, **kwargs)
         

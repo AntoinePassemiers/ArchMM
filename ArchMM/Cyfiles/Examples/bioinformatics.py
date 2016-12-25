@@ -5,6 +5,7 @@ import numpy as np
 
 sys.path.insert(0, '..')
 sys.path.insert(0, '../..')
+sys.path.insert(0, '../../ArchMM/Cyfiles')
 from HMM_Core import *
 
 
@@ -218,49 +219,84 @@ class Parser:
         return sequences
 
 config = IOConfig()
-config.n_classifiers = 1
-config.n_states = 5
-config.architecture = "linear"
-config.n_iterations = 50
-config.pi_learning_rate = 0.005
-config.pi_nhidden = 5
-config.pi_nepochs = 2
+config.n_states = 3
+config.architecture = "ergodic"
+config.n_iterations = 6
+config.pi_learning_rate = 0.01
+config.pi_nhidden = 20
+config.pi_nepochs = 1
 config.pi_activation = "sigmoid"
-config.s_learning_rate  = 0.005
-config.s_nhidden  = 5
-config.s_nepochs = 2
+config.s_learning_rate  = 0.01
+config.s_nhidden  = 20
+config.s_nepochs = 1
 config.s_activation = "sigmoid"
-config.o_learning_rate  = 0.005
-config.o_nhidden  = 5
-config.o_nepochs = 2
-config.o_activation = "sigmoid"
+config.o_learning_rate  = 0.01
+config.o_nhidden  = 50
+config.o_nepochs = 1
+config.o_activation = "tanh"
 config.missing_value_sym = np.nan
 
-if __name__ == "__main__":
-    parser = Parser("MP4_data_2016/dataset/dssp", "MP4_data_2016/dataset/CATH_info.txt")
-    parser.parse()
-    training_sequences = parser.convertToArrays()
-    X_traning, y_training = list(), list()
-    k = 0
-    for (primary, secondary) in training_sequences:
-        print(primary)
-        s = np.concatenate((
-            np.random.randint(0, 22, size = 8), 
-            primary,    
-            np.random.randint(0, 22, size = 8)))
-        X = np.zeros((len(primary), 17 * 24), dtype = np.float32)
+def encode(sequences, n_max = 50):
+    ids = np.random.randint(0, len(sequences), n_max)
+    X, y = list(), list()
+    i = 0
+    for i in ids:
+        primary, secondary = sequences[i]
+        x = np.zeros((len(primary), 17 * len(PRIMARY_SYMBOLS)), dtype = np.float16)
         for i in range(8, len(primary) + 8):
             for d in range(-8, 9):
-                X[i - 8, (d + 8) * 17 + primary[i - 8]] = 1
-        X_traning.append(X)
-        y_training.append(y_training)
-        k += 1
-        if k == 2:
-            break
-    pickle.dump((X_traning, y_training), open("temp", "wb"))
-    print(X_traning[0].shape)
+                x[i - 8, (d + 8) * 17 + primary[i - 8]] = 1
+        X.append(x)
+        y.append(secondary)
+    return X, y
+
+def Q3(targets, predictions):
+    n_aa, n_errors = 0, 0
+    for s in range(len(predictions)):
+        for i in range(len(predictions[s])):
+            if predictions[s][i].argmax() != targets[s][i]:
+                n_errors += 1
+            n_aa += 1
+    return float(n_aa - n_errors) / float(n_aa)
+
+def train():
+    parser = Parser("MP4_data_2016/dataset/dssp", "MP4_data_2016/dataset/CATH_info.txt")
+    parser.parse()
+
+    training_sequences = parser.convertToArrays()
+    print(len(training_sequences))
+    X_traning, y_training = encode(training_sequences, n_max = 200)
+    # pickle.dump((X_traning, y_training), open("temp", "wb"))
+    # X_traning, y_training = pickle.load(open("temp", "rb"))
 
     iohmm = AdaptiveHMM(config.n_states, config.architecture, has_io = True)
-    fit = iohmm.fit(X_traning, targets = y_training, n_classes = 24,
+
+    fit = iohmm.fit(X_traning, targets = y_training, n_classes = 4,
                 is_classifier = True, parameters = config)
     iohmm.pySave(os.path.join("classifier"))
+
+
+def predict():
+    parser = Parser("MP4_data_2016/dataset/dssp", "MP4_data_2016/dataset/CATH_info.txt")
+    parser.parse()
+
+    iohmm = AdaptiveHMM(config.n_states, config.architecture, has_io = True)
+    iohmm.pyLoad(os.path.join("classifier"))
+    
+    parser = Parser("MP4_data_2016/dataset/dssp_test", "MP4_data_2016/dataset/CATH_info_test.txt")
+    parser.parse()
+    validation_sequences = parser.convertToArrays()
+    
+    predictions = list()
+    X_validation, y_validation = encode(validation_sequences)
+    for i in range(len(X_validation)):
+        results = iohmm.predictIO(X_validation[i])
+        print(results)
+        predictions.append(results[3])
+
+    accuracy = Q3(y_validation, predictions)
+    print(accuracy)
+
+if __name__ == "__main__":
+    # train()
+    predict()

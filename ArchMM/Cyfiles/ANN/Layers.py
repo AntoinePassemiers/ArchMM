@@ -4,6 +4,7 @@ import numpy as np
 import os, timeit
 
 import theano
+import theano.tensor as T
 from theano.tensor.signal import pool
 from theano.tensor.shared_randomstreams import RandomStreams
 
@@ -20,16 +21,7 @@ theano.config.NanGuardMode.inf_is_error = True
 
 class Layer:
     def processOutput(self, X):
-        if not self.is_conv:
-            linear_output = theano.tensor.dot(X, self.W) + self.b
-        else:
-            conv_out = theano.tensor.nnet.conv2d(X, self.W)
-            pooled_out = pool.pool_2d(
-                input = conv_out,
-                ds = pool_shp,
-                ignore_border = True
-            )
-            lin_output = pooled_out + self.b.dimshuffle('x', 0, 'x', 'x')
+        linear_output = T.dot(X, self.W) + self.b
         if self.activation is not None:
             output = self.activation(linear_output)
         else:
@@ -60,27 +52,27 @@ class LogisticRegression(Layer):
         b_values = np.asarray(np.random.rand(n_out), dtype = np.float32)
         self.b = theano.shared(value = b_values, name = 'b', borrow = True)
         
-        self.p_y_given_x = theano.tensor.nnet.softmax(theano.tensor.dot(input, self.W) + self.b)
+        self.p_y_given_x = T.nnet.softmax(T.dot(input, self.W) + self.b)
         self.output = self.p_y_given_x
-        self.y_pred = theano.tensor.argmax(self.p_y_given_x, axis = 1)
+        self.y_pred = T.argmax(self.p_y_given_x, axis = 1)
         self.params = [self.W, self.b]
-        self.activation = theano.tensor.nnet.softmax
+        self.activation = T.nnet.softmax
     def negative_log_likelihood(self, y):
-        return -theano.tensor.mean(theano.tensor.log(self.p_y_given_x)[theano.tensor.arange(y.shape[0]), y])
+        return -T.mean(T.log(self.p_y_given_x)[T.arange(y.shape[0]), y])
     def errors(self, y):
         if y.ndim != self.y_pred.ndim:
             raise TypeError(
                 'y should have the same shape as self.y_pred',
                 ('y', y.type, 'y_pred', self.y_pred.type))
         if y.dtype.startswith('int'):
-            return theano.tensor.mean(theano.tensor.neq(self.y_pred, y))
+            return T.mean(T.neq(self.y_pred, y))
         else:
             raise NotImplementedError()
         
         
 class HiddenLayer(Layer):
     def __init__(self, input, n_in, n_out, W = None, b = None,
-                 activation = theano.tensor.nnet.nnet.sigmoid,
+                 activation = T.nnet.nnet.sigmoid,
                  rng = np.random.RandomState(1234)):
         self.n_in, self.n_out = n_in, n_out
         self.is_conv = False
@@ -95,7 +87,7 @@ class HiddenLayer(Layer):
                 ),
                 dtype = np.float32
             )
-            if activation == theano.tensor.nnet.sigmoid:
+            if activation == T.nnet.sigmoid:
                 W_values *= 4
 
             W = theano.shared(value = W_values, name = 'W', borrow = True)
@@ -107,9 +99,11 @@ class HiddenLayer(Layer):
         self.W = W
         self.b = b
 
-        lin_output = theano.tensor.dot(input, self.W) + self.b
+        lin_output = T.dot(input, self.W) + self.b
         self.output = (
             lin_output if activation is None
             else activation(lin_output)
         )
         self.params = [self.W, self.b]
+        
+    

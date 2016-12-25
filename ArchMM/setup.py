@@ -10,6 +10,7 @@ setup(
             "Cyfiles/KMeans.pyx",
             "Cyfiles/ChangePointDetection.pyx",
             "Cyfiles/Artifacts.pyx",
+            "Cyfiles/Parallel.pyx",
             "Cyfiles/Queue.pyx",
             "Cyfiles/IOHMM.pyx",
             "Cyfiles/HMM.pyx",

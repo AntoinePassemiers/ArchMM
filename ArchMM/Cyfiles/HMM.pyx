@@ -580,7 +580,7 @@ cdef class BaseHMM:
         self.SIGMA = sigma
         self.missing_value = parameters.missing_value_sym
         self.n_classes = n_classes
-        piN, N, O, loglikelihood, pistate_cost, state_cost, output_cost, weights = IOHMMLogFit(inputs, targets = targets, 
+        piN, N, O, loglikelihood, pistate_cost, state_cost, output_cost, weights = IOHMMLinFit(inputs, targets = targets, 
               n_states = self.n_states, dynamic_features = dynamic_features, delta_window = 1, 
               is_classifier = is_classifier, n_classes = n_classes, parameters = parameters)
         self.parameters = parameters
@@ -616,13 +616,14 @@ cdef class BaseHMM:
             pass # TODO
             
     def predictIO(self, input, binary_prediction = True):
-        """ Viterbi decoder for input-output HMM """
+        """ Classification using multiple Viterbi decoders """
         assert(len(input.shape) == 2)
         cdef Py_ssize_t T = input.shape[0]
         cdef object piN = self.pi_state_subnetwork
         cdef object N   = self.state_subnetworks
         cdef object O   = self.output_subnetworks
         cdef cnp.ndarray state_sequence = np.zeros((self.n_classes, T), dtype = np.int8)
+        cdef cnp.ndarray output_sequence = np.zeros(T, dtype = np.float32)
         cdef cnp.ndarray current_eta = np.empty((self.n_states, self.n_classes), dtype = np.float32)
         cdef cnp.ndarray memory
         cdef Py_ssize_t i, t
@@ -648,7 +649,8 @@ cdef class BaseHMM:
                     else:
                         state_sequence[i, 0] = 0
             else:
-                memory = np.zeros((self.n_classes, T), dtype = np.float32)
+                memory = np.zeros((self.n_classes, self.n_states), dtype = np.float32)
+            output_sequence[0] = state_sequence[:, 0].argmax()
             for t in range(1, T):
                 if not is_mv[t]:
                     has_nan = False
@@ -668,11 +670,10 @@ cdef class BaseHMM:
                             memory[i, :] = memory[i, state_sequence[i, t]]
                         else:
                             state_sequence[i, t] = state_sequence[i, t - 1]
-            print(memory[:, 0])
-            print(state_sequence)
+                output_sequence[t] = state_sequence[:, t].argmax()
             if memory.sum() == 0:
                 return 0.5, memory, state_sequence
-            return np.argmax(memory.max(axis = 1)), memory, state_sequence
+            return np.argmax(memory.max(axis = 1)), memory, state_sequence, output_sequence
         else:
             raise NotImplementedError("Probability prediction not implemented")
 

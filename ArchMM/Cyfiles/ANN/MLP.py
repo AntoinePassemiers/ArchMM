@@ -75,12 +75,8 @@ class MLP(object):
         return self.computeOutputFunction(X)
 
     def processOutput(self, X):
-        i = 0
         for layer in self.layers:
-            if i == 1:
-                X = theano.tensor.switch(self.rnd_number < 0.4, 0, X)
             X = layer.processOutput(X)
-            i += 1
         return X # theano.tensor.switch(theano.tensor.isnan(X), 0.0001, X)
     
     def __getstate__(self):
@@ -368,4 +364,5 @@ def typedListToPaddedTensor(typed_list, T, is_3D = True, dtype = np.float32):
         return new_tensor
     else:
         return typed_list
+
     

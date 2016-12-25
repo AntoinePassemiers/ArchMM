@@ -34,7 +34,7 @@ cdef make_flattening_dict(cnp.ndarray T, cnp.ndarray is_mv, Py_ssize_t output_di
         for t in range(T[p]):
             if not is_mv[p, t]:
                 n_valid_examples += 1
-    cdef cnp.ndarray flattening_dict = np.empty(n_valid_examples, dtype = np.int16)
+    cdef cnp.int16_t[:] flattening_dict = np.empty(n_valid_examples, dtype = np.int16)
 
 cdef __fltensor3_csetitem__(Flattened_Markov_tensor3 this, object key, object item):
     if PyTuple_Check(key):
@@ -131,5 +131,5 @@ __fltensor3_csetitem__(alpha, (54, 54), 78)
 beta  = Flattened_Markov_tensor3(100, 100)
 __fltensor3_csetitem__(beta, (54, 54), 8) 
 gamma = __fltensor3_cadd__(alpha, beta)
-print(__fltensor3_cgetitem__(gamma, (54, 54))) 
+
 
