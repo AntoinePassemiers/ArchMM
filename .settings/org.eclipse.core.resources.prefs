@@ -1,0 +1,11 @@
+eclipse.preferences.version=1
+encoding//ArchMM/Cyfiles/ANN/CNN.py=utf-8
+encoding//ArchMM/Cyfiles/ANN/Layers.py=utf-8
+encoding//ArchMM/Cyfiles/ANN/MLP.py=utf-8
+encoding//ArchMM/Cyfiles/Artifacts.pyx=utf-8
+encoding//ArchMM/Cyfiles/HMM.pyx=utf-8
+encoding//ArchMM/Cyfiles/HMM_Core.pyx=utf-8
+encoding//ArchMM/Cyfiles/IOHMM.pyx=utf-8
+encoding//ArchMM/Cyfiles/Math.pyx=utf-8
+encoding//ArchMM/Cyfiles/SVM/SVM.py=utf-8
+encoding//ArchMM/Cyfiles/Test/HMM_test.py=utf-8

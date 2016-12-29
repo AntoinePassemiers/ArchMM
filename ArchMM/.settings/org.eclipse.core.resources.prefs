@@ -1,0 +1,14 @@
+eclipse.preferences.version=1
+encoding//Cyfiles/ANN/CNN.py=utf-8
+encoding//Cyfiles/ANN/Layers.py=utf-8
+encoding//Cyfiles/ANN/MLP.py=utf-8
+encoding//Cyfiles/Adaptation/MLLR.py=utf-8
+encoding//Cyfiles/Artifacts.pyx=utf-8
+encoding//Cyfiles/Examples/bioinformatics.py=utf-8
+encoding//Cyfiles/HMM.pyx=utf-8
+encoding//Cyfiles/HMM_Core.pyx=utf-8
+encoding//Cyfiles/IOHMM.pyx=utf-8
+encoding//Cyfiles/Parallel.pyx=utf-8
+encoding//Cyfiles/Structs.pyx=utf-8
+encoding//Cyfiles/Test/HMM_test.py=utf-8
+encoding//Cyfiles/Test/struct_tests.py=utf-8
