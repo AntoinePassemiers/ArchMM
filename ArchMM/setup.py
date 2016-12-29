@@ -6,16 +6,16 @@ import numpy
 setup(
     ext_modules = cythonize(
         [
-            "Cyfiles/Math.pyx",
-            "Cyfiles/KMeans.pyx",
-            "Cyfiles/ChangePointDetection.pyx",
-            "Cyfiles/Artifacts.pyx",
-            "Cyfiles/Parallel.pyx",
-            "Cyfiles/Queue.pyx",
-            "Cyfiles/IOHMM.pyx",
-            "Cyfiles/HMM.pyx",
-            "Cyfiles/HMM_Core.pyx",
-            "Cyfiles/Structs.pyx"
+            "Source/Math.pyx",
+            "Source/KMeans.pyx",
+            "Source/ChangePointDetection.pyx",
+            "Source/Artifacts.pyx",
+            "Source/Parallel.pyx",
+            "Source/Queue.pyx",
+            "Source/IOHMM.pyx",
+            "Source/HMM.pyx",
+            "Source/HMM_Core.pyx",
+            "Source/DecisionTrees/ID3.pyx"
         ],
         language="c"),
     include_dirs = [numpy.get_include()]
