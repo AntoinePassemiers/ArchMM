@@ -15,6 +15,7 @@ setup(
             "Source/IOHMM.pyx",
             "Source/HMM.pyx",
             "Source/HMM_Core.pyx",
+            "Source/DecisionTrees/Tree.pyx",
             "Source/DecisionTrees/ID3.pyx"
         ],
         language="c"),
