@@ -15,27 +15,27 @@ How to use it
 -------------
 
 Let's create a regular HMM :
-```
+`
 from HMM_Core import AdaptiveHMM
 
 # Using 5 hidden states, a fully-connected topology and normalizing the inputs
 # Also setting 0 as being a missing value
 hmm = AdaptiveHMM(5, "ergodic", standardize = True, missing_value = 0)
-```
+`
 
 Then learn from the data using the Baum-Welch algorithm :
-```
+`
 hmm.fit(data)
-```
+`
 
 Finally evaluate how the model fits a new sequence :
-```
+`
 # Using the Akaike Information Criterion
 hmm.score(data_2, mode = "aic")
-```
+`
 
 To instanciate an IO-HMM, there are more parameters to specify :
-```
+`python
 config = IOConfig()
 config.architecture = "linear" # Linear topology
 config.n_iterations = 20       # Number of iterations of the GEM
@@ -53,18 +53,18 @@ config.o_nepochs = 5
 
 # Instanciate IOHMM with 5 hidden states
 iohmm = AdaptiveHMM(5, has_io = True, standardize = False)
-```
+`
 Only classification is supported yet. To train a IOHMM for classification, we make use
 of the Generalized Expectation-Maximization algorithm.
-```
+`
 # Example of binary classification training
 fit = iohmm.fit(X, targets = y, n_classes = 2, is_classifier = True, parameters = config)
-```
+`
 
 Now we can classify our new data :
-```
+`
 prediction = iohmm.predictIO(validation_X)
-```
+`
 Installation
 ------------
 
@@ -82,8 +82,8 @@ To get ArchMM to work on your computer, you will need:
 ### User installation
 
 Build the project using Cython :
-```
+`
 python setup.py build_ext --inplace
-```
+`
 Next you may have to add an __init__.py file at the root of your build folder :
 otherwise the library can not be found by the interpreter.
