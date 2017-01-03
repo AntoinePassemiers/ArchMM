@@ -7,30 +7,8 @@ algorithms used under the Markov hypothesis (alternatives of the Input-Output Hi
 The Input-Output Hidden Markov Model (IO-HMM) is a markovian model where both output values and transition probabilities are computed using 
 sub-models such as multi-layered perceptrons. The learning algorithm is based on the Generalized Expectation-Maximization procedure.
 
-Installation
-------------
-
-### Dependencies
-
-
-To get ArchMM to work on your computer, you will need:
-
-- Python 2.7
-- Numpy (>= 1.6.1)
-- Scipy
-- Theano
-- Cython
-
-### User installation
-
-Compile the project using Cython :
-```
-python setup.py build_ext --inplace
-```
-Next you may have to add an __init__.py file at the root of your build folder :
-Otherwise the library can not be found by the interpreter.
-
-### How to use it
+How to use it
+-------------
 
 Let's create a regular HMM :
 ```python
@@ -76,11 +54,32 @@ Only classification is supported yet. To train a IOHMM for classification, we ma
 of the Generalized Expectation-Maximization algorithm.
 ```python
 # Example of binary classification training
-fit = iohmm.fit(X, targets = y,
-              n_classes = 2, is_classifier = True, parameters = config)
+fit = iohmm.fit(X, targets = y, n_classes = 2, is_classifier = True, parameters = config)
 ```
 
 Now we can classify our new data :
 ```python
 prediction = iohmm.predictIO(validation_X)
 ```
+Installation
+------------
+
+### Dependencies
+
+
+To get ArchMM to work on your computer, you will need:
+
+- Python 2.7
+- Numpy (>= 1.6.1)
+- Scipy
+- Theano
+- Cython
+
+### User installation
+
+Compile the project using Cython :
+```
+python setup.py build_ext --inplace
+```
+Next you may have to add an __init__.py file at the root of your build folder :
+otherwise the library can not be found by the interpreter.
