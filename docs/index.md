@@ -1,5 +1,5 @@
 ---
-title: Hello World
+title: ArchMM
 ---
 
 A r c h M M
@@ -17,11 +17,12 @@ How to use it
 Let's create a regular HMM.
 Using 5 hidden states, a fully-connected topology and normalizing the inputs
 Also considering 0 as being a missing value
-`
+
+```python
 from HMM_Core import AdaptiveHMM
 
 hmm = AdaptiveHMM(5, "ergodic", standardize = True, missing_value = 0)
-`
+```
 
 Then learn from the data using the Baum-Welch algorithm :
 `hmm.fit(data)`
