@@ -1,9 +1,0 @@
-author :
-  name : Antoine Passemiers
-  email : apassemi@ulb.ac.be
-  github : AntoinePassemiers
-  feedburner : nil
-production_url : https://antoinepassemiers.github.io/ArchMM
-BASE_PATH : https://antoinepassemiers.github.io/ArchMM
-exclude: ["README.md"]
-theme: jekyll-theme-cayman
