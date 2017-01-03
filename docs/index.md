@@ -1,8 +1,5 @@
 ---
-layout: page
 title: Hello World
-tagline: Easy websites with GitHub Pages
-description: Stuff
 ---
 
 A r c h M M
