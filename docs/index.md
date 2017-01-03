@@ -1,5 +1,5 @@
 ---
-title: H e l l o W o r l d
+title: Hello World
 ---
 
 A r c h M M
@@ -65,8 +65,7 @@ Now we can classify our new data :
 `
 prediction = iohmm.predictIO(validation_X)
 `
-Installation
-------------
+## Installation
 
 ### Dependencies
 
