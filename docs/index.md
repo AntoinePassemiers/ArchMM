@@ -1,3 +1,10 @@
+---
+layout: page
+title: Hello World
+tagline: Easy websites with GitHub Pages
+description: Stuff
+---
+
 A r c h M M
 ===========
 ArchMM (Architectural Markov Models) is a Cython library for machine learning, based on Hidden Markov Models. 
