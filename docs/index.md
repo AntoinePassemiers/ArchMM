@@ -1,5 +1,5 @@
 ---
-title: Hello World
+title: H e l l o W o r l d
 ---
 
 A r c h M M
@@ -15,7 +15,7 @@ How to use it
 -------------
 
 Let's create a regular HMM :
-```python
+```
 from HMM_Core import AdaptiveHMM
 
 # Using 5 hidden states, a fully-connected topology and normalizing the inputs
@@ -24,18 +24,18 @@ hmm = AdaptiveHMM(5, "ergodic", standardize = True, missing_value = 0)
 ```
 
 Then learn from the data using the Baum-Welch algorithm :
-```python
+```
 hmm.fit(data)
 ```
 
 Finally evaluate how the model fits a new sequence :
-```python
+```
 # Using the Akaike Information Criterion
 hmm.score(data_2, mode = "aic")
 ```
 
 To instanciate an IO-HMM, there are more parameters to specify :
-```python
+```
 config = IOConfig()
 config.architecture = "linear" # Linear topology
 config.n_iterations = 20       # Number of iterations of the GEM
@@ -56,13 +56,13 @@ iohmm = AdaptiveHMM(5, has_io = True, standardize = False)
 ```
 Only classification is supported yet. To train a IOHMM for classification, we make use
 of the Generalized Expectation-Maximization algorithm.
-```python
+```
 # Example of binary classification training
 fit = iohmm.fit(X, targets = y, n_classes = 2, is_classifier = True, parameters = config)
 ```
 
 Now we can classify our new data :
-```python
+```
 prediction = iohmm.predictIO(validation_X)
 ```
 Installation
@@ -81,7 +81,7 @@ To get ArchMM to work on your computer, you will need:
 
 ### User installation
 
-Compile the project using Cython :
+Build the project using Cython :
 ```
 python setup.py build_ext --inplace
 ```
