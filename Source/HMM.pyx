@@ -873,7 +873,7 @@ cdef class BaseHMM:
         
     def loadIO(self, filename):
         attributes = pickle.load(open(filename, "rb"))
-        m = 64
+        m = attributes["m"]
         n = attributes["n"]
         r = attributes["r"]
         pi_state = attributes["pi_state"]
