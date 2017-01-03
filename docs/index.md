@@ -14,13 +14,13 @@ sub-models such as multi-layered perceptrons. The learning algorithm is based on
 How to use it
 -------------
 
-Let's create a regular HMM.
-Using 5 hidden states, a fully-connected topology and normalizing the inputs
-Also considering 0 as being a missing value
+Let's create a regular HMM :
 
 ```python
 from HMM_Core import AdaptiveHMM
 
+# Using 5 hidden states, a fully-connected topology and normalizing the inputs
+# Also considering 0 as being a missing value
 hmm = AdaptiveHMM(5, "ergodic", standardize = True, missing_value = 0)
 ```
 
