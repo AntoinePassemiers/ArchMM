@@ -7,6 +7,7 @@ from libc.stdio cimport *
 
 DEF BAD_PREDICTION = -1.0
 DEF NO_SPLIT_POINT = -1.0
+DEF MISSING_VALUE  = -1.0
 
 ctypedef cnp.float32_t data_t
 
