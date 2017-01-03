@@ -10,6 +10,6 @@ exclude: ["README.md"]
 
 # Build settings
 markdown: kramdown
-theme: jekyll-theme-modernist
+theme: jekyll-theme-cayman
 gems:
   - jekyll-feed
