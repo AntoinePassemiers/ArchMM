@@ -3,8 +3,11 @@
 import numpy as np
 cimport numpy as cnp
 from libc.stdlib cimport *
-from libc.stdio cimport * 
-from cython.parallel import parallel, prange
+from libc.stdio cimport *
+from libc.string cimport memset
+
+import multiprocessing
+from cython.parallel import parallel, prange, threadid
 
 include "Math.pyx"
 include "Queue.pyx"
@@ -19,6 +22,8 @@ cpdef unsigned int FOURIER_APRX = 3
 
 cpdef unsigned int SUM_OF_SQUARES_COST = 4
 cpdef unsigned int MAHALANOBIS_DISTANCE_COST = 5
+
+ctypedef cnp.double_t datasample_t
 
 
 def epolyfit(arr, degree, **kwargs):
@@ -36,7 +41,7 @@ cdef double SumOfSquaresCost(cnp.double_t[:] vector):
     cdef Py_ssize_t i
     cdef double total = 0.0
     for i in range(len(vector)):
-        total += vector[i] ** 2 # TODO : remove the square ?
+        total += vector[i] ** 2
     return total
     
 cdef double MahalanobisCost(cnp.double_t[:] vector, cnp.ndarray mu, cnp.ndarray inv_sigma):
@@ -49,44 +54,56 @@ cdef double MahalanobisCost(cnp.double_t[:] vector, cnp.ndarray mu, cnp.ndarray 
     return <double>cost
 
 cdef class CUSUM:
+    cdef Py_ssize_t window_size
+    cdef unsigned int cost_func
+    cdef cnp.int_t[:] keypoints
+
     def __cinit__(self, threshold = 0.01, cost_func = MAHALANOBIS_DISTANCE_COST, 
                   window_size = 15, n_keypoints = 50):
         self.window_size = window_size
         self.cost_func = cost_func
-    
+        self.keypoints = np.empty(n_keypoints, dtype = np.int16)
+
+    @cython.boundscheck(False)
     cpdef detectPoints(self, signal, mu, sigma):
-        """
-        cdef size_t current_n_keypoints = 0
-        cdef Py_ssize_t i, j
+        cdef Py_ssize_t n_threads = multiprocessing.cpu_count()
+        cdef Py_ssize_t i, j, k, t, T = len(signal)
         cdef Py_ssize_t N = self.window_size
-        cdef cnp.ndarray beta = np.zeros(N, dtype = np.double)
-        cdef double cusum
-        cdef object loop_range_1, loop_range_2
-        enqueue(queue, current_iter)
-        while (not (current_n_keypoints == self.n_keypoints - 1)) and (not isQueueEmpty(queue)):
-            loop_range_1 = range(N - 2, 2) if N < 4 else range(N - 2, 2, -1)
-            for j in loop_range_1:
-                cusum = 0
-                loop_range_2 = range(j - 1, 1) if j < 2 else range(j - 1, 1, -1)
-                for i in loop_range_2:
-                    beta[i] += self.cost_func()
-        """
-        pass
+        cdef cnp.double_t[:] beta = np.zeros(N, dtype = np.double)
+        cdef cnp.double_t[:] C = np.zeros(n_threads, dtype = np.double)
+        cdef double fog
+        cdef cnp.double_t[:, :] signal_buffer = np.asarray(signal)
+        with nogil:
+            for t in prange(0, T - N):
+                k = threadid()
+                memset(&beta[0], 0x00, N * sizeof(cnp.double_t))
+                fog = 0.0
+                for j in range(N - 1, 0, -1):
+                    C[k] = 0.0
+                    for i in range(j - 1, -1, -1):
+                        beta[i] += self.getCost(signal_buffer[i], signal_buffer[j])
+                        C[k] += beta[i]
+                        fog = max(C[k] / ((j - 1) * (N - j)), fog)
         
     cpdef cnp.int_t[:] getKeypoints(self):
         pass
     
-    cdef double getCost(self, cnp.ndarray costs_A, cnp.ndarray costs_B):
-        cdef double cost
+    cdef inline cnp.double_t getCost(self, cnp.double_t[:] A, cnp.double_t[:] B) nogil:
+        cdef cnp.double_t* cost
         if self.cost_func == MAHALANOBIS_DISTANCE_COST:
-            # TODO : remplacer aprx_A[1] par aprx_B[1] par les approximations de la régression
+            """
             cost = MahalanobisCost(costs_A, self.mu, self.inv_sigma) + \
                 MahalanobisCost(costs_B, self.mu, self.inv_sigma)
+            """
+            pass
         elif self.cost_func == SUM_OF_SQUARES_COST:
-            cost = SumOfSquaresCost(costs_A) + SumOfSquaresCost(costs_B)
+            # cost = SumOfSquaresCost(costs_A) + SumOfSquaresCost(costs_B)
+            cost = cy_subtract(A, B)
+            pass
         else:
-            raise NotImplementedError()
-        return cost
+            with gil:
+                raise NotImplementedError()
+        return 45
 
 cdef class BatchCPD:
     """Implementation of the batch Change Point Detection Algorithm.

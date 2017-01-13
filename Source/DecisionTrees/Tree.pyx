@@ -31,6 +31,6 @@ cdef Node* createNode():
     node.value = "null"
     node.split_point = NO_SPLIT_POINT
     node.id = 0
-    node.next = NULL
-    node.num_children = 0
+    node.left_child = NULL
+    node.right_child = NULL
     return node
