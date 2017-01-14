@@ -23,8 +23,6 @@ cpdef unsigned int FOURIER_APRX = 3
 cpdef unsigned int SUM_OF_SQUARES_COST = 4
 cpdef unsigned int MAHALANOBIS_DISTANCE_COST = 5
 
-ctypedef cnp.double_t datasample_t
-
 
 def epolyfit(arr, degree, **kwargs):
     N = arr.shape[0]
@@ -37,7 +35,7 @@ def epolyfit(arr, degree, **kwargs):
     return reg
 
 cdef double SumOfSquaresCost(cnp.double_t[:] vector):
-    """ Sum of squares of the vector elements """
+    """ Sum of squares of the vector components """
     cdef Py_ssize_t i
     cdef double total = 0.0
     for i in range(len(vector)):
@@ -45,7 +43,7 @@ cdef double SumOfSquaresCost(cnp.double_t[:] vector):
     return total
     
 cdef double MahalanobisCost(cnp.double_t[:] vector, cnp.ndarray mu, cnp.ndarray inv_sigma):
-    """ Mahalanobis distance between the vector and the mean of the signal """
+    """ Mahalanobis distance between the vector and the mean of the whole sequence """
     cdef Py_ssize_t n = len(vector)
     if n == 0:
         return 0
@@ -56,7 +54,7 @@ cdef double MahalanobisCost(cnp.double_t[:] vector, cnp.ndarray mu, cnp.ndarray 
 cdef class CUSUM:
     cdef Py_ssize_t window_size
     cdef unsigned int cost_func
-    cdef cnp.int_t[:] keypoints
+    cdef cnp.int16_t[:] keypoints
 
     def __cinit__(self, threshold = 0.01, cost_func = MAHALANOBIS_DISTANCE_COST, 
                   window_size = 15, n_keypoints = 50):
@@ -65,31 +63,37 @@ cdef class CUSUM:
         self.keypoints = np.empty(n_keypoints, dtype = np.int16)
 
     @cython.boundscheck(False)
-    cpdef detectPoints(self, signal, mu, sigma):
+    cpdef detectPoints(self, signal):
         cdef Py_ssize_t n_threads = multiprocessing.cpu_count()
         cdef Py_ssize_t i, j, k, t, T = len(signal)
+        cdef Py_ssize_t best_i, best_j
         cdef Py_ssize_t N = self.window_size
-        cdef cnp.double_t[:] beta = np.zeros(N, dtype = np.double)
-        cdef cnp.double_t[:] C = np.zeros(n_threads, dtype = np.double)
-        cdef double fog
+        cdef cnp.double_t[:] beta = np.empty(N, dtype = np.double)
+        cdef cnp.double_t[:] C = np.empty(n_threads, dtype = np.double)
+        cdef double fog, C_prime
         cdef cnp.double_t[:, :] signal_buffer = np.asarray(signal)
         with nogil:
             for t in prange(0, T - N):
                 k = threadid()
                 memset(&beta[0], 0x00, N * sizeof(cnp.double_t))
                 fog = 0.0
-                for j in range(N - 1, 0, -1):
+                for j in range(N - 1, 1, -1):
                     C[k] = 0.0
-                    for i in range(j - 1, -1, -1):
-                        beta[i] += self.getCost(signal_buffer[i], signal_buffer[j])
+                    for i in range(j - 1, 0, -1):
+                        beta[i] += self.getCost(signal_buffer[t + i], signal_buffer[t + j])
                         C[k] += beta[i]
-                        fog = max(C[k] / ((j - 1) * (N - j)), fog)
+                        C_prime = C[k] / ((j - i) * (N - j))
+                        if C_prime > fog:
+                            fog = C_prime
+                            best_i, best_j = i + t, j + t
+                        fog = max(C_prime, fog)
+                printf("%i, %i, %i, %d\n", k, best_j, best_i, fog)
         
     cpdef cnp.int_t[:] getKeypoints(self):
         pass
     
     cdef inline cnp.double_t getCost(self, cnp.double_t[:] A, cnp.double_t[:] B) nogil:
-        cdef cnp.double_t* cost
+        cdef cnp.double_t cost
         if self.cost_func == MAHALANOBIS_DISTANCE_COST:
             """
             cost = MahalanobisCost(costs_A, self.mu, self.inv_sigma) + \
@@ -97,13 +101,11 @@ cdef class CUSUM:
             """
             pass
         elif self.cost_func == SUM_OF_SQUARES_COST:
-            # cost = SumOfSquaresCost(costs_A) + SumOfSquaresCost(costs_B)
-            cost = cy_subtract(A, B)
-            pass
+            cost = euclidean_distance(A, B)
         else:
             with gil:
                 raise NotImplementedError()
-        return 45
+        return cost
 
 cdef class BatchCPD:
     """Implementation of the batch Change Point Detection Algorithm.

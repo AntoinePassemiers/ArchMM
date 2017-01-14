@@ -4,7 +4,8 @@ import numpy as np
 cimport numpy as cnp
 import cython
 from libc.stdlib cimport *
-from libc.stdio cimport * 
+from libc.stdio cimport *
+cimport libc.math
 
 ctypedef fused primitive_t:
     cnp.float_t
@@ -14,23 +15,16 @@ ctypedef fused primitive_t:
     cnp.int32_t
     cnp.int64_t
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-cdef inline cnp.double_t* cy_add(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
-    cdef size_t i
-    cdef cnp.double_t* result = <cnp.double_t*>malloc(A.shape[0] * sizeof(cnp.double_t))
-    for i in range(A.shape[0]):
-        result[i] = A[i] + B[i]
-    return result
+ctypedef cnp.double_t datasample_t
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef inline cnp.double_t* cy_subtract(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
+cdef inline cnp.double_t euclidean_distance(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
     cdef size_t i
-    cdef cnp.double_t* result = <cnp.double_t*>malloc(A.shape[0] * sizeof(cnp.double_t))
+    cdef cnp.double_t result = 0.0
     for i in range(A.shape[0]):
-        result[i] = A[i] - B[i]
-    return result
+        result += (A[i] - B[i]) ** 2
+    return libc.math.sqrt(result)
 
 
 def stableInvSigma(sigma):

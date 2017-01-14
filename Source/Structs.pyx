@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 #cython: boundscheck=False, wraparound=False, initializedcheck=True
-#@PydevCodeAnalysisIgnore
 
 from libc.stdio cimport *
 cimport libc.math
@@ -125,11 +124,3 @@ cdef class Flattened_Markov_tensor3:
     
     def copy(self, other):
         PyObject_CopyData(self, other)
-    
-alpha = Flattened_Markov_tensor3(100, 100)
-__fltensor3_csetitem__(alpha, (54, 54), 78) 
-beta  = Flattened_Markov_tensor3(100, 100)
-__fltensor3_csetitem__(beta, (54, 54), 8) 
-gamma = __fltensor3_cadd__(alpha, beta)
-
-

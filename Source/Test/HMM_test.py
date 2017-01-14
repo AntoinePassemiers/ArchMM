@@ -1,16 +1,23 @@
 # -*- coding: utf-8 -*-
-#@PydevCodeAnalysisIgnore
 
 import sys, pickle
 import numpy as np
-# import matplotlib.pyplot as plt
 
 import theano
 
-sys.path.insert(0, '../../Source')
-sys.path.insert(0, '../..')
+sys.path.insert(0, '../../ArchMM/Source')
+sys.path.insert(0, '..')
 from HMM_Core import *
+from ChangePointDetection import *
 
+
+def testCPD():
+    data = np.random.random((150, 2))
+    data[26, 0] = 500.0
+    data[42, 0] = 500.0
+    data[91, 1] = 500.0
+    cusum = CUSUM(cost_func = 4)
+    cusum.detectPoints(data)
 
 def testHMM():
     data = np.arange(1, 1001, dtype = np.double).reshape(500, 2)
@@ -30,9 +37,6 @@ def testHMM():
     print(hmm.score(data, mode = "probability"))
     print(hmm.score(data2, mode = "probability"))
     print(hmm.score(data3, mode = "probability"))
-    
-    plt.plot(data3[:, 1])
-    plt.show()
     
 def villoTest():
     data = [11,11,10,10,9,9,9,11,10,10,9,10,11,12,
@@ -158,6 +162,7 @@ def testIOHMMSimulation():
 
 
 if __name__ == "__main__":
-    testIOHMM()
+    testCPD()
+    # testIOHMM()
     # villoTest()
     print("Finished")

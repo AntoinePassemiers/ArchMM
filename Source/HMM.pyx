@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 #cython: boundscheck=False, wraparound=False, initializedcheck=True
-#@PydevCodeAnalysisIgnore
 
 import ctypes, pickle
 import numpy as np
