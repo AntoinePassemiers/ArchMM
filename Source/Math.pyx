@@ -19,6 +19,13 @@ ctypedef cnp.double_t datasample_t
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
+cdef inline cnp.double_t[:] inplace_add(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
+    for i in range(A.shape[0]):
+        A[i] = A[i] + B[i]
+    return A
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
 cdef inline cnp.double_t euclidean_distance(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
     cdef size_t i
     cdef cnp.double_t result = 0.0

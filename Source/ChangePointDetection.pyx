@@ -6,6 +6,8 @@ from libc.stdlib cimport *
 from libc.stdio cimport *
 from libc.string cimport memset
 
+from cpython.buffer cimport PyObject_CheckBuffer
+
 import multiprocessing
 from cython.parallel import parallel, prange, threadid
 
@@ -22,6 +24,9 @@ cpdef unsigned int FOURIER_APRX = 3
 
 cpdef unsigned int SUM_OF_SQUARES_COST = 4
 cpdef unsigned int MAHALANOBIS_DISTANCE_COST = 5
+
+cpdef unsigned int KERNEL_RADIAL = 100
+cpdef unsigned int KERNEL_TRICUBIC = 101
 
 
 def epolyfit(arr, degree, **kwargs):
@@ -51,12 +56,18 @@ cdef double MahalanobisCost(cnp.double_t[:] vector, cnp.ndarray mu, cnp.ndarray 
     cost = np.dot(np.dot(delta, inv_sigma), delta)
     return <double>cost
 
-cdef class CUSUM:
+cdef struct fog_t:
+    cnp.double_t value
+    Py_ssize_t begin
+    Py_ssize_t end
+
+cdef class GTD:
     cdef Py_ssize_t window_size
     cdef unsigned int cost_func
     cdef cnp.int16_t[:] keypoints
+    cdef fog_t* fogs
 
-    def __cinit__(self, threshold = 0.01, cost_func = MAHALANOBIS_DISTANCE_COST, 
+    def __cinit__(self, cost_func = MAHALANOBIS_DISTANCE_COST,
                   window_size = 15, n_keypoints = 50):
         self.window_size = window_size
         self.cost_func = cost_func
@@ -64,6 +75,9 @@ cdef class CUSUM:
 
     @cython.boundscheck(False)
     cpdef detectPoints(self, signal):
+        if not PyObject_CheckBuffer(signal):
+            printf("Error : the sequence must implement the buffer interface\n")
+            exit(EXIT_FAILURE)
         cdef Py_ssize_t n_threads = multiprocessing.cpu_count()
         cdef Py_ssize_t i, j, k, t, T = len(signal)
         cdef Py_ssize_t best_i, best_j
@@ -72,12 +86,13 @@ cdef class CUSUM:
         cdef cnp.double_t[:] C = np.empty(n_threads, dtype = np.double)
         cdef double fog, C_prime
         cdef cnp.double_t[:, :] signal_buffer = np.asarray(signal)
+        self.fogs = <fog_t*>malloc((T - N) * sizeof(fog_t))
         with nogil:
             for t in prange(0, T - N):
                 k = threadid()
-                memset(&beta[0], 0x00, N * sizeof(cnp.double_t))
-                fog = 0.0
-                for j in range(N - 1, 1, -1):
+                memset(<void*>&beta[0], 0x00, N * sizeof(cnp.double_t))
+                fog = -NUMPY_INF_VALUE
+                for j in range(N - 2, 1, -1):
                     C[k] = 0.0
                     for i in range(j - 1, 0, -1):
                         beta[i] += self.getCost(signal_buffer[t + i], signal_buffer[t + j])
@@ -86,8 +101,10 @@ cdef class CUSUM:
                         if C_prime > fog:
                             fog = C_prime
                             best_i, best_j = i + t, j + t
-                        fog = max(C_prime, fog)
                 printf("%i, %i, %i, %d\n", k, best_j, best_i, fog)
+                self.fogs[t].begin = best_i
+                self.fogs[t].end = best_j
+                self.fogs[t].value = fog
         
     cpdef cnp.int_t[:] getKeypoints(self):
         pass
@@ -99,13 +116,70 @@ cdef class CUSUM:
             cost = MahalanobisCost(costs_A, self.mu, self.inv_sigma) + \
                 MahalanobisCost(costs_B, self.mu, self.inv_sigma)
             """
-            pass
+            pass # TODO
         elif self.cost_func == SUM_OF_SQUARES_COST:
             cost = euclidean_distance(A, B)
         else:
             with gil:
                 raise NotImplementedError()
         return cost
+
+
+cdef inline cnp.double_t computeTStat(cnp.double_t s_tot, cnp.double_t s_r, cnp.double_t s_l,
+                                      Py_ssize_t N, Py_ssize_t i, Py_ssize_t j) nogil:
+    cdef cnp.double_t num = s_r / (N - j) - s_l / (j - i)
+    cdef cnp.double_t A = (s_tot ** 2 - s_l ** 2 / (j - i) - s_r ** 2 / (N - j)) / (N - i - 2)
+    cdef cnp.double_t B = (N - i) / ((j - i) * (N - j))
+    return A / libc.math.sqrt(A * B)
+
+cdef class TSTAT:
+    cdef Py_ssize_t window_size
+    cdef unsigned int cost_func
+    cdef cnp.int16_t[:] keypoints
+    cdef fog_t* fogs
+
+    def __cinit__(self, kernel = KERNEL_RADIAL, window_size = 15, n_keypoints = 50):
+        self.kernel = kernel
+        self.window_size = window_size
+        self.keypoints = np.empty(n_keypoints, dtype = np.int16)
+
+    @cython.boundscheck(False)
+    cpdef detectPoints(self, signal):
+        cdef Py_ssize_t n_threads = multiprocessing.cpu_count()
+        cdef Py_ssize_t i, j, k, t, T = len(signal)
+        cdef Py_ssize_t r = signal.shape[1]
+        cdef Py_ssize_t best_i, best_j
+        cdef Py_ssize_t N = self.window_size
+        cdef double fog, tstat
+        cdef cnp.double_t[:] S_tot, S_tot_2, S_r, S_l
+        cdef cnp.double_t[:, :] signal_buffer = np.asarray(signal)
+        self.fogs = <fog_t*>malloc((T - N) * sizeof(fog_t))
+        """
+        with nogil:
+            for t in prange(0, T - N):
+                k = threadid()
+                fog = -NUMPY_INF_VALUE
+                S_tot = signal_buffer[t + N - 1]
+                S_tot_2 = signal_buffer[t + N - 1] ** 2
+                for i in range(N - 2, 0, -1):
+                    S_tot = inplace_add(S_tot, signal_buffer[t + i])
+                    S_tot_2 = inplace_add(S_tot_2, signal_buffer[t + i] ** 2)
+                    memset(<void*>&S_r[0], 0x00, r * sizeof(cnp.double_t))
+                    for j in range(N - 1, i - 1, -1):
+                        S_r = inplace_add(S_r, signal_buffer[t + j])
+                        S_l = S_tot - S_r
+                        tstat = computeTStat(s_tot, s_r, s_l, N, i, j)
+                        if tstat > fog:
+                            fog = tstat
+                            best_i, best_j = i + t, j + t
+                printf("%i, %i, %i, %d\n", k, best_j, best_i, fog)
+                self.fogs[t].begin = best_i
+                self.fogs[t].end = best_j
+                self.fogs[t].value = fog
+        """
+
+    cpdef cnp.int_t[:] getKeypoints(self):
+        pass
 
 cdef class BatchCPD:
     """Implementation of the batch Change Point Detection Algorithm.

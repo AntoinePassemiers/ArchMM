@@ -47,7 +47,7 @@ cdef __fltensor3_cgetitem__(Flattened_Markov_tensor3 this, object key):
     else:
         NotImplementedError()
         
-cdef Flattened_Markov_tensor3 __fltensor3_cadd__(Flattened_Markov_tensor3 matrix_A, 
+cdef Flattened_Markov_tensor3 __fltensor3_cadd__(Flattened_Markov_tensor3 matrix_A,
                                                  Flattened_Markov_tensor3 matrix_B):
     assert(matrix_A.n_cols == matrix_B.n_cols and matrix_A.n_rows == matrix_B.n_rows)
     cdef Flattened_Markov_tensor3 new_matrix = Flattened_Markov_tensor3(matrix_A.n_cols, matrix_A.n_rows)

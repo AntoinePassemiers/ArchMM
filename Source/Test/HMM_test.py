@@ -16,7 +16,7 @@ def testCPD():
     data[26, 0] = 500.0
     data[42, 0] = 500.0
     data[91, 1] = 500.0
-    cusum = CUSUM(cost_func = 4)
+    cusum = GTD(cost_func = 4)
     cusum.detectPoints(data)
 
 def testHMM():
