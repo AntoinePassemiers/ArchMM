@@ -101,20 +101,19 @@ def IOHMMLinFit(inputs, targets = None, n_states = 2, dynamic_features = False, 
                         for l in range(n):
                             alpha[j, i, k] += alpha[j, l, k - 1]
         """ Backward procedure """
-        with nogil:
-            for j in range(n_sequences):
-                beta[j, :, -1] = 1
-                for k in range(T[j] - 2, -1, -1):
-                    if not is_mv[j, k]:
-                        for i in range(n):
-                            beta[j, i, k] = 0
-                            for l in range(n):
-                                beta[j, i, k] += beta[j, l, k + 1] * A[j, k + 1, i, l] * B[j, l, k, targets[j][k]]
-                    else: # If value is missing
-                        for i in range(n):
-                            beta[j, i, k] = 0
-                            for l in range(n):
-                                beta[j, i, k] += beta[j, l, k + 1]
+        for j in range(n_sequences):
+            beta[j, :, -1] = 1
+            for k in range(T[j] - 2, -1, -1):
+                if not is_mv[j, k]:
+                    for i in range(n):
+                        beta[j, i, k] = 0
+                        for l in range(n):
+                            beta[j, i, k] += beta[j, l, k + 1] * A[j, k + 1, i, l] * B[j, l, k, targets[j][k]]
+                else: # If value is missing
+                    for i in range(n):
+                        beta[j, i, k] = 0
+                        for l in range(n):
+                            beta[j, i, k] += beta[j, l, k + 1]
         """ Forward-Backward xi computation """
         for j in range(n_sequences):
             """

@@ -12,6 +12,7 @@ setup(
             "Source/KMeans.pyx",
             "Source/ChangePointDetection.pyx",
             "Source/Artifacts.pyx",
+            "Source/Fuzzy.pyx",
             "Source/Parallel.pyx",
             "Source/Queue.pyx",
             "Source/IOHMM.pyx",

@@ -6,11 +6,10 @@ from libc.stdlib cimport *
 from libc.stdio cimport *
 from libc.string cimport memset
 
-from cpython.buffer cimport PyObject_CheckBuffer
-
 import multiprocessing
 from cython.parallel import parallel, prange, threadid
 
+include "Utils.pyx"
 include "Math.pyx"
 include "Queue.pyx"
 
@@ -61,7 +60,11 @@ cdef struct fog_t:
     Py_ssize_t begin
     Py_ssize_t end
 
-cdef class GTD:
+cdef class MB:
+    def __cinit__(self):
+        pass
+
+cdef class GTD(MB):
     cdef Py_ssize_t window_size
     cdef unsigned int cost_func
     cdef cnp.int16_t[:] keypoints
@@ -74,18 +77,16 @@ cdef class GTD:
         self.keypoints = np.empty(n_keypoints, dtype = np.int16)
 
     @cython.boundscheck(False)
-    cpdef detectPoints(self, signal):
-        if not PyObject_CheckBuffer(signal):
-            printf("Error : the sequence must implement the buffer interface\n")
-            exit(EXIT_FAILURE)
+    cpdef detectPoints(self, sequence):
+        ensure_PyObject_Buffer(sequence)
         cdef Py_ssize_t n_threads = multiprocessing.cpu_count()
-        cdef Py_ssize_t i, j, k, t, T = len(signal)
+        cdef Py_ssize_t i, j, k, t, T = len(sequence)
         cdef Py_ssize_t best_i, best_j
         cdef Py_ssize_t N = self.window_size
         cdef cnp.double_t[:] beta = np.empty(N, dtype = np.double)
         cdef cnp.double_t[:] C = np.empty(n_threads, dtype = np.double)
         cdef double fog, C_prime
-        cdef cnp.double_t[:, :] signal_buffer = np.asarray(signal)
+        cdef cnp.double_t[:, :] signal_buffer = np.asarray(sequence)
         self.fogs = <fog_t*>malloc((T - N) * sizeof(fog_t))
         with nogil:
             for t in prange(0, T - N):
@@ -132,7 +133,7 @@ cdef inline cnp.double_t computeTStat(cnp.double_t s_tot, cnp.double_t s_r, cnp.
     cdef cnp.double_t B = (N - i) / ((j - i) * (N - j))
     return A / libc.math.sqrt(A * B)
 
-cdef class TSTAT:
+cdef class TSTAT(MB):
     cdef Py_ssize_t window_size
     cdef unsigned int cost_func
     cdef cnp.int16_t[:] keypoints
@@ -145,6 +146,7 @@ cdef class TSTAT:
 
     @cython.boundscheck(False)
     cpdef detectPoints(self, signal):
+        ensure_PyObject_Buffer(signal)
         cdef Py_ssize_t n_threads = multiprocessing.cpu_count()
         cdef Py_ssize_t i, j, k, t, T = len(signal)
         cdef Py_ssize_t r = signal.shape[1]
