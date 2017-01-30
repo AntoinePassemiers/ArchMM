@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-#cython: boundscheck=False, wraparound=False, initializedcheck=True
+# distutils: language=c
+# cython: boundscheck=False
+# cython: wraparound=False
+# cython: initializedcheck=True
 
 from libc.stdio cimport *
 cimport libc.math

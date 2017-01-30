@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
-#cython: boundscheck=False, wraparound=False, initializedcheck=True
-#@PydevCodeAnalysisIgnore
+# distutils: language=c
+# cython: boundscheck=False
+# cython: wraparound=False
+# cython: initializedcheck=True
 
 import numpy as np
 from libc.stdio cimport *

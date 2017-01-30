@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# distutils: language=c
+# cython: boundscheck=False
+# cython: wraparound=False
+# cython: initializedcheck=True
 
 from threading import Thread
 

@@ -1,8 +1,16 @@
 # -*- coding: utf-8 -*-
+# distutils: language=c
+# cython: boundscheck=False
+# cython: wraparound=False
+# cython: initializedcheck=True
 
 import numpy as np
 cimport numpy as cnp
-from libc.stdlib cimport atoi, malloc, free
+from libc.stdlib cimport atoi, malloc, calloc, free
+
+import multiprocessing
+from cython.parallel import parallel, prange, threadid
+
 
 NP_INF_VALUE = np.nan_to_num(np.inf)
 cdef size_t INITIAL_CLUSTER_SIZE = 4
@@ -33,7 +41,7 @@ cdef class ClusterSet:
         free(self.cluster_sizes)
         free(self.cluster_max_sizes)
         
-    cdef void insert(self, Py_ssize_t cluster_id, cnp.double_t[:] element):
+    cdef void insert(self, Py_ssize_t cluster_id, cnp.double_t[:] element) nogil:
         """ Inserts [[element]] in the cluster [[cluster_id]].
         The cluster is implemented using an array. If the array is full,
         a new array is initialized with the double of the previous array's size. """
@@ -54,10 +62,13 @@ cdef class ClusterSet:
                 self.clusters[cluster_id][self.cluster_sizes[cluster_id]][i] = element[i]
             self.cluster_sizes[cluster_id] += 1
         
-    cdef cnp.double_t[:] clusterMean(self, size_t cluster_id):
+    cdef cnp.double_t[:] clusterMean(self, size_t cluster_id) nogil:
         """ Computes the mean of the cluster [[cluster_id]] by averaging the 
         contained points """ 
-        cdef cnp.double_t[:] cmean = np.zeros(self.point_dim, dtype = np.double)
+        # cdef cnp.double_t[:] cmean = np.zeros(self.point_dim, dtype = np.double)
+        cdef cnp.double_t[:] cmean
+        with gil:
+            cmean = <cnp.double_t[:self.point_dim]>calloc(self.point_dim, sizeof(cnp.double_t))
         cdef size_t i, j
         cdef size_t n_points = self.cluster_sizes[cluster_id]
         for i in range(n_points):
@@ -67,10 +78,10 @@ cdef class ClusterSet:
             cmean[j] /= n_points
         return cmean
         
-    cdef size_t getNClusters(self):
+    cdef size_t getNClusters(self) nogil:
         return self.n_clusters
     
-    cdef unsigned int isClusterEmpty(self, cluster_id):
+    cdef unsigned int isClusterEmpty(self, Py_ssize_t cluster_id) nogil:
         return 1 if self.cluster_sizes[cluster_id] == 0 else 0
             
      
@@ -86,6 +97,7 @@ cdef perform_step(cnp.ndarray data, cnp.ndarray centroids, ClusterSet clusters):
     clusters : objects containing all the information about each cluster
                the points it contains, its centroid, etc.
     """
+    # cdef cnp.double_t[:, ::1] databuffer = data[:, :]
     cdef Py_ssize_t mu_index, i, k = 0
     cdef double min_distance = NP_INF_VALUE
     cdef double current_distance
@@ -99,11 +111,10 @@ cdef perform_step(cnp.ndarray data, cnp.ndarray centroids, ClusterSet clusters):
         k += 1
     for i in range(clusters.getNClusters()):
         if clusters.isClusterEmpty(i):
-            clusters.insert(i, data[np.random.randint(0, len(data), size=1)].flatten())
-
+            clusters.insert(i, data[np.random.randint(0, len(data), size = 1)].flatten())
     return clusters
 
-cdef randomize_centroids(cnp.double_t[:, :] data, Py_ssize_t k):
+cdef cnp.ndarray randomize_centroids(cnp.double_t[:, :] data, Py_ssize_t k):
     """ Initializes the centroids by picking random points from the dataset
     
     Parameters
@@ -120,12 +131,11 @@ cdef randomize_centroids(cnp.double_t[:, :] data, Py_ssize_t k):
 cpdef kMeans(data, k, n_iter = 1000):
     """ Implementation of the well-known k-means algorithm """
     cdef Py_ssize_t n_dim = data.shape[1]
-    cdef Py_ssize_t i = 0
-    cdef cnp.ndarray centroids = randomize_centroids(data, k)
+    cdef Py_ssize_t i
+    cdef cnp.double_t[:, ::1] centroids = randomize_centroids(data, k)
     cdef cnp.ndarray old_centroids = np.empty((k, n_dim), dtype = np.double)
     cdef size_t iterations = 0
     cdef ClusterSet clusters
-    
     while not (iterations > n_iter or old_centroids.all() == centroids.all()):
         iterations += 1
         clusters = ClusterSet(k, len(data), n_dim)
