@@ -55,8 +55,7 @@ class AdaptiveHMM:
     dist_names["multinomial"] = DISTRIBUTION_MULTINOMIAL
     
     def __init__(self, n_states, architecture = "linear", standardize = False,
-                 missing_value = DEFAULT_MISSING_VALUE, has_io = False,
-                 use_implementation = "linear"):
+                 missing_value = DEFAULT_MISSING_VALUE, has_io = False):
         l_architecture = architecture.lower()
         found = False
         for name in AdaptiveHMM.arch_names.keys():
@@ -68,12 +67,11 @@ class AdaptiveHMM:
             print("Warning : architecture %s not found" % l_architecture)
             print("An ergodic structure will be used instead.")
         
-        use_implementation = USE_LIN_IMPLEMENTATION if use_implementation == "linear" else USE_LOG_IMPLEMENTATION
-        self.hmm = BaseHMM(n_states, architecture = arch, missing_value = missing_value, 
-                           use_implementation = use_implementation) 
+        self.hmm = BaseHMM(n_states, architecture = arch, missing_value = missing_value) 
         self.stdvs = self.mu = None
         self.standardize = standardize
         self.has_io = has_io
+        self.mu = self.sigma = None
         
     def getMu(self):
         return self.hmm.getMu()

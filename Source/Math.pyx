@@ -18,18 +18,15 @@ ctypedef fused primitive_t:
     cnp.int16_t
     cnp.int32_t
     cnp.int64_t
+    double
 
 ctypedef cnp.double_t datasample_t
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
 cdef inline cnp.double_t[:] inplace_add(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
     for i in range(A.shape[0]):
         A[i] = A[i] + B[i]
     return A
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
 cdef inline cnp.double_t euclidean_distance(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
     cdef size_t i
     cdef cnp.double_t result = 0.0
@@ -37,6 +34,8 @@ cdef inline cnp.double_t euclidean_distance(cnp.double_t[:] A, cnp.double_t[:] B
         result += (A[i] - B[i]) ** 2
     return libc.math.sqrt(result)
 
+cdef inline double dabs(double value) nogil:
+    return -value if value < 0 else value
 
 def stableInvSigma(sigma):
     sigma = np.nan_to_num(sigma)

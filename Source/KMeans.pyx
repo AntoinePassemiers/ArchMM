@@ -135,7 +135,7 @@ cpdef kMeans(data, k, n_iter = 1000):
     """ Implementation of the well-known k-means algorithm """
     cdef Py_ssize_t n_dim = data.shape[1]
     cdef Py_ssize_t i
-    cdef cnp.double_t[:, ::1] centroids = randomize_centroids(data, k)
+    cdef cnp.ndarray centroids = randomize_centroids(data, k)
     cdef cnp.ndarray old_centroids = np.empty((k, n_dim), dtype = np.double)
     cdef size_t iterations = 0
     cdef ClusterSet clusters
@@ -146,5 +146,4 @@ cpdef kMeans(data, k, n_iter = 1000):
         for i in range(clusters.getNClusters()):
             old_centroids[i] = centroids[i]
             centroids[i] = clusters.clusterMean(i)
-    clusters.__dealloc__()
     return centroids

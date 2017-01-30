@@ -3,6 +3,9 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 # cython: initializedcheck=True
+# cython: nonecheck=False
+# cython: profile=True
+# cython: cdivision=True
 
 import ctypes, pickle
 import numpy as np
@@ -10,8 +13,7 @@ from numpy.random import randn, random, dirichlet
 from scipy.spatial.distance import cdist # TO REMOVE
 from cpython cimport array 
 from libc.stdio cimport *
-cimport libc.math
-
+cimport libc.math, cython
 from cpython.object cimport PyObject
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 
@@ -33,9 +35,6 @@ cpdef unsigned int CRITERION_NEG_LIKELIHOOD = 105
 
 cpdef unsigned int DISTRIBUTION_GAUSSIAN = 201
 cpdef unsigned int DISTRIBUTION_MULTINOMIAL = 202
-
-cpdef unsigned int USE_LOG_IMPLEMENTATION = 301
-cpdef unsigned int USE_LIN_IMPLEMENTATION = 302
     
 
 
@@ -234,10 +233,11 @@ cdef class BaseHMM:
                        state j knowing that the current state is the state i  
     """
 
-    cdef unsigned int architecture, distribution, use_implementation
+    cdef unsigned int architecture, distribution
     cdef Py_ssize_t n_states
     cdef cnp.ndarray initial_probs, transition_probs, previous_A
-    cdef cnp.ndarray ln_initial_probs, ln_transition_probs
+    cdef cnp.ndarray ln_initial_probs
+    cdef data_t[:, :] ln_transition_probs
     cdef cnp.ndarray mu
     cdef cnp.ndarray previous_mu, sigma, previous_sigma, MU, SIGMA
     cdef unsigned int (*numParameters)(unsigned int)
@@ -245,17 +245,15 @@ cdef class BaseHMM:
     # Arguments for handling missing values
     cdef double missing_value
     cdef cnp.ndarray mv_indexes
-    # Arguments for the input-output HMM architecture
+    # Arguments for the input-output HMM topology
     cdef object pi_state_subnetwork, state_subnetworks, output_subnetworks
     cdef object parameters
     cdef size_t n_classes, m, n, r
 
     def __cinit__(self, n_states, distribution = DISTRIBUTION_GAUSSIAN,
-                  architecture = ARCHITECTURE_LINEAR, missing_value = DEFAULT_MISSING_VALUE,
-                  use_implementation = USE_LIN_IMPLEMENTATION):
+                  architecture = ARCHITECTURE_LINEAR, missing_value = DEFAULT_MISSING_VALUE):
         if not (ARCHITECTURE_LINEAR <= architecture <= ARCHITECTURE_CYCLIC): 
             raise NotImplementedError("This architecture is not supported yet")
-        self.use_implementation = use_implementation
         self.architecture = architecture
         self.distribution = distribution
         self.n_states = n_states
@@ -321,11 +319,10 @@ cdef class BaseHMM:
         self.sigma = np.nan_to_num(self.sigma)
         self.previous_mu = np.copy(self.mu)
         self.previous_sigma = np.copy(self.sigma)
-        if self.use_implementation == USE_LOG_IMPLEMENTATION:
-            self.ln_initial_probs = np.nan_to_num(elog(self.initial_probs))
-            self.ln_transition_probs = np.nan_to_num(elog(self.transition_probs))
+        self.ln_initial_probs = np.nan_to_num(elog(self.initial_probs))
+        self.ln_transition_probs = np.nan_to_num(elog(self.transition_probs))
         
-    cdef forwardProcedure(self, cnp.ndarray lnf, cnp.ndarray ln_alpha):
+    cdef forwardProcedure(self, lnf, ln_alpha):
         """ Implementation of the forward procedure 
         (1st part of the forward-backward algorithm)
         
@@ -340,7 +337,7 @@ cdef class BaseHMM:
         """ 
         cdef Py_ssize_t t, T = len(lnf)
         with np.errstate(over = 'ignore'):
-            ln_alpha[0, :] = np.nan_to_num(self.ln_initial_probs + lnf[0, :])
+            ln_alpha[0, :] = self.ln_initial_probs + lnf[0, :]
             for t in range(1, T):
                 ln_alpha[t, :] = elogsum(ln_alpha[t - 1, :] + self.ln_transition_probs.T, 1) + lnf[t, :]
             ln_alpha = np.nan_to_num(ln_alpha)
@@ -367,24 +364,27 @@ cdef class BaseHMM:
             ln_beta = np.nan_to_num(ln_beta)
         return elogsum(ln_beta[0, :] + lnf[0, :] + self.ln_initial_probs)
     
-    def E_step(self, lnf, ln_alpha, ln_beta, ln_eta):
-        cdef Py_ssize_t i, j, t, T = len(lnf)
-        lnP_f = np.nan_to_num(self.forwardProcedure(lnf, ln_alpha))
-        lnP_b = np.nan_to_num(self.backwardProcedure(lnf, ln_beta))
-        if abs((lnP_f - lnP_b) / lnP_f) > 1.0e-6:
+    @cython.infer_types(False)
+    cdef E_step(self, data_t[:, :] lnf, data_t[:, :] ln_alpha, data_t[:, :] ln_beta, data_t[:, :, :] ln_eta):
+        cdef Py_ssize_t i, j, t, k, l, T = len(lnf)
+        cdef double lnP_f = self.forwardProcedure(np.asarray(lnf), np.asarray(ln_alpha))
+        cdef double lnP_b = self.backwardProcedure(np.asarray(lnf), np.asarray(ln_beta))
+        if dabs(<double>(lnP_f - lnP_b) / <double>lnP_f) > 1.0e-6:
             printf("Error. Forward and backward algorithm must produce the same loglikelihood.\n")
-        with np.errstate(over = 'ignore'):
+        with nogil:
             for i in range(self.n_states):
                 for j in range(self.n_states):
                     for t in range(T - 1):
-                        ln_eta[t, i, j] = ln_alpha[t, i] + self.ln_transition_probs[i, j,] + lnf[t+1,j] + ln_beta[t+1,j]      
-                ln_eta -= lnP_f
-                
+                        ln_eta[t, i, j] = ln_alpha[t, i] + self.ln_transition_probs[i, j] + lnf[t + 1, j] + ln_beta[t + 1, j]
+                for j in range(ln_eta.shape[0]):
+                    for k in range(ln_eta.shape[1]):
+                        for l in range(ln_eta.shape[2]):
+                            ln_eta[j, k, l] = ln_eta[j, k, l] - lnP_f
         ln_eta = np.nan_to_num(ln_eta)
-        ln_gamma = ln_alpha + ln_beta - lnP_f
+        ln_gamma = np.asarray(ln_alpha) + np.asarray(ln_beta) - lnP_f
         return ln_eta, ln_gamma, lnP_f
 
-    def logFit(self, obs, mu, sigma, n_iterations = 100, 
+    def BaumWelch(self, obs, mu, sigma, n_iterations = 100, 
             dynamic_features = False, delta_window = 1):
         """
         Launches the iterative Baum-Welch algorithm for parameter re-estimation.
@@ -411,9 +411,10 @@ cdef class BaseHMM:
             
         T, D = obs.shape[0], obs.shape[1]
         self.initParameters(obs)
-        ln_alpha = np.zeros((T, self.n_states))
-        ln_beta = np.zeros((T, self.n_states))
-        ln_eta = np.zeros((T - 1, self.n_states, self.n_states))
+        cdef data_t[:, :] ln_alpha  = np.zeros((T, self.n_states))
+        cdef data_t[:, :] ln_beta   = np.zeros((T, self.n_states))
+        cdef data_t[:, :, :] ln_eta = np.zeros((T - 1, self.n_states, self.n_states))
+        cdef data_t[:, :] lnf
 
         cdef long convergence_threshold = <long>0.0001
         cdef bint has_converged = False
@@ -452,123 +453,9 @@ cdef class BaseHMM:
         self.transition_probs = eexp(self.ln_transition_probs)
         eigenvalues = np.linalg.eig(self.transition_probs.T)
         self.initial_probs = normalizeMatrix(np.abs(eigenvalues[1][:, eigenvalues[0].argmax()]))
-        
-    cdef void linForwardProcedure(self, cnp.ndarray alpha, cnp.ndarray pi, cnp.ndarray A, cnp.ndarray B):
-        cdef Py_ssize_t i, j
-        cdef Py_ssize_t T = alpha.shape[0]
-        cdef Py_ssize_t n = alpha.shape[1]
-        cdef double transition_seq_prob
-        for i in range(n):
-            alpha[0, i] = pi[i] * B[0, i]
-        for t in range(1, T):
-            for j in range(n):
-                transition_seq_prob = 0
-                for i in range(n):
-                    transition_seq_prob += alpha[t - 1, i] * A[i, j]
-                alpha[t, j] = transition_seq_prob * B[t, j]
-            
-    cdef void linBackwardProcedure(self, cnp.ndarray beta, cnp.ndarray A, cnp.ndarray B):
-        cdef Py_ssize_t i, j
-        cdef Py_ssize_t T = beta.shape[0]
-        cdef Py_ssize_t n = beta.shape[1]
-        cdef double temp
-        for i in range(n):
-            beta[T - 1, i] = 1
-        for t in range(0, T - 1):
-            for i in range(n):
-                temp = 0
-                for j in range(n):
-                    temp += beta[t + 1, j] * A[i, j] * B[t + 1, j]
-                beta[t, i] = temp
-        
-    def linFit(self, obs, mu, sigma, n_iterations = 100, 
-            dynamic_features = False, delta_window = 1):
-        self.MU = mu
-        self.SIGMA = sigma
-        assert(len(obs.shape) == 2)
-        if dynamic_features:
-            deltas, delta_deltas = self.getDeltas(obs, delta_window = delta_window)
-            obs = np.concatenate((obs, deltas, delta_deltas), axis = 1)
-        self.initParameters(obs)
-        cdef bint has_converged = False
-        cdef Py_ssize_t i, j, t, k
-        cdef Py_ssize_t T = obs.shape[0]
-        cdef Py_ssize_t n = obs.shape[1]
-        cdef cnp.ndarray alpha = np.empty((T, n), dtype = np.double)
-        cdef cnp.ndarray beta = np.empty((T, n), dtype = np.double)
-        cdef cnp.ndarray gamma = np.empty((T, n), dtype = np.double)
-        cdef cnp.ndarray eta = np.empty((T - 1, n, n), dtype = np.double)
-        cdef cnp.ndarray pi = self.initial_probs
-        cdef cnp.ndarray A = self.transition_probs
-        self.previous_A = np.copy(A)
-        cdef cnp.ndarray B
-        cdef double bayes_denom, eta_sum, gamma_sum
-        cdef cnp.ndarray bayes_num = np.empty((n, n), dtype = np.double)
-        B = GaussianLoglikelihood(obs, self.mu, self.sigma)
-        k = 0
-        while k < n_iterations and not has_converged:
-            self.linForwardProcedure(alpha, pi, A, B)
-            self.linBackwardProcedure(beta, A, B)
-            
-            for t in range(T):
-                bayes_denom = 0
-                for j in range(n):
-                    bayes_denom += alpha[t, j] * beta[t, j]
-                for i in range(n):
-                    gamma[t, i] = (alpha[t, i] * beta[t, i]) / bayes_denom
-            gamma = np.nan_to_num(gamma)
-
-            for t in range(0, T - 1):
-                bayes_denom = 0
-                for i in range(n):
-                    for j in range(n):
-                        bayes_num[i, j] = alpha[t, i] * A[i, j] * beta[t + 1, j] * B[t + 1, j]
-                        bayes_denom += bayes_num[i, j]
-                for i in range(n):
-                    for j in range(n):
-                        eta[t, i, j] = bayes_num[i, j] / bayes_denom
-            eta = np.nan_to_num(eta)
-
-            for i in range(n):
-                pi[i] = gamma[0, i]
-                for j in range(n):
-                    eta_sum = gamma_sum = 0
-                    for t in range(0, T - 1):
-                        eta_sum += eta[t, i, j]
-                        gamma_sum += gamma[t, i]
-                    A[i, j] = eta_sum / gamma_sum if gamma_sum > 0 else self.previous_A[i, j]
-            pi = np.nan_to_num(pi)
-            A = np.nan_to_num(A)
-
-            for i in range(n):
-                post = gamma[:, i]
-                post_sum = post.sum()
-                norm = 1.0 / post_sum if post_sum != 0.0 else -LOG_ZERO
-                temp = np.nan_to_num(np.dot(post * obs.T, obs))
-                avg_sigma = temp * norm
-                self.mu[i] = np.nan_to_num(np.dot(post, obs) * norm)
-                self.sigma[i] = np.nan_to_num(avg_sigma - np.outer(self.mu[i], self.mu[i]))
-                if np.all(self.mu[i] == 0):
-                    self.mu[i] = self.previous_mu[i]
-
-            is_nan = (self.mu == np.nan)
-            self.mu[is_nan] = self.previous_mu[is_nan]
-            is_nan = (self.sigma == np.nan)
-            self.sigma[is_nan] = self.previous_sigma[is_nan]
-            self.previous_mu[:] = self.mu[:]
-            self.previous_sigma[:] = self.sigma[:]
-            k += 1
-
-        for i in range(n):
-            A[i, :] = A[i, :] / A[i, :].sum()
-        self.transition_probs = A
-        self.initial_probs = pi / pi.sum()
 
     def fit(self, obs, mu, sigma, **kwargs):
-        if self.use_implementation == USE_LIN_IMPLEMENTATION:
-            self.linFit(obs, mu, sigma, **kwargs)
-        else:
-            self.logFit(obs, mu, sigma, **kwargs)
+        self.BaumWelch(obs, mu, sigma, **kwargs)
         
     def fitIO(self, inputs, targets = None, mu = None, sigma = None,
               dynamic_features = False, delta_window = 1, is_classifier = True, n_classes = 2,
@@ -594,28 +481,6 @@ cdef class BaseHMM:
         self.state_subnetworks = N
         self.output_subnetworks = O
         return loglikelihood, pistate_cost, state_cost, output_cost, weights
-    
-    def simulateIO(self, input):
-        """ Generate an output sequence using the Viterbi algorithm """
-        assert(len(input.shape) == 2)
-        cdef Py_ssize_t T = input.shape[0]
-        cdef object piN = self.pi_state_subnetwork
-        cdef object N   = self.state_subnetworks
-        cdef object O   = self.output_subnetworks
-        cdef cnp.ndarray state_sequence = np.empty(T, dtype = np.int8)
-        cdef cnp.ndarray output_sequence = np.empty(T, dtype = np.float16)
-        cdef cnp.ndarray current_eta = np.empty((self.n_states, self.n_classes), dtype = np.float16)
-        cdef cnp.ndarray memory
-        cdef cnp.ndarray best_outputs = np.empty(self.n_states, dtype = np.double)
-        cdef Py_ssize_t i, t
-        memory = np.log2(piN.processOutput(input[0]).eval())
-        for i in range(self.n_states):
-            current_eta[i, :] = O[i].processOutput(input[0]).eval()
-            best_outputs[i] = current_eta[i, :].max()
-        memory += np.log2(current_eta)
-        state_sequence[0] = memory.argmax()
-        for t in range(1, T):
-            pass # TODO
             
     def predictIO(self, input, binary_prediction = True):
         """ Classification using multiple Viterbi decoders """
@@ -749,14 +614,14 @@ cdef class BaseHMM:
         """
         self.setMissingValues(obs)
         n = obs.shape[0]        
-        cdef cnp.ndarray lnf = GaussianLoglikelihood(obs, self.mu, self.sigma)
         cdef size_t T = len(obs)
-        cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
-        cdef cnp.ndarray ln_beta = np.zeros((T, self.n_states))
-        cdef cnp.ndarray ln_eta = np.zeros((T - 1, self.n_states, self.n_states))    
+        cdef data_t[:, :] lnf = GaussianLoglikelihood(obs, self.mu, self.sigma)
+        cdef data_t[:, :] ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
+        cdef data_t[:, :] ln_beta  = np.zeros((T, self.n_states))
+        cdef data_t[:, :, :] ln_eta   = np.zeros((T - 1, self.n_states, self.n_states))    
         ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
         nmix, ndim = self.mu.shape[0], self.mu.shape[1]
-        # k == Complexity of the model
+        # k is the complexity of the model
         k = self.n_states * (1.0 + self.n_states) + nmix * self.numParameters(ndim)
         if mode == CRITERION_AIC:
             criterion = 2 * k - 2 * lnP
