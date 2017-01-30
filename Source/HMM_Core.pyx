@@ -146,7 +146,7 @@ class AdaptiveHMM:
             pickle.dump(attributes, open(filename + "_adapt", "wb"))
         except MemoryError:
             pickle.dump(dict(), open(filename + "_adapt", "wb"))
-        
+
     def pyLoad(self, filename):
         try:
             attributes = pickle.load(open(filename + "_adapt", "rb"))
@@ -167,3 +167,4 @@ class AdaptiveHMM:
         
     def cLoad(self, filepath):
         pass
+        
