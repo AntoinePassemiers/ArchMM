@@ -5,11 +5,11 @@
 # cython: initializedcheck=True
 
 import numpy as np
-cimport numpy as cnp
-from libc.stdlib cimport atoi, malloc, calloc, free
-
 import multiprocessing
 from cython.parallel import parallel, prange, threadid
+
+cimport numpy as cnp
+from libc.stdlib cimport *
 
 
 NP_INF_VALUE = np.nan_to_num(np.inf)
@@ -66,6 +66,7 @@ cdef class ClusterSet:
         """ Computes the mean of the cluster [[cluster_id]] by averaging the 
         contained points """ 
         # cdef cnp.double_t[:] cmean = np.zeros(self.point_dim, dtype = np.double)
+        # cmean = cython.view.array((self.point_dim,), itemsize = sizeof(cnp.double_t))
         cdef cnp.double_t[:] cmean
         with gil:
             cmean = <cnp.double_t[:self.point_dim]>calloc(self.point_dim, sizeof(cnp.double_t))
@@ -124,8 +125,10 @@ cdef cnp.ndarray randomize_centroids(cnp.double_t[:, :] data, Py_ssize_t k):
     """
     cdef Py_ssize_t n_dim = data.shape[1]
     cdef cnp.ndarray centroids = np.empty((k, n_dim), dtype = np.double)
+    cdef Py_ssize_t random_index
     for cluster in range(0, k):
-        centroids[cluster, :] = data[int(np.random.randint(0, len(data), size = 1)), :]
+        random_index = int(np.random.randint(0, len(data), size = 1))
+        centroids[cluster, :] = data[random_index, :]
     return centroids
 
 cpdef kMeans(data, k, n_iter = 1000):
@@ -143,4 +146,5 @@ cpdef kMeans(data, k, n_iter = 1000):
         for i in range(clusters.getNClusters()):
             old_centroids[i] = centroids[i]
             centroids[i] = clusters.clusterMean(i)
+    clusters.__dealloc__()
     return centroids
