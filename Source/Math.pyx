@@ -2,7 +2,7 @@
 # distutils: language=c
 # cython: boundscheck=False
 # cython: wraparound=False
-# cython: initializedcheck=True
+# cython: initializedcheck=False
 
 import numpy as np
 cimport numpy as cnp

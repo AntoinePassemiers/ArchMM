@@ -2,7 +2,7 @@
 # distutils: language=c
 # cython: boundscheck=False
 # cython: wraparound=False
-# cython: initializedcheck=True
+# cython: initializedcheck=False
 # cython: nonecheck=False
 # cython: profile=True
 # cython: cdivision=True
@@ -177,16 +177,9 @@ cdef elogsum(matrix, axis = None):
         sum[np.isnan(sum)] = LOG_ZERO
     return sum
 
-def normalizeMatrix(matrix, axis = None):
+def normalizeMatrix(matrix):
     matrix += np.finfo(float).eps
-    sum = matrix.sum(axis)
-    if axis and matrix.ndim > 1:
-        sum[sum == 0] = 1
-        shape = list(matrix.shape)
-        shape[axis] = 1
-        sum.shape = shape
-    return matrix / sum
-
+    return matrix / matrix.sum(None)
 
 
 cdef class BaseHMM:
@@ -384,6 +377,7 @@ cdef class BaseHMM:
         ln_gamma = np.asarray(ln_alpha) + np.asarray(ln_beta) - lnP_f
         return ln_eta, ln_gamma, lnP_f
 
+    @cython.infer_types(True)
     def BaumWelch(self, obs, mu, sigma, n_iterations = 100, 
             dynamic_features = False, delta_window = 1):
         """
@@ -411,10 +405,10 @@ cdef class BaseHMM:
             
         T, D = obs.shape[0], obs.shape[1]
         self.initParameters(obs)
-        cdef data_t[:, :] ln_alpha  = np.zeros((T, self.n_states))
-        cdef data_t[:, :] ln_beta   = np.zeros((T, self.n_states))
-        cdef data_t[:, :, :] ln_eta = np.zeros((T - 1, self.n_states, self.n_states))
-        cdef data_t[:, :] lnf
+        cpdef data_t[:, :] ln_alpha  = np.zeros((T, self.n_states))
+        cpdef data_t[:, :] ln_beta   = np.zeros((T, self.n_states))
+        cpdef data_t[:, :, :] ln_eta = np.zeros((T - 1, self.n_states, self.n_states))
+        cpdef data_t[:, :] lnf
 
         cdef long convergence_threshold = <long>0.0001
         cdef bint has_converged = False
@@ -434,10 +428,10 @@ cdef class BaseHMM:
                 post = gamma[:, k]
                 post_sum = post.sum()
                 norm = 1.0 / post_sum if post_sum != 0.0 else -LOG_ZERO
-                temp = np.nan_to_num(np.dot(post * obs.T, obs))
+                temp = np.dot(post * obs.T, obs)
                 avg_sigma = temp * norm
-                self.mu[k] = np.nan_to_num(np.dot(post, obs) * norm)
-                self.sigma[k] = np.nan_to_num(avg_sigma - np.outer(self.mu[k], self.mu[k]))
+                self.mu[k] = np.dot(post, obs) * norm
+                self.sigma[k] = avg_sigma - np.outer(self.mu[k], self.mu[k])
                 
                 if np.all(self.mu[k] == 0):
                     self.mu[k] = self.previous_mu[k]

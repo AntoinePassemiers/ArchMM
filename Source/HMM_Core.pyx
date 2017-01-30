@@ -82,6 +82,7 @@ class AdaptiveHMM:
     def fit(self, observations, **kwargs):
         if not self.has_io:
             self.sigma = np.cov(observations.T)
+            print(self.sigma.shape)
             self.stdvs = np.sqrt(np.diag(self.sigma))
             self.mu = np.mean(observations, axis = 0)
             if self.standardize:
