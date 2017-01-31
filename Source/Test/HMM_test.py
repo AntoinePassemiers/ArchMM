@@ -148,8 +148,8 @@ def testIOHMMSimulation():
 
 
 if __name__ == "__main__":
-    testUnivariateHMM()
-    # testHMM()
+    # testUnivariateHMM()
+    testHMM()
     # testCPD()
     # testIOHMM()
     # villoTest()

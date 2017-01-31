@@ -31,7 +31,3 @@ if __name__ == "__main__":
 	signal = data["sensor_readings"]
 	activity = data["activity"]
 	print(signal.shape)
-
-	hmm = AdaptiveHMM(7, "ergodic", missing_value = 0)
-	hmm.fit(signal[::10])
-	print(hmm.score(signal[:10]))
