@@ -4,7 +4,7 @@ import numpy as np
 import theano
 from theano.tensor.signal import pool
 
-from Layers import *
+from archmm.ANN.Layers import *
 
 # http://deeplearning.net/tutorial/code/convolutional_mlp.py
 

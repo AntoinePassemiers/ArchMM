@@ -11,16 +11,6 @@ from libc.stdlib cimport *
 from libc.stdio cimport *
 cimport libc.math
 
-ctypedef fused primitive_t:
-    cnp.float_t
-    cnp.double_t
-    cnp.int8_t
-    cnp.int16_t
-    cnp.int32_t
-    cnp.int64_t
-    double
-
-ctypedef cnp.double_t datasample_t
 
 cdef inline cnp.double_t[:] inplace_add(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
     for i in range(A.shape[0]):

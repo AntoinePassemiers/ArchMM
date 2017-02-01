@@ -15,13 +15,14 @@ https://www.quora.com/How-can-I-estimate-the-parameters-of-a-discrete-time-HMM-w
 - Detect outliers
 """
 
-DEF DEFAULT_MISSING_VALUE = -87.89126015
 
-cpdef cnp.ndarray getMissingValuesIndexes(cnp.ndarray data, double missing_value):
-    return np.where(data == missing_value)[0]
+DEF DEFAULT_MISSING_VALUE = -87.89126015
 
 NUMPY_NAN = 0.0
 NUMPY_INF = np.nan_to_num(np.inf)
+
+cpdef cnp.ndarray getMissingValuesIndexes(cnp.ndarray data, double missing_value):
+    return np.where(data == missing_value)[0]
 
 def nan_to_num(arr):
     """ Inplace NaN conversion in numpy arrays """

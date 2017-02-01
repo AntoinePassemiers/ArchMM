@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-from Layers import *
-from CNN import *
+from archmm.ANN.Layers import *
+from archmm.ANN.CNN import *
 
 RELEASE_MODE = False
 

@@ -9,8 +9,7 @@ from libc.stdio cimport *
 from cython.parallel import parallel, prange
 from threading import Thread
 
-
-from ANN.MLP import *
+from archmm.ANN.MLP import *
 
 include "Parallel.pyx"
 include "structs.pyx"

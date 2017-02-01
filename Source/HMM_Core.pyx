@@ -9,6 +9,7 @@ import numpy as np
 
 include "HMM.pyx"
 
+
 class IOConfig:
     def __init__(self):
         """ Parameters of the whole model """

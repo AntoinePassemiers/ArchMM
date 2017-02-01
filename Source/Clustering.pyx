@@ -18,6 +18,7 @@ from cython.parallel import parallel, prange, threadid
 
 include "Fuzzy.pyx"
 
+
 NP_INF_VALUE = np.nan_to_num(np.inf)
 cdef size_t INITIAL_CLUSTER_SIZE = 4
 

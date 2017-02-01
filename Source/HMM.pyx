@@ -17,7 +17,7 @@ cimport libc.math, cython
 from cpython.object cimport PyObject
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 
-include "KMeans.pyx"
+include "Clustering.pyx"
 include "ChangePointDetection.pyx"
 include "IOHMM.pyx"
 
