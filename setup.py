@@ -1,29 +1,51 @@
 # -*- coding: utf-8 -*-
 
-from distutils.core import setup, Extension
-from Cython.Build import cythonize
-import numpy, os
+from distutils.core import setup
+from distutils.extension import Extension
+import numpy as np
+import os
+
+try:
+    import Cython
+    USE_CYTHON = True
+except ImportError:
+    USE_CYTHON = False
+
+USE_CYTHON = False # TO REMOVE
 
 source_folder = "Source"
 source_files = [
-    "Math.pyx",
-    "KMeans.pyx",
-    "ChangePointDetection.pyx",
-    "Artifacts.pyx",
-    "Fuzzy.pyx",
-    "Parallel.pyx",
-    "Queue.pyx",
-    "IOHMM.pyx",
-    "HMM.pyx",
-    "HMM_Core.pyx",
-    "DecisionTrees/Tree.pyx",
-    "DecisionTrees/ID3.pyx"
+    "Math",
+    "KMeans",
+    "ChangePointDetection",
+    "Artifacts",
+    "Fuzzy",
+    "Parallel",
+    "Queue",
+    "IOHMM",
+    "HMM",
+    "HMM_Core",
+    "DecisionTrees/Tree",
+    "DecisionTrees/ID3"
 ]
-source_filepaths = [os.path.join(source_folder, file) for file in source_files]
+
+ext = '.pyx' if USE_CYTHON else '.c'
+source_filepaths = [os.path.join(source_folder, file + ext) for file in source_files]
+
+extensions = [Extension("ArchMM", source_filepaths, language = "c")]
+if USE_CYTHON:
+    from Cython.Build import cythonize
+    extensions = cythonize(
+        source_filepaths, 
+        language = "c",
+        # compiler_directives = {"embedsignature" : True}
+    )
 
 setup(
-    ext_modules = cythonize(
-        source_filepaths,
-        language="c"),
-    include_dirs = [numpy.get_include()]
+    name = "ArchMM",
+    version = "1.0.0",
+    description = "Machine Learning library with embedded HMM-based algorithms",
+    author = "Antoine Passemiers",
+    ext_modules = extensions,
+    include_dirs = [np.get_include()]
 )

@@ -6,13 +6,17 @@
 
 import numpy as np
 import multiprocessing
-from cython.parallel import parallel, prange, threadid
 
 cimport numpy as cnp
 from libc.stdlib cimport *
+from libc.string cimport memset
+from libc.math cimport sqrt
+from cython cimport view
+from cpython.buffer cimport PyBuffer_IsContiguous
+
+from cython.parallel import parallel, prange, threadid
 
 include "Fuzzy.pyx"
-
 
 NP_INF_VALUE = np.nan_to_num(np.inf)
 cdef size_t INITIAL_CLUSTER_SIZE = 4
@@ -113,8 +117,8 @@ cdef cnp.ndarray randomize_centroids(cnp.double_t[:, :] data, Py_ssize_t k):
         centroids[cluster, :] = data[random_index, :]
     return centroids
 
-cpdef kMeans(data, k, n_iter = 1000):
-    """ Implementation of the well-known k-means algorithm """
+cpdef kMeans(data, k, n_iter = 100):
+    """ Implementation of the k-means algorithm """
     cdef Py_ssize_t n_dim = data.shape[1]
     cdef Py_ssize_t i
     cdef cnp.ndarray centroids = randomize_centroids(data, k)
@@ -129,3 +133,46 @@ cpdef kMeans(data, k, n_iter = 1000):
             centroids[i] = clusters.clusterMean(i)
         del clusters
     return centroids
+
+cpdef fuzzyCMeans(data, n_clusters, n_iter = 100, fuzzy_coefficient = 2.0):
+    """ Implementation of the fuzzy C-means algorithm """
+    cdef double m = fuzzy_coefficient
+    cdef size_t iterations = 0
+    cdef size_t max_iterations = n_iter
+    cdef Py_ssize_t n_dim = data.shape[1]
+    cdef size_t N = data.shape[0]
+    cdef size_t C = n_clusters
+    cdef cnp.double_t[:, :] X = data
+    cdef cnp.ndarray g = np.empty((C, n_dim), dtype = np.double)
+    cdef cnp.double_t[::view.strided, ::1] centroids = np.ascontiguousarray(g)
+    cdef dom_t[::view.strided, ::1] U = np.random.rand(N, C)
+    U /= U.sum(axis = 1)[:, np.newaxis]
+    cdef double denom, denomnum, denomdenom
+    cdef Py_ssize_t i, j, k, l
+    with nogil:
+        while iterations < max_iterations: # TODO
+            iterations += 1
+            memset(<void*>&U[0, 0], 0x00, N * C * sizeof(dom_t))
+            for j in range(C):
+                for i in range(N):
+                    for l in range(n_dim):
+                        centroids[j, l] += U[i, j] * X[i, l]
+                denom = 0.0
+                for i in range(N):
+                    denom += U[i, j]
+                for l in range(n_dim):
+                    centroids[j, l] /= denom
+            for j in range(C):
+                for i in range(N):
+                    denomnum = 0.0
+                    for l in range(n_dim):
+                        denomnum += (X[i, l] - centroids[j, l]) ** 2
+                    denomnum = sqrt(denomnum)
+                    denom = 0.0
+                    for k in range(C):
+                        denomdenom = 0.0
+                        for l in range(n_dim):
+                            denomdenom += (X[i, l] - centroids[k, l]) ** 2
+                        denomdenom = sqrt(denomdenom)
+                        denom += (denomnum / denomdenom) ** -(2.0 / m - 1.0)
+    return np.asarray(centroids), np.asarray(U)
