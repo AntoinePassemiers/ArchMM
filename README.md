@@ -1,11 +1,13 @@
 A r c h M M
 ===========
-ArchMM (Architectural Markov Models) is a Cython library for machine learning, based on Hidden Markov Models. 
+ArchMM (Architectural Markov Models) is a Cython library for machine learning where most of the algorithms are based on the Markov assumption.
 It contains the implementation of different HMM topologies (ergodic, linear, Bakis, cyclic), and adaptations of popular machine learning
-algorithms used under the Markov hypothesis (alternatives of the Input-Output Hidden Markov Model). 
+algorithms used under the Markov hypothesis (such as the well-known Multi-Layer Perceptron, adapted to the IOHMM).
 
 The Input-Output Hidden Markov Model (IO-HMM) is a markovian model where both output values and transition probabilities are computed using 
 sub-models such as multi-layered perceptrons. The learning algorithm is based on the Generalized Expectation-Maximization procedure.
+
+ArchMM provides also clustering algorithms, change point detection algorithms, and fuzzy HMMs.
 
 How to use it
 -------------
@@ -33,27 +35,26 @@ hmm.score(data_2, mode = "aic")
 To instanciate an IO-HMM, there are more parameters to specify :
 ```python
 config = IOConfig()
-config.architecture = "linear" # Linear topology
-config.n_iterations = 20       # Number of iterations of the GEM
-config.s_learning_rate = 0.006 # Learning rate of the initial state unit
-config.o_learning_rate = 0.01  # Learning rate of the state transition units
-config.pi_learning_rate = 0.01 # Learning rate of the output units
+config.architecture = "linear"  # Linear topology
+config.n_iterations = 20        # Number of iterations of the GEM
+config.s_learning_rate  = 0.006 # Learning rate of the initial state unit
+config.o_learning_rate  = 0.01  # Learning rate of the state transition units
+config.pi_learning_rate = 0.01  # Learning rate of the output units
 
 # Number of hidden neurons and number of epochs (when using MLP only)
-config.s_nhidden = 4
-config.o_nhidden = 4
+config.s_nhidden  = 5
+config.o_nhidden  = 4
 config.pi_nhidden = 4
 config.pi_nepochs = 5
-config.s_nepochs = 5
-config.o_nepochs = 5
+config.s_nepochs  = 6
+config.o_nepochs  = 5
 
 # Instanciate IOHMM with 5 hidden states
 iohmm = AdaptiveHMM(5, has_io = True, standardize = False)
 ```
-Only classification is supported yet. To train a IOHMM for classification, we make use
+Only classification is supported yet. To train an IOHMM for classification, we make use
 of the Generalized Expectation-Maximization algorithm.
 ```python
-# Example of binary classification training
 fit = iohmm.fit(X, targets = y, n_classes = 2, is_classifier = True, parameters = config)
 ```
 
@@ -73,13 +74,11 @@ To get ArchMM to work on your computer, you will need:
 - Numpy (>= 1.6.1)
 - Scipy
 - Theano
-- Cython
 
 ### User installation
 
-Compile the project using Cython :
+Install the package :
 ```
-python setup.py build_ext --inplace
+python setup.py install
 ```
-Next you may have to add an __init__.py file at the root of your build folder :
-otherwise the library can not be found by the interpreter.
+If you have Cython, the C files will re-generated before to be compiled.
