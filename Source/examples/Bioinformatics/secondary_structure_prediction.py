@@ -3,10 +3,7 @@
 import theano, sys, pickle, os, random
 import numpy as np
 
-sys.path.insert(0, '..')
-sys.path.insert(0, '../..')
-sys.path.insert(0, '../../ArchMM/Source')
-from HMM_Core import *
+from archmm.core import *
 
 
 

@@ -13,9 +13,9 @@ from libc.string cimport memset
 import multiprocessing
 from cython.parallel import parallel, prange, threadid
 
-include "Math.pyx"
-include "Queue.pyx"
-include "Utils.pyx"
+include "math.pyx"
+include "queue.pyx"
+include "utils.pyx"
 
 
 cdef double NUMPY_INF_VALUE = np.nan_to_num(np.inf)

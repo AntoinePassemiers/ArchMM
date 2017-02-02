@@ -7,7 +7,7 @@
 import collections, numbers, pickle, json
 import numpy as np
 
-from archmm.HMM import *
+from archmm.hmm import *
 
 def id_generator(dict):
     for k, v in dict.items():

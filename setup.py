@@ -16,23 +16,27 @@ except ImportError:
 
 source_folder = "Source"
 source_files = [
-    "Math",
-    "Clustering",
-    "ChangePointDetection",
-    "Artifacts",
-    "Fuzzy",
-    "Parallel",
-    "Queue",
-    "IOHMM",
-    "HMM",
-    "DecisionTrees/Tree",
-    "DecisionTrees/ID3"
+    "utils",
+    "math",
+    "structs",
+    "clustering",
+    "cpd",
+    "artifacts",
+    "fuzzy",
+    "parallel",
+    "queue",
+    "iohmm",
+    "hmm",
+    "trees/tree",
+    "trees/id3"
 ]
 
 sub_packages = [
-    "ANN",
-    "SVM",
-    "DecisionTrees"
+    "adaptation",
+    "ann",
+    "svm",
+    "trees",
+    "tests"
 ]
 
 setup_args = {
@@ -73,33 +77,27 @@ if USE_CYTHON:
 config = Configuration("archmm", "", "")
 for sub_package in sub_packages:
     config.add_subpackage(sub_package, subpackage_path = source_folder)
-for source_file in source_files:
-    config.add_extension(
-        source_file,
-        sources = [os.path.join(source_folder, source_file + '.c')],
-        include_dirs = include_dirs + [os.curdir],
-        libraries = libraries,
-    )
-config.add_extension(
-    "core",
-    sources = [os.path.join(source_folder, "HMM_Core.py")],
-    include_dirs = include_dirs + [os.curdir],
-    libraries = libraries,
-)
-for py_file in ["MLP", "Layers", "CNN"]:
-    config.add_extension(
-        "ANN." + py_file,
-        sources = [os.path.join("Source/ANN", py_file + ".py")],
-        include_dirs = include_dirs + [os.curdir],
-        libraries = libraries,
-    )
-for c_file in ["ID3", "Tree"]:
-    config.add_extension(
-        "DecisionTrees." + c_file,
-        sources = [os.path.join("Source/DecisionTrees", c_file + ".c")],
-        include_dirs = include_dirs + [os.curdir],
-        libraries = libraries,
-    )
-config.dict_append(**setup_args)
+for sub_package in sub_packages + [""]:
+    sub_package_path = os.path.join(source_folder, sub_package)
+    for source_file in os.listdir(sub_package_path):
+        basename, ext = os.path.splitext(source_file)
+        to_add = False
+        if ext == ".c":
+            to_add = True
+        elif ext == ".py":
+            if basename not in ["setup", "__init__"]:
+                to_add = True
+        if to_add:
+            if sub_package == "":
+                extension_name = basename
+            else:
+                extension_name = ".".join([sub_package, basename])
+            config.add_extension(
+                extension_name,
+                sources = [os.path.join(sub_package_path, source_file)],
+                include_dirs = include_dirs + [os.curdir],
+                libraries = libraries,
+            )
 
+config.dict_append(**setup_args)
 np_setup(**config.todict())
