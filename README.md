@@ -81,4 +81,4 @@ Install the package :
 ```
 python setup.py install
 ```
-If you have Cython, the C files will re-generated before to be compiled.
+If you have Cython, the C files will be re-generated before to be compiled.

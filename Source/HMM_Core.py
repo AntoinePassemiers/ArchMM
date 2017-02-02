@@ -4,39 +4,32 @@
 # cython: wraparound=False
 # cython: initializedcheck=True
 
-import collections, numbers, pickle
+import collections, numbers, pickle, json
 import numpy as np
 
-include "HMM.pyx"
+from archmm.HMM import *
 
+def id_generator(dict):
+    for k, v in dict.items():
+        if k != "description":
+            yield v
+        elif isinstance(v, dict):
+            for id_val in id_generator(v):
+                yield id_val
+        elif isinstance(v, list):
+            pass # TODO
 
 class IOConfig:
-    def __init__(self):
-        """ Parameters of the whole model """
-        self.missing_value_sym = np.nan
-        self.n_iterations = 50
-        self.architecture = "ergodic"
-        
-        """ Parameters of the initial state subnetwork """ 
-        self.pi_nepochs = 5
-        self.pi_learning_rate = 0.05
-        self.pi_nhidden = 1
-        self.pi_activation = "sigmoid"
-        self.pi_nepochs = 1
-        
-        """ Parameters of the transition states subnetworks """
-        self.s_nepochs = 5 
-        self.s_learning_rate = 0.05
-        self.s_nhidden = 1
-        self.s_activation = "sigmoid"
-        self.s_nepochs = 1
-        
-        """ Parameters of the output subnetworks """
-        self.o_nepochs = 5 
-        self.o_learning_rate = 0.05
-        self.o_nhidden = 1
-        self.o_activation = "sigmoid"
-        self.o_epochs = 1
+    def __init__(self, config_filepath = None):
+        if not config_filepath:
+            config_filepath = "default_ioconfig.json"
+        config_file = open(config_filepath, 'r')
+        data = json.load(config_file)
+        for value in id_generator(data):
+            print(value)
+        close(config_file)
+
+
 
 class AdaptiveHMM:
     arch_names = collections.defaultdict()
@@ -140,9 +133,9 @@ class AdaptiveHMM:
             "has_io" : self.has_io
         }
         if not self.has_io:
-            self.hmm.pySave(<char*>filename)
+            self.hmm.pySave(filename)
         else:
-            self.hmm.saveIO(<char*>filename)
+            self.hmm.saveIO(filename)
         try:
             pickle.dump(attributes, open(filename + "_adapt", "wb"))
         except MemoryError:
@@ -159,13 +152,6 @@ class AdaptiveHMM:
         except:
             pass
         if not self.has_io:
-            self.hmm.pyLoad(<char*>filename)
+            self.hmm.pyLoad(filename)
         else:
-            self.hmm.loadIO(<char*>filename)
-    
-    def cSave(self, filepath):
-        self.hmm.cSave(<char*>filepath)
-        
-    def cLoad(self, filepath):
-        pass
-        
+            self.hmm.loadIO(filename)

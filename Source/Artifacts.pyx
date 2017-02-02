@@ -16,7 +16,7 @@ https://www.quora.com/How-can-I-estimate-the-parameters-of-a-discrete-time-HMM-w
 """
 
 
-DEF DEFAULT_MISSING_VALUE = -87.89126015
+DEFAULT_MISSING_VALUE = -87.89126015
 
 NUMPY_NAN = 0.0
 NUMPY_INF = np.nan_to_num(np.inf)

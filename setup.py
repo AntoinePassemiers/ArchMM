@@ -14,7 +14,6 @@ try:
 except ImportError:
     USE_CYTHON = False
 
-
 source_folder = "Source"
 source_files = [
     "Math",
@@ -26,14 +25,14 @@ source_files = [
     "Queue",
     "IOHMM",
     "HMM",
-    "HMM_Core",
     "DecisionTrees/Tree",
     "DecisionTrees/ID3"
 ]
 
 sub_packages = [
     "ANN",
-    "SVM"
+    "SVM",
+    "DecisionTrees"
 ]
 
 setup_args = {
@@ -81,10 +80,23 @@ for source_file in source_files:
         include_dirs = include_dirs + [os.curdir],
         libraries = libraries,
     )
+config.add_extension(
+    "core",
+    sources = [os.path.join(source_folder, "HMM_Core.py")],
+    include_dirs = include_dirs + [os.curdir],
+    libraries = libraries,
+)
 for py_file in ["MLP", "Layers", "CNN"]:
     config.add_extension(
         "ANN." + py_file,
         sources = [os.path.join("Source/ANN", py_file + ".py")],
+        include_dirs = include_dirs + [os.curdir],
+        libraries = libraries,
+    )
+for c_file in ["ID3", "Tree"]:
+    config.add_extension(
+        "DecisionTrees." + c_file,
+        sources = [os.path.join("Source/DecisionTrees", c_file + ".c")],
         include_dirs = include_dirs + [os.curdir],
         libraries = libraries,
     )

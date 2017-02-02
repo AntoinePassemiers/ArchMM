@@ -1,0 +1,43 @@
+}
+    "general" : {
+        "description" : "Parameters of the whole model",
+        "parameters" : {
+            "missing_value_sym" : 0.0,
+            "n_iterations" : 40.0,
+            "architecture" : "ergodic"
+        }
+    }
+
+    "initial_state_subnetwork" : {
+        "description" : "Parameters of the initial state subnetwork",
+        "parameters" : {
+            "pi_nepochs" : 5,
+            "pi_learning_rate" : 0.05,
+            "pi_nhidden" : 1,
+            "pi_activation" : "sigmoid",
+            "pi_nepochs" : 1
+        }
+    }
+
+    "state_subnetwork" : {
+        "description" : "Parameters of the transition states subnetworks",
+        "parameters" : {
+            "s_nepochs" : 5,
+            "s_learning_rate" : 0.05,
+            "s_nhidden" : 1,
+            "s_activation" : "sigmoid",
+            "s_nepochs" : 1
+        }
+    }
+
+    "output_subnetwork" : {
+        "description" : "Parameters of the output subnetworks",
+        "parameters" : {
+            "o_nepochs" : 5,
+            "o_learning_rate" : 0.05,
+            "o_nhidden" : 1,
+            "o_activation" : "sigmoid",
+            "o_epochs" : 1
+        }
+    }
+}

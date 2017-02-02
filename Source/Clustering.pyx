@@ -134,6 +134,7 @@ cpdef kMeans(data, k, n_iter = 100):
             centroids[i] = clusters.clusterMean(i)
         del clusters
     return centroids
+    
 
 cpdef fuzzyCMeans(data, n_clusters, n_iter = 100, fuzzy_coefficient = 2.0):
     """ Implementation of the fuzzy C-means algorithm """
@@ -145,15 +146,14 @@ cpdef fuzzyCMeans(data, n_clusters, n_iter = 100, fuzzy_coefficient = 2.0):
     cdef size_t C = n_clusters
     cdef cnp.double_t[:, :] X = data
     cdef cnp.ndarray g = np.empty((C, n_dim), dtype = np.double)
-    cdef cnp.double_t[::view.strided, ::1] centroids = np.ascontiguousarray(g)
-    cdef dom_t[::view.strided, ::1] U = np.random.rand(N, C)
-    U /= U.sum(axis = 1)[:, np.newaxis]
+    cdef cnp.double_t[::view.strided, ::1] centroids = np.ascontiguousarray(g, dtype = np.double)
+    cdef dom_matrix_dec_t U = randomDOMMatrix(N, C)
     cdef double denom, denomnum, denomdenom
     cdef Py_ssize_t i, j, k, l
     with nogil:
         while iterations < max_iterations: # TODO
             iterations += 1
-            memset(<void*>&U[0, 0], 0x00, N * C * sizeof(dom_t))
+            memset(<void*>&centroids[0, 0], 0x00, n_dim * C * sizeof(cnp.double_t))
             for j in range(C):
                 for i in range(N):
                     for l in range(n_dim):
@@ -163,6 +163,7 @@ cpdef fuzzyCMeans(data, n_clusters, n_iter = 100, fuzzy_coefficient = 2.0):
                     denom += U[i, j]
                 for l in range(n_dim):
                     centroids[j, l] /= denom
+            memset(<void*>&U[0, 0], 0x00, N * C * sizeof(dom_t))
             for j in range(C):
                 for i in range(N):
                     denomnum = 0.0
@@ -175,5 +176,6 @@ cpdef fuzzyCMeans(data, n_clusters, n_iter = 100, fuzzy_coefficient = 2.0):
                         for l in range(n_dim):
                             denomdenom += (X[i, l] - centroids[k, l]) ** 2
                         denomdenom = sqrt(denomdenom)
-                        denom += (denomnum / denomdenom) ** -(2.0 / m - 1.0)
+                        denom += (denomnum / denomdenom) ** (2.0 / m - 1.0)
+                    U[i, j] = 1.0 / denom
     return np.asarray(centroids), np.asarray(U)
