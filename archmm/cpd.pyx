@@ -14,8 +14,8 @@ import multiprocessing
 from cython.parallel import parallel, prange, threadid
 
 include "math.pyx"
-include "queue.pyx"
-include "utils.pyx"
+from queue cimport *
+from utils cimport *
 
 
 cdef double NUMPY_INF_VALUE = np.nan_to_num(np.inf)
@@ -79,7 +79,6 @@ cdef class GTD(MB):
         self.cost_func = cost_func
         self.keypoints = np.empty(n_keypoints, dtype = np.int16)
 
-    @cython.boundscheck(False)
     cpdef detectPoints(self, sequence):
         ensure_PyObject_Buffer(sequence)
         cdef Py_ssize_t n_threads = multiprocessing.cpu_count()
@@ -113,7 +112,7 @@ cdef class GTD(MB):
     cpdef cnp.int_t[:] getKeypoints(self):
         pass
     
-    cdef inline cnp.double_t getCost(self, cnp.double_t[:] A, cnp.double_t[:] B) nogil:
+    cdef inline cnp.double_t getCost(self, cnp.double_t[:] A, cnp.double_t[:] B) nogil except? -1:
         cdef cnp.double_t cost
         if self.cost_func == MAHALANOBIS_DISTANCE_COST:
             """
@@ -147,7 +146,6 @@ cdef class TSTAT(MB):
         self.window_size = window_size
         self.keypoints = np.empty(n_keypoints, dtype = np.int16)
 
-    @cython.boundscheck(False)
     cpdef detectPoints(self, signal):
         ensure_PyObject_Buffer(signal)
         cdef Py_ssize_t n_threads = multiprocessing.cpu_count()
@@ -288,7 +286,7 @@ cdef class BatchCPD:
     cpdef cnp.int_t[:] getKeypoints(self):
         return self.keypoints
     
-    cdef double getCost(self, cnp.ndarray costs_A, cnp.ndarray costs_B):
+    cdef double getCost(self, cnp.ndarray costs_A, cnp.ndarray costs_B) except? -1:
         cdef double cost
         if self.cost_func == MAHALANOBIS_DISTANCE_COST:
             # TODO : remplacer aprx_A[1] par aprx_B[1] par les approximations de la régression

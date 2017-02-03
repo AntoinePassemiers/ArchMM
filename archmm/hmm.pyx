@@ -11,15 +11,17 @@ import ctypes, pickle
 import numpy as np
 from numpy.random import randn, random, dirichlet
 from scipy.spatial.distance import cdist # TO REMOVE
-from cpython cimport array 
 from libc.stdio cimport *
 cimport libc.math, cython
+from cpython cimport array
 from cpython.object cimport PyObject
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
+cimport numpy as cnp
 
-include "clustering.pyx"
-include "cpd.pyx"
-include "iohmm.pyx"
+from artifacts import *
+from clustering cimport *
+from cpd cimport *
+from iohmm cimport *
 
 ARCHITECTURE_LINEAR = 1
 ARCHITECTURE_BAKIS = 2
@@ -35,7 +37,6 @@ CRITERION_NEG_LIKELIHOOD = 105
 
 DISTRIBUTION_GAUSSIAN = 201
 DISTRIBUTION_MULTINOMIAL = 202
-    
 
 
 """ Extended versions of the ln, exp, and log product functions 

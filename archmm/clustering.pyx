@@ -8,16 +8,16 @@ import numpy as np
 import multiprocessing
 
 cimport numpy as cnp
+cnp.import_array()
 from libc.stdlib cimport *
 from libc.string cimport memset
 from libc.math cimport sqrt
 from cython cimport view
 from cpython.buffer cimport PyBuffer_IsContiguous
-
 from cython.parallel import parallel, prange, threadid
 
-include "fuzzy.pyx"
-
+from archmm.utils cimport *
+from archmm.fuzzy cimport *
 
 NP_INF_VALUE = np.nan_to_num(np.inf)
 cdef size_t INITIAL_CLUSTER_SIZE = 4

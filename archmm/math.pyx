@@ -6,7 +6,6 @@
 
 import numpy as np
 cimport numpy as cnp
-import cython
 from libc.stdlib cimport *
 from libc.stdio cimport *
 cimport libc.math

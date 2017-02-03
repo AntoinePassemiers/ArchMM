@@ -11,6 +11,9 @@ from cpython.buffer cimport PyObject_CheckBuffer
 from libc.time cimport time
 
 
+cdef extern from "utils_.c":
+    void* ftest()
+
 cdef float cRand()
 cdef int cRandint(Py_ssize_t start, Py_ssize_t end)
-cdef ensure_PyObject_Buffer(object data)
+cdef void ensure_PyObject_Buffer(object data)
