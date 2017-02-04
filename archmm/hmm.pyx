@@ -18,9 +18,9 @@ from cpython.object cimport PyObject
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 cimport numpy as cnp
 
+from estimation.clustering cimport *
+from estimation.cpd cimport *
 from artifacts import *
-from clustering cimport *
-from cpd cimport *
 from iohmm cimport *
 
 ARCHITECTURE_LINEAR = 1

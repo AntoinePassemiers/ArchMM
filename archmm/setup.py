@@ -12,6 +12,7 @@ source_folder = "archmm"
 sub_packages = [
     "adaptation",
     "ann",
+    "estimation",
     "svm",
     "trees",
     "tests"
@@ -29,7 +30,7 @@ for sub_package in sub_packages + ["."]:
     for source_file in os.listdir(sub_package_path):
         basename, ext = os.path.splitext(source_file)
         to_add = False
-        if ext == ".c":
+        if ext == ".c" or ext == ".cpp":
             if not basename.endswith("_"):
                 to_add = True
         elif ext == ".py":
