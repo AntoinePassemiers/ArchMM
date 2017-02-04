@@ -7,21 +7,24 @@
 # cython: profile=True
 # cython: cdivision=True
 
-import ctypes, pickle
 import numpy as np
+cimport numpy as cnp
+cnp.import_array()
+
+import ctypes, pickle
 from numpy.random import randn, random, dirichlet
 from scipy.spatial.distance import cdist # TO REMOVE
-from libc.stdio cimport *
+
 cimport libc.math, cython
+from libc.stdio cimport *
 from cpython cimport array
 from cpython.object cimport PyObject
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
-cimport numpy as cnp
 
-from estimation.clustering cimport *
-from estimation.cpd cimport *
-from artifacts import *
-from iohmm cimport *
+from archmm.estimation.clustering cimport *
+from archmm.estimation.cpd cimport *
+from archmm.artifacts import *
+from archmm.iohmm cimport *
 
 ARCHITECTURE_LINEAR = 1
 ARCHITECTURE_BAKIS = 2

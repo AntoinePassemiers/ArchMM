@@ -5,9 +5,13 @@
 # cython: initializedcheck=True
 
 import numpy as np
+cimport numpy as cnp
+cnp.import_array()
+
+from threading import Thread
+
 from libc.stdio cimport *
 from cython.parallel import parallel, prange
-from threading import Thread
 
 from archmm.ann.mlp import *
 

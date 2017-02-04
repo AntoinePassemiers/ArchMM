@@ -12,6 +12,6 @@ from libc.time cimport time
 
 ctypedef cnp.double_t sequence_elem_t
 
-cdef float cRand()
-cdef int cRandint(Py_ssize_t start, Py_ssize_t end)
+cdef float cRand() nogil
+cdef int cRandint(Py_ssize_t start, Py_ssize_t end) nogil
 cdef void ensure_PyObject_Buffer(object data)
