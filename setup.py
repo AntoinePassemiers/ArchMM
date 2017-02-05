@@ -28,8 +28,7 @@ source_files = [
     "hmm.pyx",
     "estimation/clustering.pyx",
     "estimation/cpd.pyx",
-    "trees/tree.pyx",
-    "trees/id3.pyx"
+    "trees/tree.pyx"
 ]
 
 def configuration(parent_package = str(), top_path = None):

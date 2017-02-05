@@ -1,17 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "queue_.h"
 
-struct Queue_Node {
-    void* data;
-    struct Queue_Node* next;
-};
-    
-struct Queue {
-    struct Queue_Node* front_node;
-    struct Queue_Node* rear_node;
-    size_t length;
-};
 
 struct Queue* newQueue() {
     struct Queue* queue = (struct Queue*) malloc(sizeof(struct Queue));

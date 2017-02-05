@@ -1,38 +1,22 @@
 # -*- coding: utf-8 -*-
 # distutils: language=c
 
-
 import numpy as np
 cimport numpy as cnp
+cnp.import_array()
+
 from libc.stdlib cimport *
 from libc.stdio cimport *
 
-DEF BAD_PREDICTION = -1.0
-DEF NO_SPLIT_POINT = -1.0
-DEF MISSING_VALUE  = -1.0
+cdef extern from "id3_.h":
+    struct Node:
+        pass
+    struct Tree:
+        pass
+    struct Density:
+        pass
+    Node* newNode(size_t n_classes)
+    inline float ShannonEntropy(float* probabilities, size_t n_classes)
+    inline float GiniCoefficient(float* probabilities, size_t n_classes)
 
-ctypedef cnp.float32_t data_t
-
-cdef struct Node:
-    int         id
-    char*       value
-    int         feature
-    float       pplus # TODO : must be a vector of probabilities (multi-class classification)
-    data_t      split_point
-    Node*       left_child
-    Node*       right_child
-
-cdef struct Tree:
-    Node*  root
-    size_t num_nodes
-
-cdef Node* createNode():
-    cdef Node* node = <Node*>malloc(sizeof(Node))
-    node.feature = -1
-    node.pplus = BAD_PREDICTION
-    node.value = "null"
-    node.split_point = NO_SPLIT_POINT
-    node.id = 0
-    node.left_child = NULL
-    node.right_child = NULL
-    return node
+cdef Node* node = newNode(4)

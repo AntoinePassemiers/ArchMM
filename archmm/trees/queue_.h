@@ -1,12 +1,18 @@
-#ifndef QUEUE_H_
-#define QUEUE_H_
+#ifndef QUEUE__H_
+#define QUEUE__H_
 
 #include "utils_.h"
 
-
-struct Queue_Node;
-
-struct Queue;
+struct Queue_Node {
+    void* data;
+    struct Queue_Node* next;
+};
+    
+struct Queue {
+    struct Queue_Node* front_node;
+    struct Queue_Node* rear_node;
+    size_t length;
+};
 
 struct Queue* newQueue();
 
@@ -16,4 +22,4 @@ void* dequeue(struct Queue* queue);
 
 bint isQueueEmpty(struct Queue* queue);
 
-#endif // QUEUE_H_
+#endif // QUEUE__H_
