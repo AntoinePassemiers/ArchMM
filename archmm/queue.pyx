@@ -14,7 +14,7 @@ cdef Queue* newQueue():
     queue.length = 0
     return queue
     
-cdef void enqueue(Queue* queue, Iteration* data):
+cdef void enqueue(Queue* queue, void* data):
     cdef Queue_Node* temp = <Queue_Node*>malloc(sizeof(Queue_Node))
     temp.data = data
     temp.next = NULL
@@ -26,9 +26,9 @@ cdef void enqueue(Queue* queue, Iteration* data):
         queue.rear_node = temp
     queue.length += 1
         
-cdef Iteration* dequeue(Queue* queue):
+cdef void* dequeue(Queue* queue):
     cdef Queue_Node* temp = queue.front_node
-    cdef Iteration* item = temp.data
+    cdef void* item = temp.data
     if queue.front_node == NULL:
         print("Error in dequeue() : Queue is empty");
         exit(EXIT_FAILURE)

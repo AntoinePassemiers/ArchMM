@@ -31,7 +31,7 @@ void* dequeue(struct Queue* queue) {
     struct Queue_Node* temp = queue->front_node;
     void* item = temp->data;
     if (queue->front_node == NULL) {
-        print("Error in dequeue : Queue is empty");
+        printf("Error in dequeue : Queue is empty");
         exit(EXIT_FAILURE);
     }
     if (queue->length == 1) {

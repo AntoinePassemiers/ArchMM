@@ -40,3 +40,8 @@ def format_data(data):
 		return data
 	else:
 		return DataWrapper(data)
+
+def ensure_array(data, ndim = 1, msg = str()):
+	data = np.asanyarray(data, order = 'C')
+	if data.ndim != ndim:
+		raise DataDimensionError(msg)

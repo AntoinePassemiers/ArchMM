@@ -13,7 +13,7 @@ try:
     USE_CYTHON = True
 except ImportError:
     USE_CYTHON = False
-
+    
 
 source_folder = "archmm"
 source_files = [
@@ -60,15 +60,14 @@ setup_args = {
     "configuration" : configuration
 }
 
-source_filepaths = [os.path.join(source_folder, file) for file in source_files]
-
 extensions = list()
 for source_file in source_files:
     source_filepath = os.path.join(source_folder, source_file)
-    print(source_file, source_filepath)
+    sources = [source_filepath]
+    print(source_file, sources)
     extensions.append(
-        Extension(".".join(["archmm", source_file]), 
-                  [source_filepath],
+        Extension(".".join(["archmm", source_file]),
+                  sources,
                   language = "c",
                   include_dirs = [np.get_include()]
         )
@@ -79,7 +78,6 @@ if USE_CYTHON:
     # This is to prevent cython from generating inappropriate variable names
     # (because it is based on a relative path)
     init_path = os.path.join(os.path.realpath(__file__), "../__init__.py")
-    print(init_path)
     if os.path.isfile(init_path):
         os.remove(init_path)
         print("__init__.py file removed")

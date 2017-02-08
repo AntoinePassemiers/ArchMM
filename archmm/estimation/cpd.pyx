@@ -329,7 +329,7 @@ cdef class BatchCPD:
         cdef double lowest_cost
         enqueue(queue, current_iter)
         while (not (self.n_keypoints == self.max_n_keypoints - 1)) and (not isQueueEmpty(queue)):
-            current_iter = dequeue(queue)
+            current_iter = <Iteration*>dequeue(queue)
             begin = current_iter.begin
             end = current_iter.end
             previous_cost = current_iter.previous_cost

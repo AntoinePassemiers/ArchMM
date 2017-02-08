@@ -14,40 +14,69 @@ sub_packages = [
     "ann",
     "estimation",
     "svm",
-    "trees",
-    "tests"
+    "tests",
+    "trees"
+]
+source_files = [
+    (["artifacts.c"], "artifacts"),
+    (["core.py"], "core"),
+    (["format_data.py"], "format_data"),
+    (["fuzzy.c"], "fuzzy"),
+    (["hmm.c"], "hmm"),
+    (["iohmm.c"], "iohmm"),
+    (["math.c"], "math"),
+    (["parallel.c"], "parallel"),
+    (["queue.c"], "queue"),
+    (["structs.c"], "structs"),
+    (["utils.c"], "utils"),
+    (["adaptation/mllr.py"], "adaptation.mllr"),
+    (["ann/cnn.py"], "ann.cnn"),
+    (["ann/layers.py"], "ann.layers"),
+    (["ann/mlp.py"], "ann.mlp"),
+    (["estimation/clustering.c"], "estimation.clustering"),
+    (["estimation/cpd.c"], "estimation.cpd"),
+    (["svm/svm.py"], "svm.svm"),
+    (["tests/HMM_test.py"] , "tests.HMM_tests"),
+    (["tests/test_clustering.py"] , "tests.test_clustering"),
+    (["tests/utils.py"] , "tests/test_utils"),
+    (["trees/tree.c", "trees/id3_.c", "trees/queue_.c", "trees/utils_.c"] , "trees.tree")
+]
+
+extra_compile_args = [
+    "-std=c99", 
+    "-fno-strict-aliasing",
+    "-D_FORTIFY_SOURCE=2",
+    "-DNDEBUG",
+    "-fwrapv",
+    "-g",
+    # "-fstack-protector-strong",
+    "-ldl",
+    "-lm",
+    "-lpthread",
+    "-lutil",
+    "-O3",
+    "-O0",
+    "-Wall",
+    "-Werror=format-security",
+    "-Wstrict-prototypes",
+    "-Wuninitialized"
 ]
 
 libraries = ["m"] if os.name == "posix" else list()
-extra_compile_args = ["-O3"]
 include_dirs = [np.get_include()]
 
 config = Configuration(source_folder, "", "")
 for sub_package in sub_packages:
     config.add_subpackage(sub_package)
-for sub_package in sub_packages + ["."]:
-    sub_package_path = os.path.join(source_folder, sub_package)
-    for source_file in os.listdir(sub_package_path):
-        basename, ext = os.path.splitext(source_file)
-        to_add = False
-        if ext == ".c" or ext == ".cpp":
-            if not basename.endswith("_"):
-                to_add = True
-        elif ext == ".py":
-            if basename not in ["setup", "__init__"]:
-                to_add = True
-        if to_add:
-            if sub_package == ".":
-                extension_name = basename
-            else:
-                extension_name = ".".join([sub_package, basename])
-            print(extension_name, os.path.join(sub_package_path, source_file))
-            config.add_extension(
-                extension_name, 
-                sources = [os.path.join(sub_package_path, source_file)],
-                include_dirs = include_dirs + [os.curdir],
-                libraries = libraries,
-                extra_compile_args = extra_compile_args
-            )
+for sources, extension_name in source_files:
+    sources = [os.path.join(source_folder, source) for source in sources]
+    print(extension_name, sources)
+    config.add_extension(
+        extension_name, 
+        sources = sources,
+        include_dirs = include_dirs + [os.curdir],
+        libraries = libraries,
+        extra_compile_args = extra_compile_args
+    )
 
 np_setup(**config.todict())

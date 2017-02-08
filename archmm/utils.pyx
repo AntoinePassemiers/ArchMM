@@ -15,8 +15,8 @@ from libc.time cimport time
 from cpython.buffer cimport PyObject_CheckBuffer
 
 
-class ArrayTypeError(Exception):
-    pass
+class ArrayTypeError(Exception): pass
+class DataDimensionError(Exception): pass
 
 cdef float cRand() nogil:
     return <float>rand() / <float>RAND_MAX

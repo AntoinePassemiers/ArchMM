@@ -7,7 +7,7 @@ cdef struct Iteration:
     double previous_cost
 
 cdef struct Queue_Node:
-    Iteration* data
+    void* data
     Queue_Node* next
     
 cdef struct Queue:
@@ -16,6 +16,6 @@ cdef struct Queue:
     size_t length
  
 cdef Queue* newQueue()
-cdef void enqueue(Queue* queue, Iteration* data)
-cdef Iteration* dequeue(Queue* queue)
+cdef void enqueue(Queue* queue, void* data)
+cdef void* dequeue(Queue* queue)
 cdef bint isQueueEmpty(Queue* queue)

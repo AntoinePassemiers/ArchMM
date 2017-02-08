@@ -41,6 +41,7 @@ CRITERION_NEG_LIKELIHOOD = 105
 DISTRIBUTION_GAUSSIAN = 201
 DISTRIBUTION_MULTINOMIAL = 202
 
+cdef double M_PI = np.pi
 
 """ Extended versions of the ln, exp, and log product functions 
 to prevent the Baum-Welch algorithm from causing overflow/underflow """
@@ -147,7 +148,7 @@ cdef cnp.ndarray GaussianLoglikelihood(cnp.ndarray obs, cnp.ndarray mu, cnp.ndar
     cdef Py_ssize_t nmix = len(mu)
     cdef double mcv
     cdef Py_ssize_t k, j
-    cdef double dln2pi = ndim * libc.math.log(2.0 * libc.math.M_PI)
+    cdef double dln2pi = ndim * libc.math.log(2.0 * M_PI)
     cdef cnp.ndarray lnf = np.empty((nobs, nmix))
     for k in range(nmix):
         try:
