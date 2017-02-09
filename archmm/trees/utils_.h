@@ -2,7 +2,7 @@
 #define UTILS__H_
 
 #define ID3_DEBUG_MODE 0
-#define DEBUG_LEVEL 6
+#define DEBUG_LEVEL 4
 
 #define TRUE 1
 #define FALSE 0

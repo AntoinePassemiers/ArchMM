@@ -38,8 +38,10 @@ source_files = [
     (["svm/svm.py"], "svm.svm"),
     (["tests/HMM_test.py"] , "tests.HMM_tests"),
     (["tests/test_clustering.py"] , "tests.test_clustering"),
+    (["tests/test_trees.py"] , "tests.test_trees"),
     (["tests/utils.py"] , "tests/test_utils"),
-    (["trees/tree.c", "trees/id3_.c", "trees/queue_.c", "trees/utils_.c"] , "trees.tree")
+    (["trees/tree.c", "trees/id3_.c", "trees/id4_.c",
+      "trees/queue_.c", "trees/utils_.c"] , "trees.tree")
 ]
 
 extra_compile_args = [

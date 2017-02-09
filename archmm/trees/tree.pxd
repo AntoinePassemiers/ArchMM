@@ -4,9 +4,11 @@
 ctypedef int generic
 
 cdef extern from "utils_.h":
+
     ctypedef generic bint
 
 cdef extern from "id3_.h":
+
     ctypedef generic data_t
     ctypedef generic target_t
 
@@ -19,6 +21,7 @@ cdef extern from "id3_.h":
         double split_value
         Node* left_child
         Node* right_child
+
     struct TreeConfig:
         double min_threshold
         size_t max_height
@@ -26,12 +29,14 @@ cdef extern from "id3_.h":
         size_t max_nodes
         bint use_high_precision
         data_t nan_value
+
     struct Tree:
-        Node root
+        Node* root
         size_t n_nodes
         size_t n_classes
         size_t n_features
         TreeConfig* config
+
     struct Density:
         data_t split_value
         data_t* quartiles
@@ -41,11 +46,10 @@ cdef extern from "id3_.h":
         size_t* counters_left
         size_t* counters_right
         size_t* counters_nan
+
     struct Splitter:
         Node* node
         size_t n_instances
-        size_t total_left
-        size_t total_right
         size_t feature_id
         size_t n_features
         target_t* targets
@@ -62,3 +66,9 @@ cdef extern from "id3_.h":
                                       int partition_value_type, size_t n_partition_values)
     Tree* ID3(data_t* data, target_t* targets, size_t n_instances, size_t n_features,
               TreeConfig* config)
+    float* classify(data_t* data, size_t n_instances, size_t n_features,
+                    Tree* tree, TreeConfig* config)
+
+cdef extern from "id4_.h":
+    void ID4_Update(Tree* tree, data_t* data, target_t* targets, size_t n_instances, 
+                    size_t n_features, size_t n_classes, data_t nan_value)

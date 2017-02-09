@@ -14,10 +14,6 @@
 #define PERCENTILE_PARTITIONING     3
 #define HIGH_PRECISION_PARTITIONING 4
 
-#define IS_RIGHT_TO_THE_SPLIT 0 // Cannot be changed
-#define IS_LEFT_TO_THE_SPLIT  1 // Cannot be changed
-#define IS_NAN_VALUE          2 // Cannot be changed
-
 struct Node {
     int id;
     int feature_id;
@@ -39,7 +35,7 @@ struct TreeConfig {
 };
 
 struct Tree {
-    struct Node root;
+    struct Node* root;
     size_t n_nodes;
     size_t n_classes;
     size_t n_features;
@@ -60,8 +56,6 @@ struct Density {
 struct Splitter {
     struct Node* node;
     size_t n_instances;
-    size_t total_left;
-    size_t total_right;
     size_t feature_id;
     size_t n_features;
     target_t* targets; 
@@ -82,8 +76,7 @@ double evaluateByThreshold(struct Splitter* splitter, struct Density* density,
                                   data_t* data, size_t* belongs_to, size_t n_classes,
                                   int partition_value_type, size_t n_partition_values);
 
-extern inline double getFeatureCost(struct Density* density, size_t n_classes,
-                             size_t n_left, size_t n_right);
+extern inline double getFeatureCost(struct Density* density, size_t n_classes);
 
 double evaluatePartitions(data_t* data, struct Density* density,
                                  data_t* partition_values, struct Splitter* splitter, 
@@ -91,5 +84,8 @@ double evaluatePartitions(data_t* data, struct Density* density,
 
 struct Tree* ID3(data_t* data, target_t* targets, size_t n_instances, size_t n_features,
                  struct TreeConfig* config);
+
+float* classify(data_t* data, size_t n_instances, size_t n_features,
+                struct Tree* tree, struct TreeConfig* config);
 
 #endif // ID3__H_

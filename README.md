@@ -73,6 +73,7 @@ To get ArchMM to work on your computer, you will need:
 - Python 2.7
 - Numpy (>= 1.6.1)
 - Scipy
+- Cython
 - Theano
 
 ### User installation
@@ -81,4 +82,3 @@ Install the package :
 ```
 python setup.py install
 ```
-If you have Cython, the C files will be re-generated before to be compiled.

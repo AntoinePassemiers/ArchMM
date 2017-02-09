@@ -15,7 +15,10 @@ class DataWrapper:
 				"Strings are not supported, "
 				"please use a label encoder first."
 			)
-		self.data = data.view(dtype = SEQUENCE_ELEM_T)
+		try:
+			self.data = data.view(dtype = SEQUENCE_ELEM_T)
+		except:
+			self.data = np.asarray(data, dtype = SEQUENCE_ELEM_T)
 		if len(self.data.shape) == 2:
 			nrows, ncols = self.data.shape
 			nbytes = self.data.itemsize
