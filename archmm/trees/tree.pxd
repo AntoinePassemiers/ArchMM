@@ -23,11 +23,12 @@ cdef extern from "id3_.h":
         Node* right_child
 
     struct TreeConfig:
+        bint is_incremental
         double min_threshold
         size_t max_height
         size_t n_classes
         size_t max_nodes
-        bint use_high_precision
+        int partitioning
         data_t nan_value
 
     struct Tree:
@@ -38,11 +39,11 @@ cdef extern from "id3_.h":
         TreeConfig* config
 
     struct Density:
-        data_t split_value
+        bint    is_categorical
+        data_t  split_value
         data_t* quartiles
         data_t* deciles
         data_t* percentiles
-        data_t* high_precision_partition
         size_t* counters_left
         size_t* counters_right
         size_t* counters_nan
@@ -59,16 +60,12 @@ cdef extern from "id3_.h":
     inline float ShannonEntropy(float probability)
     inline float GiniCoefficient(float probability)
     Density* computeDensities(data_t* data, size_t n_instances, size_t n_features,
-                              size_t n_classes, int use_high_precision, data_t nan_value)
-
-    inline double evaluateByThreshold(Splitter* splitter, Density* density, 
-                                      data_t* data, size_t* belongs_to, size_t n_classes,
-                                      int partition_value_type, size_t n_partition_values)
+                              size_t n_classes, data_t nan_value)
     Tree* ID3(data_t* data, target_t* targets, size_t n_instances, size_t n_features,
               TreeConfig* config)
     float* classify(data_t* data, size_t n_instances, size_t n_features,
                     Tree* tree, TreeConfig* config)
 
 cdef extern from "id4_.h":
-    void ID4_Update(Tree* tree, data_t* data, target_t* targets, size_t n_instances, 
-                    size_t n_features, size_t n_classes, data_t nan_value)
+    void ID4_Update(Tree* tree, data_t* data, target_t* targets, 
+            size_t n_instances, size_t n_features, size_t n_classes, data_t nan_value)

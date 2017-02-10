@@ -13,16 +13,22 @@ from cython cimport view
 from archmm.format_data import *
 from archmm.queue cimport *
 
+
+cpdef int QUARTILE_PARTITIONING   = 1
+cpdef int DECILE_PARTITIONING     = 2
+cpdef int PERCENTILE_PARTITIONING = 3
+
 cdef class ClassificationTree:
     cdef Tree* tree
     cdef TreeConfig* config
     def __init__(self, min_threshold = 1.0e-6, max_height = 50, max_nodes = 4500,
-                 use_high_precision = False):
+                 partitioning = 100):
         self.tree = NULL
         self.config = <TreeConfig*>malloc(sizeof(TreeConfig))
+        self.config.is_incremental = False
         self.config.min_threshold = min_threshold
         self.config.max_nodes = max_nodes
-        self.config.use_high_precision = use_high_precision
+        self.config.partitioning = partitioning
         self.config.nan_value = -1
         self.config.max_height = max_height
 
@@ -36,7 +42,7 @@ cdef class ClassificationTree:
         assert(n_instances == len(targets))
         cdef double[::view.strided, ::1] bdata = data.data[0, :, :]
         cdef int[:] btargets = targets
-        self.tree = ID3(<data_t*>&bdata[0, 0], <target_t*>&btargets[0], 
+        self.tree = ID3(<data_t*>&bdata[0, 0], <target_t*>&btargets[0],
                         n_instances, n_features, self.config) 
     def update(self, data, targets):
         # TODO
@@ -50,6 +56,7 @@ cdef class ClassificationTree:
         cdef int[:] btargets = targets
         ID4_Update(self.tree, <data_t*>&bdata[0, 0], <target_t*>&btargets[0], 
                    n_instances, n_features, self.config.n_classes, self.config.nan_value)
+        
     def classify(self, data):
         data = format_data(data)
         cdef size_t n_instances = data.shape[1]
@@ -60,7 +67,7 @@ cdef class ClassificationTree:
                         n_features, self.tree, self.config)
         return np.asarray(<float[:n_instances, :n_classes]>predictions)
 
-    def deleteTree(self):
+    def deleteTree(self): # TODO : Switch to recursive function
         cdef Queue* queue = newQueue()
         cdef Node* current_node = self.tree.root
         free(self.tree)
@@ -83,10 +90,10 @@ cdef class ClassificationTree:
                 return 0
             return self.tree.n_nodes
             
-    def save(self):
+    def save(self, filepath):
         cdef size_t i
         cdef size_t num_nodes = 0
-        cdef FILE* ptr_fw = fopen("C://Users/Xanto183/git/ArchMM/archmm/trees/test.arctree", "w")
+        cdef FILE* ptr_fw = fopen(<char*>filepath, "w")
         if ptr_fw == NULL:
             raise IOError("Could not open the file")
         cdef Queue* queue = newQueue()
@@ -118,27 +125,3 @@ cdef class ClassificationTree:
                 fprintf(ptr_fw, "\n")
         free(queue)
         fclose(ptr_fw)
-
-cpdef getDensities(data_array):
-    data = format_data(data_array)
-    cdef double[::view.strided, ::1] bdata = data.data[0, :, :]
-    cdef size_t n_instances = data.shape[1]
-    cdef size_t n_features = data.shape[2]
-    cdef size_t i, j
-    cdef data_t* pdata = <data_t*>&bdata[0, 0]
-    cdef Density* density = computeDensities(pdata, n_instances, n_features, 3, 0, -1)
-    densities = list()
-    cdef cnp.double_t[::1] quartiles, deciles, percentiles
-    for i in range(n_features):
-        quartiles = np.ascontiguousarray(np.empty(4, dtype = np.double))
-        deciles = np.ascontiguousarray(np.empty(10, dtype = np.double))
-        percentiles = np.ascontiguousarray(np.empty(100, dtype = np.double))
-        memcpy(&quartiles[0], density[i].quartiles, 4 * sizeof(cnp.double_t))
-        memcpy(&deciles[0], density[i].deciles, 10 * sizeof(cnp.double_t))
-        memcpy(&percentiles[0], density[i].percentiles, 100 * sizeof(cnp.double_t))
-        densities.append({
-            "quartiles" : np.asarray(quartiles),
-            "deciles" : np.asarray(deciles),
-            "percentiles" : np.asarray(percentiles)
-        })
-    return densities

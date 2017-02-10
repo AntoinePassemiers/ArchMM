@@ -14,7 +14,7 @@ How to use it
 
 Let's create a regular HMM :
 ```python
-from HMM_Core import AdaptiveHMM
+from archmm.core import AdaptiveHMM
 
 # Using 5 hidden states, a fully-connected topology and normalizing the inputs
 # Also setting 0 as being a missing value

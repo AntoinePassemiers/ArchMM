@@ -17,17 +17,8 @@ struct Node* newNode(size_t n_classes) {
     return node;
 }
 
-inline float ShannonEntropy(float probability) {
-    return -probability * log2(probability);
-}
-
-inline float GiniCoefficient(float probability) {
-    return 1.0 - probability * probability;
-}
-
 struct Density* computeDensities(data_t* data, size_t n_instances, size_t n_features, 
-                                 size_t n_classes, int use_high_precision,
-                                 data_t nan_value) {
+                                 size_t n_classes, data_t nan_value) {
     size_t s = sizeof(data_t);
     struct Density* densities = (struct Density*) malloc(n_features * sizeof(struct Density));
     data_t* sorted_values = (data_t*) malloc(n_instances * s);
@@ -38,20 +29,21 @@ struct Density* computeDensities(data_t* data, size_t n_instances, size_t n_feat
         densities[f].counters_left = (size_t*) malloc(n_classes * sizeof(size_t));
         densities[f].counters_right = (size_t*) malloc(n_classes * sizeof(size_t));
         densities[f].counters_nan = (size_t*) malloc(n_classes * sizeof(size_t));
-        if (use_high_precision) {
-            densities[f].high_precision_partition = (data_t*) malloc((use_high_precision - 1) * s);
-        }
-        else {
-            densities[f].high_precision_partition = NULL;
-        }
         // Putting nan values aside
+        bint is_categorical = TRUE;
         size_t n_acceptable = 0;
+        data_t data_point;
         for (int i = 0; i < n_instances; i++) {
-            if (data[i * n_features + f] != nan_value) {
-                sorted_values[n_acceptable] = data[i * n_features + f];
+            data_point = data[i * n_features + f];
+            if (data_point != nan_value) {
+                sorted_values[n_acceptable] = data_point;
                 n_acceptable++;
+                if (is_categorical && !(round(data_point) == data_point)) {
+                    is_categorical = FALSE;
+                }
             }
         }
+        densities[f].is_categorical = is_categorical;
         // Sorting acceptable values
         size_t k;
         data_t x;
@@ -64,7 +56,7 @@ struct Density* computeDensities(data_t* data, size_t n_instances, size_t n_feat
             }
             sorted_values[k] = x;
         }
-        // Computing quartiles, deciles, percentiles, etc.
+        // Computing quartiles, deciles, percentiles
         float step_size = (float) n_acceptable / 100.0;
         float current_index = 0.0;
         int rounded_index = 0;
@@ -76,67 +68,74 @@ struct Density* computeDensities(data_t* data, size_t n_instances, size_t n_feat
                 current_index += step_size;
             }
         }
-        if (use_high_precision > 100) {
-            current_index = 0; rounded_index = 0;
-            step_size = (float) (n_acceptable - 1) / (float) use_high_precision;
-            for (int i = 0; i < use_high_precision; i++) {
-                rounded_index = (int) floor(current_index);
-                densities[f].deciles[i] = sorted_values[rounded_index];
-                current_index += step_size;
-            }
-        }
     }
     free(sorted_values);
     return densities;
 }
 
+inline float ShannonEntropy(float probability) {
+    return -probability * log2(probability);
+}
+
+inline float GiniCoefficient(float probability) {
+    return 1.0 - probability * probability;
+}
+
 inline double getFeatureCost(struct Density* density, size_t n_classes) {
     size_t n_left = sum_counts(density->counters_left, n_classes);
     size_t n_right = sum_counts(density->counters_right, n_classes);
+    size_t total = n_left + n_right;
+    float left_rate = (float) n_left / total;
+    float right_rate = (float) n_right / total;
     if (n_left == 0 || n_right == 0) {
         return COST_OF_EMPTINESS;
     }
-    size_t total = n_left + n_right;
-    double cost = 0.0;
-    for (int i = 0; i < n_classes; i++) {
-        size_t n_p = density->counters_left[i];
-        size_t n_n = density->counters_right[i];
-        if (n_left > 0 && n_p > 0) {
-            cost += ((float) n_left / total) * ShannonEntropy((float) n_p / n_left);
+    double left_cost = 0.0, right_cost = 0.0;
+    size_t* counters_left = density->counters_left;
+    size_t* counters_right = density->counters_right;
+    if (n_left > 0) {
+        size_t n_p;
+        for (int i = 0; i < n_classes; i++) {
+            n_p = counters_left[i];
+            if (n_p > 0) {
+                left_cost += ShannonEntropy((float) n_p / n_left);
+            }
         }
-        if (n_right > 0 && n_n > 0) {
-            cost += ((float) n_right / total) * ShannonEntropy((float) n_n / n_right);
-        }
+        left_cost *= left_rate;
     }
-    return cost;
+    if (n_right > 0) {
+        size_t n_n;
+        for (int i = 0; i < n_classes; i++) {
+            n_n = counters_right[i];
+            if (n_n > 0) {
+                right_cost += ShannonEntropy((float) n_n / n_right);
+            }
+        }
+        right_cost *= right_rate;
+    }
+    return left_cost + right_cost;
 }
 
-double evaluatePartitions(data_t* data, struct Density* density,
-                          data_t* partition_values, struct Splitter* splitter, 
-                          size_t n_classes, size_t* belongs_to, size_t k) {
+inline double evaluatePartitions(data_t* data, struct Density* density,
+                                 struct Splitter* splitter, size_t k) {
     size_t i = splitter->feature_id;
     size_t n_features = splitter->n_features;
     data_t data_point;
     target_t target_value;
-    memset((void*) density->counters_left, 0x00, n_classes * sizeof(size_t));
-    memset((void*) density->counters_right, 0x00, n_classes * sizeof(size_t));
-    memset((void*) density->counters_nan, 0x00, n_classes * sizeof(size_t));
-    density->split_value = partition_values[k];
-    #if ID3_DEBUG_MODE && DEBUG_LEVEL >= 4
-        printf("\tDensity split value : %f\n", density->split_value);
-    #endif
+    size_t id = splitter->node->id;
+    memset((void*) density->counters_left, 0x00, splitter->n_classes * sizeof(size_t));
+    memset((void*) density->counters_right, 0x00, splitter->n_classes * sizeof(size_t));
+    memset((void*) density->counters_nan, 0x00, splitter->n_classes * sizeof(size_t));
+    density->split_value = splitter->partition_values[k];
+    data_t split_value = density->split_value;
     for (int j = 0; j < splitter->n_instances; j++) {
-        if (belongs_to[j] == splitter->node->id) {
+        if (splitter->belongs_to[j] == id) {
             target_value = splitter->targets[j];
-            if (!(0 <= target_value && target_value < n_classes)) {
-                printf("Error : one of the target values is not in [0, n_classes].");
-                exit(EXIT_FAILURE);
-            }
             data_point = data[j * n_features + i];
             if (data_point == splitter->nan_value) {
                 density->counters_nan[target_value]++;
             }
-            else if (data_point >= density->split_value) {
+            else if (data_point >= split_value) {
                 density->counters_right[target_value]++;
             }
             else {
@@ -144,42 +143,40 @@ double evaluatePartitions(data_t* data, struct Density* density,
             }
         }
     }
-    return getFeatureCost(density, n_classes);
+    return getFeatureCost(density, splitter->n_classes);
 }
 
 double evaluateByThreshold(struct Splitter* splitter, struct Density* density, 
-                           data_t* data, size_t* belongs_to, size_t n_classes,
-                           int partition_value_type, size_t n_partition_values) {
+                           data_t* data, int partition_value_type) {
     size_t best_split_id = 0;
     double lowest_cost = INFINITY;
     double cost;
-    data_t* partition_values;
+    size_t n_partition_values;
     switch(partition_value_type) {
         case QUARTILE_PARTITIONING:
-            partition_values = density->quartiles;
+            splitter->partition_values = density->quartiles;
+            n_partition_values = 4;
             break;
         case DECILE_PARTITIONING:
-            partition_values = density->deciles;
+            splitter->partition_values = density->deciles;
+            n_partition_values = 10;
             break;
         case PERCENTILE_PARTITIONING:
-            partition_values = density->percentiles;
+            splitter->partition_values = density->percentiles;
+            n_partition_values = 100;
             break;
-        case HIGH_PRECISION_PARTITIONING:
-            partition_values = density->high_precision_partition;
         default:
-            partition_values = density->quartiles;
+            splitter->partition_values = density->percentiles;
+            n_partition_values = 100;
     }
-    for (int k = 0; k < n_partition_values; k++) {
-        cost = evaluatePartitions(data, density, partition_values, splitter, n_classes, 
-                                  belongs_to, k);
-        if (cost < lowest_cost && cost != COST_OF_EMPTINESS) {
+    for (int k = 1; k < n_partition_values - 1; k++) {
+        cost = evaluatePartitions(data, density, splitter, k);
+        if (cost < lowest_cost) {
             lowest_cost = cost;
             best_split_id = k;
         }
     }
-    // density->split_value = partition_values[best_split_id];
-    evaluatePartitions(data, density, partition_values, splitter, 
-                       n_classes, belongs_to, best_split_id);
+    evaluatePartitions(data, density, splitter, best_split_id);
     return lowest_cost;
 }
 
@@ -210,13 +207,16 @@ struct Tree* ID3(data_t* data, target_t* targets, size_t n_instances, size_t n_f
     struct Splitter splitter = { 
         current_node, 
         n_instances,
+        NULL,
+        config->n_classes,
+        belongs_to,
         NO_FEATURE,
         n_features,
         targets,
         config->nan_value
     };
     struct Density* densities = computeDensities(data, n_instances, n_features, 
-        config->n_classes, config->use_high_precision, config->nan_value);
+        config->n_classes, config->nan_value);
     struct Density* next_density;
     size_t best_feature = 0;
     struct Queue* queue = newQueue();
@@ -228,22 +228,13 @@ struct Tree* ID3(data_t* data, target_t* targets, size_t n_instances, size_t n_f
         splitter.node = current_node;
         for (int f = 0; f < n_features; f++) {
             splitter.feature_id = f;
-            e_cost = evaluateByThreshold(&splitter, &densities[f], data, belongs_to,
-                                         config->n_classes, PERCENTILE_PARTITIONING, 100); // TODO
+            e_cost = evaluateByThreshold(&splitter, &densities[f], data, config->partitioning);
             if (e_cost < lowest_e_cost) {
                 lowest_e_cost = e_cost;
                 best_feature = f;
             }
         }
         next_density = &densities[best_feature];
-        #if ID3_DEBUG_MODE && DEBUG_LEVEL >= 1
-            printf("-------------------\n");
-            printf("Node number %i\n", tree->n_nodes);
-            printf("Best feature : %i\n", (int) best_feature);
-            printf("Split value : %f\n", (double) next_density->split_value);
-            printf("Split cost : %f\n", (double) lowest_e_cost);
-            printf("%i, %i\n", best_feature, current_node->feature_id);
-        #endif
         if ((best_feature != current_node->feature_id)
             || (next_density->split_value != current_node->split_value)) { // TO REMOVE ?
             next_density = &densities[best_feature];
@@ -273,12 +264,12 @@ struct Tree* ID3(data_t* data, target_t* targets, size_t n_instances, size_t n_f
                     child_node = &new_children[i];
                     child_node->id = tree->n_nodes;
                     child_node->split_value = split_value;
-                    child_node->counters = (size_t*) malloc(config->n_classes * sizeof(size_t));
                     child_node->n_instances = split_totals[i];
                     child_node->score = COST_OF_EMPTINESS;
                     child_node->feature_id = best_feature;
                     child_node->left_child = NULL;
                     child_node->right_child = NULL;
+                    child_node->counters = (size_t*) malloc(config->n_classes * sizeof(size_t));
                     memcpy(child_node->counters, split_sides[i], config->n_classes * sizeof(size_t));
                     if (lowest_e_cost > config->min_threshold) {
                         enqueue(queue, child_node);
