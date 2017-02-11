@@ -3,37 +3,38 @@ layout: default
 title: ArchMM - Welcome
 ---
 
-<div class="doc-box">
-  <div class="media">
-    <div class="media-left">
-      Class
+<div id="home">
+  <div class="doc-box">
+    <div class="media">
+      <div class="media-left">
+        Class
+      </div>
+      <div class="media-body">
+        <h4 class="media-heading">archmm.trees.tree.ClassificationTree</h4>
+        <div class="method">__init__(min_threshold = 1.0e-6, max_height = 50, max_nodes = 4500, partitioning = PERCENTILE_PARTITIONING)</div>
+        <div class="description"><ul>
+          <li><span class="parameter">min_threshold</span> : float</li>
+          <li><span class="parameter">max_height</span> : int</li>
+          <li><span class="parameter">max_nodes</span> : int</li>
+          <li>
+            <span class="parameter">partitioning</span> : int<br/>
+            [QUARTILE_PARTITIONING]<br/>
+            [DECILE_PARTITIONING]<br/>
+            [PERCENTILE_PARTITIONING]
+          </li>
+        </ul></div>
+        <div class="method">applyID3(data, targets)</div>
+        <div class="description"><ul>
+          <li><span class="parameter">data</span> : np.ndarray[ndim = 2]</li>
+          <li><span class="parameter">targets</span> : np.ndarray[ndim = 1]</li>
+        </ul></div>
+        <div class="method">update(data, targets)</div>
+        <div class="description"><ul>
+          <li><span class="parameter">data</span> : np.ndarray[ndim = 2]</li>
+          <li><span class="parameter">targets</span> : np.ndarray[ndim = 1]</li>
+        </ul></div>
+      </div>
     </div>
-    <div class="media-body">
-      <h4 class="media-heading">archmm.trees.tree.ClassificationTree</h4>
-      <div class="method">__init__(min_threshold = 1.0e-6, max_height = 50, max_nodes = 4500, partitioning = PERCENTILE_PARTITIONING)</div>
-      <div class="description"><ul>
-        <li><span class="parameter">min_threshold</span> : float</li>
-        <li><span class="parameter">max_height</span> : int</li>
-        <li><span class="parameter">max_nodes</span> : int</li>
-        <li>
-          <span class="parameter">partitioning</span> : int<br/>
-          [QUARTILE_PARTITIONING]<br/>
-          [DECILE_PARTITIONING]<br/>
-          [PERCENTILE_PARTITIONING]
-        </li>
-      </ul></div>
-      <div class="method">applyID3(data, targets)</div>
-      <div class="description"><ul>
-        <li><span class="parameter">data</span> : np.ndarray[ndim = 2]</li>
-        <li><span class="parameter">targets</span> : np.ndarray[ndim = 1]</li>
-      </ul></div>
-      <div class="method">update(data, targets)</div>
-      <div class="description"><ul>
-        <li><span class="parameter">data</span> : np.ndarray[ndim = 2]</li>
-        <li><span class="parameter">targets</span> : np.ndarray[ndim = 1]</li>
-      </ul></div>
-    </div>
-  </div>
 
 
 <div class="panel panel-default">
@@ -56,6 +57,7 @@ utargets <span style='color:#808030; '>=</span> np<span style='color:#808030; '>
 predictions <span style='color:#808030; '>=</span> tree<span style='color:#808030; '>.</span>classify<span style='color:#808030; '>(</span>udata<span style='color:#808030; '>)</span>
 tree<span style='color:#808030; '>.</span>update<span style='color:#808030; '>(</span>udata<span style='color:#808030; '>,</span> utargets<span style='color:#808030; '>)</span>
 </pre>
+</div>
 </div>
 </div>
 </div>
