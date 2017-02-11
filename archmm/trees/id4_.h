@@ -2,6 +2,7 @@
 #define ID4__H_
 
 #include "queue_.h"
+#include <stddef.h>
 
 
 void ID4_Update(struct Tree* tree, const data_t* data, const target_t* targets, 

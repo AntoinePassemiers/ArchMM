@@ -1,0 +1,147 @@
+/* Body */
+
+body {
+    width: 1080px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
+#content {
+	margin-left: 17%;
+	margin-right: 17%;
+}
+
+.section-block {
+	margin-left: 30px;
+	margin-bottom: 20px;
+	width: 60%;
+}
+
+/* Documentation */
+
+.doc-box {
+	margin-left: 10px;
+	margin-right: 10px;
+	padding: 15px 15px 15px 15px;
+	border-left: 1px solid gray;
+	border-right: 1px solid gray;
+}
+
+.panel {
+	margin-top: 25px;
+}
+
+.example-box {
+	margin-left: 15px;
+	margin-right: 15px;
+	margin-top: 20px;
+	padding-left: 20px;
+}
+
+.example-box pre {
+	margin: 0 0 0 0;
+	padding: 10px 10px 10px 10px;
+	border-color: transparent;
+	font-size: 16;
+}
+
+.class-name {
+	font-weight: bold;
+	font-size: 17;
+	margin-bottom: 8px;
+}
+
+.attributes {
+	margin-left: 50px;
+}
+
+.method {
+	font-weight: bold;
+}
+
+.parameter {
+	font-style: italic;
+	margin: 0 0 0 0;
+}
+
+.description {
+	margin-left: 40px;
+}
+
+/* Navigation bars */
+
+#main_navbar {
+	margin-top: 10px;
+    /* background-color: #09111a;
+    border-color: #070305; */
+    background-color: #080B3B;
+    color: #FFFFFF;
+
+}
+
+.navbar-center {
+	float: center;
+	position: relative;
+	display: inline-block;
+	margin-right: 70px;
+}
+
+#menuBar {
+	background-color: #09111a;
+	border-color: #070305;
+	margin-bottom: 0px;
+}
+
+
+/* Footer */
+
+#aFooter {
+	font-family: 'Century Gothic', CenturyGothic, AppleGothic, sans-serif;
+	padding: 10px 20px 10px 20px;
+	margin-top: 100px;
+	margin-left: 0px;
+	left: 0px;
+	background-color:#09111a;
+	overflow: auto;
+}
+
+#aFooter .container-fluid {
+	width: 100%;
+    display:-moz-box;
+    -moz-box-pack:center;
+    -moz-box-align:center;
+    display:-webkit-box;
+    -webkit-box-pack:center;
+    -webkit-box-align:center;
+    display:box;
+    box-pack:center;
+    box-align:center;
+}
+
+#eFooter {
+	padding: 20px 20px 10px 20px;
+	margin-left: 0px;
+	left: 0px;
+	/*color: #ffffff;*/
+	background-color:#070305;
+	color: grey;
+}
+
+#eFooter .container-fluid {
+	width: 100%;
+    display:-moz-box;
+    -moz-box-pack:center;
+    -moz-box-align:center;
+    display:-webkit-box;
+    -webkit-box-pack:center;
+    -webkit-box-align:center;
+    display:box;
+    box-pack:center;
+    box-align:center;
+}
+
+#social-section {
+	right: 100px;
+}

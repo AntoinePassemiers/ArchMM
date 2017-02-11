@@ -1,6 +1,8 @@
 #ifndef UTILS__H_
 #define UTILS__H_
 
+#include <stddef.h>
+
 #define ID3_DEBUG_MODE 0
 #define DEBUG_LEVEL 4
 

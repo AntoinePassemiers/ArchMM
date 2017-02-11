@@ -2,6 +2,7 @@
 #define QUEUE__H_
 
 #include "utils_.h"
+#include <stddef.h>
 
 struct Queue_Node {
     void* data;

@@ -2,6 +2,7 @@
 #define ID3__H_
 
 #include "queue_.h"
+#include <stddef.h>
 
 #define NO_FEATURE       -1
 #define NO_INSTANCE       0
