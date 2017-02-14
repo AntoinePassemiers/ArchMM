@@ -20,6 +20,9 @@ theano.config.NanGuardMode.nan_is_error = False
 theano.config.NanGuardMode.inf_is_error = True
 
 class Layer:
+    @requiresTheano(True)
+    def __init__(self):
+        pass
     def processOutput(self, X):
         linear_output = T.dot(X, self.W) + self.b
         if self.activation is not None:
@@ -35,6 +38,7 @@ class Layer:
         
         
 class LogisticRegression(Layer):
+    @requiresTheano(True)
     def __init__(self, input, n_in, n_out, rng = np.random.RandomState(1234)):
         self.is_conv = False
         self.input = input
@@ -71,6 +75,7 @@ class LogisticRegression(Layer):
         
         
 class HiddenLayer(Layer):
+    @requiresTheano(True)
     def __init__(self, input, n_in, n_out, W = None, b = None,
                  activation = T.nnet.nnet.sigmoid,
                  rng = np.random.RandomState(1234)):

@@ -12,3 +12,5 @@ gems:
   - jekyll-feed
 
 url: https://antoinepassemiers.github.io/ArchMM/
+repository: AntoinePassemiers/ArchMM
+repo_url: https://github.com/AntoinePassemiers/ArchMM/

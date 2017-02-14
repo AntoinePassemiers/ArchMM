@@ -19,6 +19,7 @@ def expsum(x):
     return theano.tensor.sum(theano.tensor.exp(x))
 
 class MLP(object):
+    @requiresTheano(True)
     def __init__(self, n_in, n_hidden, n_out, rng = np.random.RandomState(1234), dropout_threshold = 0.5,
                  hidden_activation_function = "sigmoid"):
         self.n_in = n_in
@@ -93,6 +94,7 @@ class MLP(object):
             i += 1
     
 class PiStateSubnetwork(MLP):
+    @requiresTheano(True)
     def __init__(self, n_in, n_hidden, n_out, dropout_threshold = 0.5,
                  hidden_activation_function = "sigmoid", learning_rate = 0.01, architecture = "ergodic"):
         assert(architecture in ["ergodic", "linear"])
@@ -157,6 +159,7 @@ class PiStateSubnetwork(MLP):
             return theano.tensor.switch(self.rnd_number > 0.0, np.array([output]), MLP.processOutput(self, X))
 
 class StateSubnetwork(MLP):
+    @requiresTheano(True)
     def __init__(self, state_id, n_in, n_hidden, n_out, architecture = "ergodic", 
                  dropout_threshold = 0.5,
                  hidden_activation_function = "sigmoid", learning_rate = 0.01):
@@ -252,6 +255,7 @@ class StateSubnetwork(MLP):
 
         
 class OutputSubnetwork(MLP):
+    @requiresTheano(True)
     def __init__(self, state_id, n_in, n_hidden, n_out, is_classifier = True,
                  dropout_threshold = 0.5, 
                  hidden_activation_function = "sigmoid", learning_rate = 0.01):

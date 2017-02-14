@@ -7,6 +7,7 @@ from distutils.extension import Extension
 import numpy as np
 from numpy.distutils.misc_util import Configuration
 from numpy.distutils.core import setup as np_setup
+from numpy.distutils.numpy_distribution import NumpyDistribution
 
 try:
     from Cython.Build import cythonize
@@ -73,7 +74,10 @@ for source_file in source_files:
         )
     )
 
-if USE_CYTHON:
+GOT_BUILD_CMD = "install" in sys.argv or "build" in sys.argv
+GOT_TEST_CMD = "test" in sys.argv
+
+if USE_CYTHON and GOT_BUILD_CMD:
     # Setting "archmm" as the root package
     # This is to prevent cython from generating inappropriate variable names
     # (because it is based on a relative path)
@@ -87,4 +91,11 @@ if USE_CYTHON:
         language = "c"
     )
 
-np_setup(**setup_args)
+if GOT_BUILD_CMD:
+    np_setup(**setup_args)
+
+if GOT_TEST_CMD:
+    test_path = os.path.join(os.path.realpath(__file__), "../archmm/tests")
+    for file in os.listdir(test_path):
+        if file.endswith(".py"):
+            subprocess.call(["nosetests", os.path.join(test_path, file)])

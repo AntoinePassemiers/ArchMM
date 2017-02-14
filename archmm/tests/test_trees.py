@@ -38,13 +38,10 @@ def test_id3_predictions():
 	y = tree.classify(data)
 	assert_array_almost_equal(probs, y[:, 0])
 
+@dec.slow
 def test_big_tree():
 	n_instances = 100
 	X = np.asarray(np.random.rand(n_instances, 25), dtype = np.double)
 	y = np.random.randint(0, 10, size = n_instances)
 	tree = ClassificationTree(max_nodes = 1000, partitioning = 2)
 	tree.applyID3(X, y)
-	print(tree.n_nodes)
-
-test_id3_predictions()
-test_big_tree()

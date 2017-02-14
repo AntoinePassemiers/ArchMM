@@ -12,5 +12,3 @@ X = np.concatenate((X1, X2, X3), axis = 0)
 def test_compare_algorithms():
 	cmeans = fuzzyCMeans(X, 3)[0]
 	assert_array_almost_equal_by_permuting(cmeans, means, decimal = 1, axis = 0)
-
-test_compare_algorithms()

@@ -3,61 +3,64 @@ layout: default
 title: ArchMM - Welcome
 ---
 
-<div id="home">
-  <div class="doc-box">
+
+<style type="text/css">
+#wrap {
+   width:650px;
+   margin:0 auto;
+}
+#left_col {
+   float:left;
+   width:300px;
+   margin-right: 50px;
+}
+#right_col {
+   float:right;
+   width:300px;
+}
+.media {
+  margin-bottom: 50px;
+}
+</style>
+
+
+<div id="wrap">
+  <div id="left_col">
     <div class="media">
-      <div class="media-left">
-        Class
-      </div>
       <div class="media-body">
-        <h4 class="media-heading">archmm.trees.tree.ClassificationTree</h4>
-        <div class="method">__init__(min_threshold = 1.0e-6, max_height = 50, max_nodes = 4500, partitioning = PERCENTILE_PARTITIONING)</div>
-        <div class="description"><ul>
-          <li><span class="parameter">min_threshold</span> : float</li>
-          <li><span class="parameter">max_height</span> : int</li>
-          <li><span class="parameter">max_nodes</span> : int</li>
-          <li>
-            <span class="parameter">partitioning</span> : int<br/>
-            [QUARTILE_PARTITIONING]<br/>
-            [DECILE_PARTITIONING]<br/>
-            [PERCENTILE_PARTITIONING]
-          </li>
-        </ul></div>
-        <div class="method">applyID3(data, targets)</div>
-        <div class="description"><ul>
-          <li><span class="parameter">data</span> : np.ndarray[ndim = 2]</li>
-          <li><span class="parameter">targets</span> : np.ndarray[ndim = 1]</li>
-        </ul></div>
-        <div class="method">update(data, targets)</div>
-        <div class="description"><ul>
-          <li><span class="parameter">data</span> : np.ndarray[ndim = 2]</li>
-          <li><span class="parameter">targets</span> : np.ndarray[ndim = 1]</li>
-        </ul></div>
+        <h4 class="media-heading">Hidden Markov Models</h4><hr>
+        Hidden Markov Models (HMM) with many different topologies.
       </div>
     </div>
-
-
-<div class="panel panel-default">
-<div class="panel-heading">E x a m p l e</div>
-<div class="example-box panel-body">
-<pre style='color:#000000;background:#ffffff;'><span style='color:#800000; font-weight:bold; '>from</span> archmm<span style='color:#808030; '>.</span>trees<span style='color:#808030; '>.</span>tree <span style='color:#800000; font-weight:bold; '>import</span> ClassificationTree
-<span style='color:#800000; font-weight:bold; '>import</span> numpy <span style='color:#800000; font-weight:bold; '>as</span> np
-
-<span style='color:#696969; '># Generate random training samples</span>
-data <span style='color:#808030; '>=</span> np<span style='color:#808030; '>.</span>random<span style='color:#808030; '>.</span>rand<span style='color:#808030; '>(</span><span style='color:#008c00; '>2500</span><span style='color:#808030; '>,</span> <span style='color:#008c00; '>25</span><span style='color:#808030; '>)</span>
-targets <span style='color:#808030; '>=</span> np<span style='color:#808030; '>.</span>random<span style='color:#808030; '>.</span>randint<span style='color:#808030; '>(</span><span style='color:#008c00; '>0</span><span style='color:#808030; '>,</span> <span style='color:#008c00; '>10</span><span style='color:#808030; '>,</span> size <span style='color:#808030; '>=</span> <span style='color:#008c00; '>2500</span><span style='color:#808030; '>)</span>
-
-<span style='color:#696969; '># Grow a tree according to these samples</span>
-tree <span style='color:#808030; '>=</span> ClassificationTree<span style='color:#808030; '>(</span>max_nodes <span style='color:#808030; '>=</span> <span style='color:#008c00; '>1000</span><span style='color:#808030; '>)</span>
-tree<span style='color:#808030; '>.</span>applyID3<span style='color:#808030; '>(</span>data<span style='color:#808030; '>,</span> targets<span style='color:#808030; '>)</span>
-
-<span style='color:#696969; '># Generate new samples, emit predictions and update the tree</span>
-udata <span style='color:#808030; '>=</span> np<span style='color:#808030; '>.</span>random<span style='color:#808030; '>.</span>rand<span style='color:#808030; '>(</span><span style='color:#008c00; '>400</span><span style='color:#808030; '>,</span> <span style='color:#008c00; '>25</span><span style='color:#808030; '>)</span>
-utargets <span style='color:#808030; '>=</span> np<span style='color:#808030; '>.</span>random<span style='color:#808030; '>.</span>randint<span style='color:#808030; '>(</span><span style='color:#008c00; '>0</span><span style='color:#808030; '>,</span> <span style='color:#008c00; '>10</span><span style='color:#808030; '>,</span> size <span style='color:#808030; '>=</span> <span style='color:#008c00; '>400</span><span style='color:#808030; '>)</span>
-predictions <span style='color:#808030; '>=</span> tree<span style='color:#808030; '>.</span>classify<span style='color:#808030; '>(</span>udata<span style='color:#808030; '>)</span>
-tree<span style='color:#808030; '>.</span>update<span style='color:#808030; '>(</span>udata<span style='color:#808030; '>,</span> utargets<span style='color:#808030; '>)</span>
-</pre>
-</div>
-</div>
-</div>
+    <div class="media">
+      <div class="media-body">
+        <h4 class="media-heading">Parameter estimation algorithms</h4><hr>
+        Including clustering algorithms (K-means and Fuzzy C-means) and
+        change point detection algorithms.
+      </div>
+    </div>
+    <div class="media">
+      <div class="media-body">
+        <h4 class="media-heading">Neural networks</h4><hr>
+        Multi-Layer Perceptrons used jointly with IOHMMs.
+      </div>
+    </div>
+  </div>
+  <div id="right_col">
+    <div class="media">
+      <div class="media-body">
+        <h4 class="media-heading">Decision trees</h4><hr>
+        Classification trees and incremental classification trees.
+      </div>
+    </div>
+    <div class="media">
+      <div class="media-body">
+        <h4 class="media-heading">More to come...</h4><hr>
+        IOHMM with deep convolutional networks,
+        Autoregressive Input-Output Hidden Markov Models (AIOHMM),
+        Fuzzy Hidden Markov Models (FHMM), Multispace Distribution
+        Hidden Markov Models (MSD-HMM), ...
+      </div>
+    </div>
+  </div>
 </div>

@@ -14,9 +14,96 @@ from libc.string cimport memset
 from libc.time cimport time
 from cpython.buffer cimport PyObject_CheckBuffer
 
+import sys
+from StringIO import StringIO
+
 
 class ArrayTypeError(Exception): pass
 class DataDimensionError(Exception): pass
+class DependencyError(Exception): pass
+class NotImplementedError(Exception): pass
+
+class NullIO(StringIO):
+    """ Prevent function from printing :
+    sys.stdout = NullIO()
+    bothering_function()
+    sys.stdout = sys.__stdout__
+    """
+    def write(self, txt):
+       pass
+
+class Version:
+    def __init__(self, major = None, minor = None, build = None, revision = None):
+        if self.major == VERSION_ANY:
+            self.major = self.minor = self.build = self.revision = VERSION_ANY
+        else:
+            self.major = major
+            self.minor = minor
+            self.build = build
+            self.revision = revision
+    def __str__(self):
+        if self.major == VERSION_ANY:
+            return "v.v.v"
+        v = ".".join([self.major, self.minor])
+        if self.build:
+            v = ".".join([v, self.build])
+            if self.revision:
+                v = ".".join([v, self.revision])
+        return v
+
+VERSION_ANY = np.inf
+
+try:
+    import theano
+    import theano.tensor
+    USE_THEANO = True
+    THEANO_VERSION = Version(VERSION_ANY)
+except:
+    USE_THEANO = False
+    THEANO_VERSION = Version(None)
+try:
+    import cvxpy
+    USE_CVXPY = True
+    CVXPY_VERSION = Version(VERSION_ANY)
+except:
+    USE_CVXPY = False
+    CVXPY_VERSION = Version(None)
+try:
+    import matplotlib.pyplot as plt
+    USE_PYPLOT = True
+    PYPLOT_VERSION = Version(VERSION_ANY)
+except:
+    USE_PYPLOT = False
+    PYPLOT_VERSION = Version(None)
+
+
+""" Decorators """
+
+def todo(func):
+    def func_wrapper(*args):
+        raise NotImplementedError("%s is not implemented yet" % func.__name__)
+    return func_wrapper
+
+def genericRequirementFunction(package_name, test_variable, test_version):
+    def requiresPackage(version):
+        def requiresPackage_decorator(func):
+            a = isinstance(version, Version) # TODO
+            if test_variable and test_version > version:
+                return func
+            else:
+                def func_wrapper(*args):
+                    s = (package_name, func.__name__)
+                    raise DependencyError("Error : requires %s to call %s." % s)
+                return func_wrapper
+        return requiresPackage_decorator
+    return requiresPackage
+
+requiresTheano = genericRequirementFunction("Theano", USE_THEANO, THEANO_VERSION)
+requiresCvxPy  = genericRequirementFunction("cvxpy", USE_CVXPY, CVXPY_VERSION)
+requiresPyplot = genericRequirementFunction("matplotlib", USE_PYPLOT, PYPLOT_VERSION)
+
+
+""" Cython utils """
 
 cdef float cRand() nogil:
     return <float>rand() / <float>RAND_MAX

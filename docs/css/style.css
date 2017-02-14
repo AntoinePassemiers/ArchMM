@@ -1,6 +1,8 @@
 /* Body */
 
-body {
+body {}
+
+#content {
     width: 1080px;
     margin-left: auto;
     margin-right: auto;
@@ -8,9 +10,13 @@ body {
     padding-right: 20px;
 }
 
-#content {
-	margin-left: 17%;
-	margin-right: 17%;
+#banner {
+	margin-top: 6px;
+	height: 80px;
+}
+
+#banner image {
+	height: 80px;
 }
 
 .section-block {
@@ -58,7 +64,7 @@ body {
 }
 
 .method {
-	font-weight: bold;
+	color: #080B3B;
 }
 
 .parameter {
@@ -78,7 +84,6 @@ body {
     border-color: #070305; */
     background-color: #080B3B;
     color: #FFFFFF;
-
 }
 
 .navbar-center {
@@ -97,7 +102,7 @@ body {
 
 /* Footer */
 
-#aFooter {
+#a-footer {
 	font-family: 'Century Gothic', CenturyGothic, AppleGothic, sans-serif;
 	padding: 10px 20px 10px 20px;
 	margin-top: 100px;
@@ -107,7 +112,7 @@ body {
 	overflow: auto;
 }
 
-#aFooter .container-fluid {
+#a-footer .container-fluid {
 	width: 100%;
     display:-moz-box;
     -moz-box-pack:center;
@@ -120,7 +125,7 @@ body {
     box-align:center;
 }
 
-#eFooter {
+#e-footer {
 	padding: 20px 20px 10px 20px;
 	margin-left: 0px;
 	left: 0px;
@@ -129,7 +134,7 @@ body {
 	color: grey;
 }
 
-#eFooter .container-fluid {
+#e-footer .container-fluid {
 	width: 100%;
     display:-moz-box;
     -moz-box-pack:center;

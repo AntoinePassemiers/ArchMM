@@ -74,7 +74,8 @@ To get ArchMM to work on your computer, you will need:
 - Numpy (>= 1.6.1)
 - Scipy
 - Cython
-- Theano
+- Theano (optional)
+- cvxpy (optional)
 
 ### User installation
 
