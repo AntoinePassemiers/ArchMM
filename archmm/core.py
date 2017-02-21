@@ -31,7 +31,7 @@ class IOConfig:
 
 
 
-class AdaptiveHMM:
+class HMM:
     arch_names = collections.defaultdict()
     arch_names["linear"] = ARCHITECTURE_LINEAR
     arch_names["right"] = ARCHITECTURE_LEFT_TO_RIGHT
@@ -52,12 +52,12 @@ class AdaptiveHMM:
                  missing_value = DEFAULT_MISSING_VALUE, has_io = False):
         l_architecture = architecture.lower()
         found = False
-        for name in AdaptiveHMM.arch_names.keys():
+        for name in HMM.arch_names.keys():
             if l_architecture in name:
-                arch = AdaptiveHMM.arch_names[name]
+                arch = HMM.arch_names[name]
                 found = True
         if not found:
-            arch = AdaptiveHMM.arch_names["ergodic"]
+            arch = HMM.arch_names["ergodic"]
             print("Warning : architecture %s not found" % l_architecture)
             print("An ergodic structure will be used instead.")
         
@@ -66,6 +66,18 @@ class AdaptiveHMM:
         self.standardize = standardize
         self.has_io = has_io
         self.mu = self.sigma = None
+
+    def __getitem__(self, attr):
+        if attr in self.hmm.__names__:
+            return self.hmm.__getitem__(attr)
+        else:
+            return self.__dict__[attr]
+
+    def __setitem__(self, attr, value):
+        if attr in self.hmm.__names__:
+            self.hmm.__setitem__(attr, value)
+        else:
+            self.__dict__[attr] = value
         
     def getMu(self):
         return self.hmm.getMu()
@@ -105,12 +117,12 @@ class AdaptiveHMM:
     def score(self, observations, mode = "aicc"):
         l_mode = mode.lower()
         found = False
-        for name in AdaptiveHMM.crit_names.keys():
+        for name in HMM.crit_names.keys():
             if l_mode in name:
-                mode = AdaptiveHMM.crit_names[name]
+                mode = HMM.crit_names[name]
                 found = True
         if not found:
-            mode = AdaptiveHMM.crit_names["likelihood"]
+            mode = HMM.crit_names["likelihood"]
             print("Warning : mode %s not found" % l_mode)
             print("The likelihood will be returned instead.")
             

@@ -11,6 +11,7 @@ cnp.import_array()
 import multiprocessing
 from cython.parallel import parallel, prange, threadid
 
+cimport cython
 from libc.stdlib cimport *
 from libc.stdio cimport *
 from libc.string cimport memset
@@ -67,20 +68,49 @@ cdef struct fog_t:
     Py_ssize_t end
 
 cdef class MB:
-    def __cinit__(self):
-        pass
-
-cdef class GTD(MB):
-    cdef Py_ssize_t window_size
-    cdef unsigned int cost_func
     cdef cnp.int16_t[:] keypoints
     cdef fog_t* fogs
+    cdef size_t n_fogs
+    cdef size_t n_steps
+    cdef Py_ssize_t n_keypoints
 
-    def __cinit__(self, cost_func = MAHALANOBIS_DISTANCE_COST,
+    def __cinit__(self):
+        pass
+    property keypoints:
+        def __get__(self):
+            self.extractKeypoints()
+            return np.asarray(self.keypoints)
+
+    @cython.wraparound(True) # Important
+    cdef extractKeypoints(self):
+        cdef cnp.double_t[:] fog_values = np.empty(self.n_steps, dtype = np.double)
+        cdef cnp.int16_t[:] fog_ends = np.empty(self.n_steps, dtype = np.int16)
+        cdef size_t i
+        with nogil:
+            for i in range(self.n_steps):
+                fog_values[i] = self.fogs[i].value
+                fog_ends[i] = self.fogs[i].end
+
+        costs = np.array(fog_values)
+        partition = np.argpartition(
+            costs, -self.n_keypoints
+        )[<Py_ssize_t>(-self.n_keypoints):]
+
+        self.keypoints = np.asarray(
+            np.asarray(fog_ends),
+            dtype = np.int16
+        )[partition]
+
+cdef class GraphTheoreticDetector(MB):
+    cdef Py_ssize_t window_size
+    cdef unsigned int cost_func
+
+    def __cinit__(self, cost_func = SUM_OF_SQUARES_COST,
                   window_size = 15, n_keypoints = 50):
         self.window_size = window_size
         self.cost_func = cost_func
-        self.keypoints = np.empty(n_keypoints, dtype = np.int16)
+        self.n_keypoints = n_keypoints
+        self.keypoints = None
 
     cpdef detectPoints(self, sequence):
         ensure_PyObject_Buffer(sequence)
@@ -88,13 +118,15 @@ cdef class GTD(MB):
         cdef Py_ssize_t i, j, k, t, T = len(sequence)
         cdef Py_ssize_t best_i, best_j
         cdef Py_ssize_t N = self.window_size
-        cdef cnp.double_t[:] beta = np.empty(N, dtype = np.double)
+        self.n_steps = (T - N) / self.window_size
+        cdef cnp.double_t[::1] beta = np.ascontiguousarray(np.empty(N), dtype = np.double)
         cdef cnp.double_t[:] C = np.empty(n_threads, dtype = np.double)
         cdef double fog, C_prime
         cdef cnp.double_t[:, :] signal_buffer = np.asarray(sequence)
-        self.fogs = <fog_t*>malloc((T - N) * sizeof(fog_t))
+        self.n_fogs = T - N
+        self.fogs = <fog_t*>malloc(self.n_steps * sizeof(fog_t))
         with nogil:
-            for t in prange(0, T - N):
+            for t in prange(0, self.n_steps * N, N):
                 k = threadid()
                 memset(<void*>&beta[0], 0x00, N * sizeof(cnp.double_t))
                 fog = -NUMPY_INF_VALUE
@@ -103,17 +135,18 @@ cdef class GTD(MB):
                     for i in range(j - 1, 0, -1):
                         beta[i] += self.getCost(signal_buffer[t + i], signal_buffer[t + j])
                         C[k] += beta[i]
-                        C_prime = C[k] / ((j - i) * (N - j))
+                        C_prime = C[k] / <double>((j - i) * (N - j))
                         if C_prime > fog:
                             fog = C_prime
                             best_i, best_j = i + t, j + t
-                printf("%i, %i, %i, %d\n", k, best_j, best_i, fog)
-                self.fogs[t].begin = best_i
-                self.fogs[t].end = best_j
-                self.fogs[t].value = fog
+                # printf("%i, %i, %i, %f\n", k, best_j, best_i, fog)
+                self.fogs[t / N].begin = best_i
+                self.fogs[t / N].end = best_j
+                self.fogs[t / N].value = fog
         
-    cpdef cnp.int_t[:] getKeypoints(self):
-        pass
+    cpdef cnp.int16_t[:] getKeypoints(self):
+        self.extractKeypoints()
+        return self.keypoints
     
     cdef inline cnp.double_t getCost(self, cnp.double_t[:] A, cnp.double_t[:] B) nogil except? -1:
         cdef cnp.double_t cost
@@ -138,16 +171,15 @@ cdef inline cnp.double_t computeTStat(cnp.double_t s_tot, cnp.double_t s_r, cnp.
     cdef cnp.double_t B = (N - i) / ((j - i) * (N - j))
     return A / libc.math.sqrt(A * B)
 
-cdef class TSTAT(MB):
+cdef class TStatDetector(MB):
     cdef Py_ssize_t window_size
     cdef unsigned int cost_func
-    cdef cnp.int16_t[:] keypoints
-    cdef fog_t* fogs
 
     def __cinit__(self, kernel = KERNEL_RADIAL, window_size = 15, n_keypoints = 50):
         self.kernel = kernel
         self.window_size = window_size
-        self.keypoints = np.empty(n_keypoints, dtype = np.int16)
+        self.n_keypoints = n_keypoints
+        self.keypoints = None
 
     cpdef detectPoints(self, signal):
         ensure_PyObject_Buffer(signal)
@@ -159,7 +191,8 @@ cdef class TSTAT(MB):
         cdef double fog, tstat
         cdef cnp.double_t[:] S_tot, S_tot_2, S_r, S_l
         cdef cnp.double_t[:, :] signal_buffer = np.asarray(signal)
-        self.fogs = <fog_t*>malloc((T - N) * sizeof(fog_t))
+        self.n_fogs = T - N
+        self.fogs = <fog_t*>malloc(self.n_fogs * sizeof(fog_t))
         """
         with nogil:
             for t in prange(0, T - N):
@@ -178,7 +211,7 @@ cdef class TSTAT(MB):
                         if tstat > fog:
                             fog = tstat
                             best_i, best_j = i + t, j + t
-                printf("%i, %i, %i, %d\n", k, best_j, best_i, fog)
+                printf("%i, %i, %i, %f\n", k, best_j, best_i, fog)
                 self.fogs[t].begin = best_i
                 self.fogs[t].end = best_j
                 self.fogs[t].value = fog

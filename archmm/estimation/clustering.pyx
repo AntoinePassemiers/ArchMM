@@ -25,12 +25,7 @@ NP_INF_VALUE = np.nan_to_num(np.inf)
 cdef size_t INITIAL_CLUSTER_SIZE = 4
 
 cdef class ClusterSet:
-    
-    cdef cnp.double_t[:, :] data
-    cdef Py_ssize_t[:, :] clusters
-    cdef size_t* cluster_sizes
-    cdef size_t n_clusters, n_points, point_dim
-    
+
     def __cinit__(self, data, n_clusters, n_points, point_dim):
         self.data = data
         self.n_clusters = n_clusters
@@ -69,12 +64,20 @@ cdef class ClusterSet:
         
     cdef size_t getNClusters(self) nogil:
         return self.n_clusters
+
+    cdef cnp.int16_t[:] getLabels(self):
+        cdef cnp.int16_t[:] labels = np.empty(self.data.shape[0], dtype = np.int16)
+        with nogil:
+            for i in range(self.n_clusters):
+                for j in range(self.cluster_sizes[i]):
+                    labels[self.clusters[i, j]] = i
+        return labels
     
     cdef unsigned int isClusterEmpty(self, Py_ssize_t cluster_id) nogil:
         return 1 if self.cluster_sizes[cluster_id] == 0 else 0
             
      
-cdef perform_step(cnp.ndarray data, cnp.ndarray centroids, size_t n_clusters):
+cdef ClusterSet perform_step(cnp.ndarray data, cnp.ndarray centroids, size_t n_clusters):
     """ Computes the euclidean distances between each point of the dataset and 
     each of the centroids, finds the closest centroid from the distances, and
     updates the centroids by averaging the new clusters
@@ -123,19 +126,19 @@ cdef cnp.ndarray randomize_centroids(cnp.double_t[:, :] data, Py_ssize_t k):
 cpdef kMeans(data, k, n_iter = 100):
     """ Implementation of the k-means algorithm """
     cdef Py_ssize_t n_dim = data.shape[1]
-    cdef Py_ssize_t i
+    cdef Py_ssize_t i, j
     cdef cnp.ndarray centroids = randomize_centroids(data, k)
     cdef cnp.ndarray old_centroids = np.empty((k, n_dim), dtype = np.double)
     cdef size_t iterations = 0
     cdef ClusterSet clusters
-    while not (iterations > n_iter or old_centroids.all() == centroids.all()):
+    while not (iterations > n_iter or (old_centroids == centroids).all()):
         iterations += 1
         clusters = perform_step(data, centroids, k)
         for i in range(clusters.getNClusters()):
             old_centroids[i] = centroids[i]
             centroids[i] = clusters.clusterMean(i)
-        del clusters
-    return centroids
+    labels = np.asarray(clusters.getLabels()) if iterations > 0 else None
+    return centroids, np.asarray(labels)
     
 
 cpdef fuzzyCMeans(data, n_clusters, n_iter = 100, fuzzy_coefficient = 2.0):

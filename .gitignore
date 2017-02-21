@@ -1,0 +1,8 @@
+*.c
+!*_.c
+*.pyc
+*.pyd
+*.arctree
+build/
+.idea/
+_site/

@@ -13,6 +13,7 @@ sub_packages = [
     "adaptation",
     "ann",
     "estimation",
+    "plot",
     "svm",
     "tests",
     "trees"
@@ -35,13 +36,16 @@ source_files = [
     (["ann/mlp.py"], "ann.mlp"),
     (["estimation/clustering.c"], "estimation.clustering"),
     (["estimation/cpd.c"], "estimation.cpd"),
+    (["plot/tools.py"], "plot.tools"),
+    (["svm/kernel.c", "svm/kernel_.c"], "svm.kernel"),
     (["svm/svm.py"], "svm.svm"),
-    (["tests/HMM_test.py"] , "tests.HMM_tests"),
-    (["tests/test_clustering.py"] , "tests.test_clustering"),
-    (["tests/test_trees.py"] , "tests.test_trees"),
-    (["tests/utils.py"] , "tests/test_utils"),
+    (["tests/HMM_test.py"], "tests.HMM_tests"),
+    (["tests/test_clustering.py"], "tests.test_clustering"),
+    (["tests/test_kernels.py"], "tests.test_kernels"),
+    (["tests/test_trees.py"], "tests.test_trees"),
     (["trees/tree.c", "trees/id3_.c", "trees/id4_.c",
-      "trees/queue_.c", "trees/utils_.c"] , "trees.tree")
+      "trees/queue_.c", "trees/utils_.c"], "trees.tree"),
+    (["tests/utils.py"], "tests.test_utils")
 ]
 
 extra_compile_args = [

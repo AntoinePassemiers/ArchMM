@@ -3,6 +3,9 @@
 import numpy as np
 from numpy.testing import *
 
+from nose import with_setup
+from nose.tools import assert_equals
+
 
 def find_nearest(arr, value, axis = 1):
 	return np.linalg.norm(np.abs(arr - value), axis = axis).argmin()

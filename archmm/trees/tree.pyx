@@ -32,6 +32,31 @@ cdef class ClassificationTree:
         self.config.nan_value = -1
         self.config.max_height = max_height
 
+    property is_incremental:
+        def __get__(self): return self.config.is_incremental
+    property min_threshold:
+        def __get__(self): return self.config.min_threshold
+    property max_nodes:
+        def __get__(self): return self.config.max_nodes
+    property nan_value:
+        def __get__(self): return self.config.nan_value
+    property max_height:
+        def __get__(self): return self.config.max_height
+    property n_nodes:
+        def __get__(self):
+            if self.tree == NULL:
+                return 0
+            return self.tree.n_nodes
+    property partitioning:
+        def __get__(self): 
+            if self.config.partitioning == QUARTILE_PARTITIONING:
+                return "quartiles"
+            elif self.config.partitioning == DECILE_PARTITIONING:
+                return "deciles"
+            else:
+                return "percentiles"
+
+
     def applyID3(self, data, targets):
         data = format_data(data)
         ensure_array(targets, ndim = 1, msg = "Targets must be a 1d array")
@@ -41,24 +66,24 @@ cdef class ClassificationTree:
         cdef size_t n_features = data.shape[2]
         assert(n_instances == len(targets))
         cdef double[::view.strided, ::1] bdata = data.data[0, :, :]
-        cdef int[:] btargets = targets
+        cdef int[:] btargets = np.asarray(targets, dtype = np.int)
         self.tree = ID3(<data_t*>&bdata[0, 0], <target_t*>&btargets[0],
-                        n_instances, n_features, self.config) 
+                        n_instances, n_features, self.config)
+
     def update(self, data, targets):
-        # TODO
-        data = format_data(data)
+        data = format_data(data, ndim = 3)
         ensure_array(targets, ndim = 1, msg = "Targets must be a 1d array")
         assert((0 <= targets).all() and (targets < self.config.n_classes).all())
         cdef size_t n_instances = data.shape[1]
         cdef size_t n_features = data.shape[2]
         assert(n_instances == len(targets))
         cdef double[::view.strided, ::1] bdata = data.data[0, :, :]
-        cdef int[:] btargets = targets
+        cdef int[:] btargets = np.asarray(targets, dtype = np.int)
         ID4_Update(self.tree, <data_t*>&bdata[0, 0], <target_t*>&btargets[0], 
                    n_instances, n_features, self.config.n_classes, self.config.nan_value)
         
     def classify(self, data):
-        data = format_data(data)
+        data = format_data(data, ndim = 3)
         cdef size_t n_instances = data.shape[1]
         cdef size_t n_features = data.shape[2]
         cdef size_t n_classes = self.config.n_classes
@@ -71,24 +96,12 @@ cdef class ClassificationTree:
         cdef Queue* queue = newQueue()
         cdef Node* current_node = self.tree.root
         free(self.tree)
-        enqueue(queue, current_node)
-        while not isQueueEmpty(queue):
-            current_node = <Node*>dequeue(queue)
-            if current_node.left_child != NULL:
-                enqueue(queue, <void*>current_node.left_child)
-            if current_node.right_child != NULL:
-                enqueue(queue, <void*>current_node.right_child)
-            free(current_node.counters)
-            free(current_node)
-        free(queue)
+        deleteSubtree(current_node)
         self.tree = NULL
+
     def __dealloc__(self):
+        self.deleteTree()
         free(self.config)
-    property n_nodes:
-        def __get__(self):
-            if self.tree == NULL:
-                return 0
-            return self.tree.n_nodes
             
     def save(self, filepath):
         cdef size_t i

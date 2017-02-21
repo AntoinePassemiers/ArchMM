@@ -67,5 +67,6 @@ cdef extern from "id3_.h":
                     Tree* tree, TreeConfig* config)
 
 cdef extern from "id4_.h":
+    void deleteSubtree(Node* node)
     void ID4_Update(Tree* tree, data_t* data, target_t* targets, 
             size_t n_instances, size_t n_features, size_t n_classes, data_t nan_value)

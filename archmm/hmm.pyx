@@ -133,7 +133,7 @@ def stableMahalanobis(x, mu, sigma):
     q[np.isnan(q)] = NUMPY_INF_VALUE
     return q
 
-cdef cnp.ndarray GaussianLoglikelihood(cnp.ndarray obs, cnp.ndarray mu, cnp.ndarray sigma):
+cdef cnp.ndarray gaussianLoglikelihood(cnp.ndarray obs, cnp.ndarray mu, cnp.ndarray sigma):
     """ Returns a matrix representing the log-likelihood of the distribution
     
     Parameters
@@ -261,7 +261,7 @@ cdef class BaseHMM:
         self.output_subnetworks = None
         if distribution == DISTRIBUTION_GAUSSIAN:
             self.numParameters = &numParametersGaussian
-            self.loglikelihood = &GaussianLoglikelihood
+            self.loglikelihood = &gaussianLoglikelihood
         else:
             raise NotImplementedError("This distribution is not supported yet") # TODO
         
@@ -383,7 +383,7 @@ cdef class BaseHMM:
         return ln_eta, ln_gamma, lnP_f
 
     @cython.infer_types(True)
-    def BaumWelch(self, obs, mu, sigma, n_iterations = 100, 
+    def BaumWelch(self, obs, mu, sigma, n_iterations = 100,
             dynamic_features = False, delta_window = 1):
         """
         Launches the iterative Baum-Welch algorithm for parameter re-estimation.
@@ -420,7 +420,7 @@ cdef class BaseHMM:
         old_F = 1.0e20
         i = 0
         while i < n_iterations and not has_converged:
-            lnf = GaussianLoglikelihood(obs, self.mu, self.sigma)
+            lnf = gaussianLoglikelihood(obs, self.mu, self.sigma)
             ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
             F = - lnP
             dF = F - old_F
@@ -614,7 +614,7 @@ cdef class BaseHMM:
         self.setMissingValues(obs)
         n = obs.shape[0]        
         cdef size_t T = len(obs)
-        cdef data_t[:, :] lnf = GaussianLoglikelihood(obs, self.mu, self.sigma)
+        cdef data_t[:, :] lnf = gaussianLoglikelihood(obs, self.mu, self.sigma)
         cdef data_t[:, :] ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
         cdef data_t[:, :] ln_beta  = np.zeros((T, self.n_states))
         cdef data_t[:, :, :] ln_eta   = np.zeros((T - 1, self.n_states, self.n_states))    
@@ -638,7 +638,7 @@ cdef class BaseHMM:
     
     def decode(self, obs):
         """ Returns the index of the most probable states, given the observations """
-        cdef cnp.ndarray lnf = GaussianLoglikelihood(obs, self.mu, self.sigma)
+        cdef cnp.ndarray lnf = gaussianLoglikelihood(obs, self.mu, self.sigma)
         cdef size_t T = len(obs)
         cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
         cdef cnp.ndarray ln_beta = np.zeros((T, self.n_states))

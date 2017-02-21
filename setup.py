@@ -29,7 +29,8 @@ source_files = [
     "hmm.pyx",
     "estimation/clustering.pyx",
     "estimation/cpd.pyx",
-    "trees/tree.pyx"
+    "trees/tree.pyx",
+    "svm/kernel.pyx"
 ]
 
 def configuration(parent_package = str(), top_path = None):
@@ -65,9 +66,10 @@ extensions = list()
 for source_file in source_files:
     source_filepath = os.path.join(source_folder, source_file)
     sources = [source_filepath]
-    print(source_file, sources)
+    extension_name = ".".join(["archmm", source_file])
+    print(extension_name, sources)
     extensions.append(
-        Extension(".".join(["archmm", source_file]),
+        Extension(extension_name,
                   sources,
                   language = "c",
                   include_dirs = [np.get_include()]

@@ -5,6 +5,8 @@
 #include <stddef.h>
 
 
+void deleteSubtree(struct Node* node);
+
 void ID4_Update(struct Tree* tree, const data_t* data, const target_t* targets, 
                 size_t n_instances, size_t n_features, size_t n_classes, data_t nan_value);
 

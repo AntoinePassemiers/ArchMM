@@ -13,7 +13,8 @@ SEQUENCE_ELEM_T = np.double
 INT_ELEM_T = np.int
 
 class DataWrapper:
-	def __init__(self, data):
+	def __init__(self, data, ndim = 3):
+		self.ndim = ndim
 		data = np.asanyarray(data, order = 'C')
 		if data.dtype.type is np.string_:
 			raise ArrayTypeError(
@@ -36,7 +37,7 @@ class DataWrapper:
 		assert(np.may_share_memory(data, self.data))
 		self.shape = self.data.shape
 		print("Array shape : " + str(self.shape))
-		self.ndim = len(self.shape)
+		assert(self.ndim, len(self.shape)) # TODO
 		assert(self.ndim == 3)
 	def __getitem__(self, key):
 		return self.data[key]
