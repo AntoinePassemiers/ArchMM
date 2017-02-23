@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from archmm.svm.kernel import *
+from archmm.kernel.kernel import *
 from archmm.utils import *
 
 if USE_CVXPY:

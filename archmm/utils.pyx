@@ -22,6 +22,7 @@ class ArrayTypeError(Exception): pass
 class DataDimensionError(Exception): pass
 class DependencyError(Exception): pass
 class NotImplementedError(Exception): pass
+class NotImplementedAbstractMethodError(Exception): pass
 
 class NullIO(StringIO):
     """ Prevent function from printing :
@@ -83,6 +84,14 @@ except ImportError:
     PYPLOT_VERSION = Version(None)
 
 """ Decorators """
+
+def abstractmethod(func):
+    def func_wrapper(*args):
+        raise NotImplementedError(
+            "%s abstract method must be implemented" % func.__name__
+        )
+    func_wrapper.__name__ = func.__name__
+    return func_wrapper
 
 def todo(func):
     def func_wrapper(*args):

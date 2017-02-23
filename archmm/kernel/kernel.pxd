@@ -7,6 +7,3 @@ cnp.import_array()
 
 from libc.stdlib cimport *
 from libc.stdio cimport *
-
-cdef extern from "kernel_.h":
-    pass

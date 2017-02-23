@@ -21,9 +21,9 @@ from cpython cimport array
 from cpython.object cimport PyObject
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 
-from archmm.estimation.clustering cimport *
-from archmm.estimation.cpd cimport *
 from archmm.artifacts import *
+from archmm.estimation.cpd import *
+from archmm.estimation.clustering cimport *
 from archmm.iohmm cimport *
 
 ARCHITECTURE_LINEAR = 1

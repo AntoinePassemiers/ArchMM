@@ -30,7 +30,7 @@ source_files = [
     "estimation/clustering.pyx",
     "estimation/cpd.pyx",
     "trees/tree.pyx",
-    "svm/kernel.pyx"
+    "kernel/kernel.pyx"
 ]
 
 def configuration(parent_package = str(), top_path = None):

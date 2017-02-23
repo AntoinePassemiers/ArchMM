@@ -14,7 +14,7 @@ sub_packages = [
     "ann",
     "estimation",
     "plot",
-    "svm",
+    "kernel",
     "tests",
     "trees"
 ]
@@ -35,10 +35,10 @@ source_files = [
     (["ann/layers.py"], "ann.layers"),
     (["ann/mlp.py"], "ann.mlp"),
     (["estimation/clustering.c"], "estimation.clustering"),
-    (["estimation/cpd.c"], "estimation.cpd"),
+    (["estimation/cpd.c", "estimation/kernel_.c"], "estimation.cpd"),
     (["plot/tools.py"], "plot.tools"),
-    (["svm/kernel.c", "svm/kernel_.c"], "svm.kernel"),
-    (["svm/svm.py"], "svm.svm"),
+    (["kernel/kernel.c"], "kernel.kernel"),
+    (["kernel/svm.py"], "kernel.svm"),
     (["tests/HMM_test.py"], "tests.HMM_tests"),
     (["tests/test_clustering.py"], "tests.test_clustering"),
     (["tests/test_kernels.py"], "tests.test_kernels"),

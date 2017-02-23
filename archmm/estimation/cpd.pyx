@@ -73,9 +73,23 @@ cdef class MB:
     cdef size_t n_fogs
     cdef size_t n_steps
     cdef Py_ssize_t n_keypoints
+    cdef Py_ssize_t window_size
+    cdef unsigned int cost_func
 
-    def __cinit__(self):
-        pass
+    def __cinit__(self, cost_func = SUM_OF_SQUARES_COST,
+                  window_size = 15, n_keypoints = 50):
+        self.window_size = window_size
+        self.cost_func = cost_func
+        self.n_keypoints = n_keypoints
+        self.keypoints = None
+    property window_size:
+        def __get__(self): return self.window_size
+    property n_keypoints:
+        def __get__(self): return self.n_keypoints
+    property n_steps:
+        def __get__(self): return self.n_steps
+    property n_fogs:
+        def __get__(self): return self.n_fogs
     property keypoints:
         def __get__(self):
             self.extractKeypoints()
@@ -101,19 +115,77 @@ cdef class MB:
             dtype = np.int16
         )[partition]
 
-cdef class GraphTheoreticDetector(MB):
-    cdef Py_ssize_t window_size
-    cdef unsigned int cost_func
+    cdef inline cnp.double_t getDistance(self, cnp.double_t[:] A, cnp.double_t[:] B) nogil except? -1:
+        cdef cnp.double_t cost
+        if self.cost_func == MAHALANOBIS_DISTANCE_COST:
+            """
+            cost = MahalanobisCost(costs_A, self.mu, self.inv_sigma) + \
+                MahalanobisCost(costs_B, self.mu, self.inv_sigma)
+            """
+            pass # TODO
+        elif self.cost_func == SUM_OF_SQUARES_COST:
+            cost = euclidean_distance(A, B)
+        else:
+            with gil:
+                raise NotImplementedError()
+        return cost
 
-    def __cinit__(self, cost_func = SUM_OF_SQUARES_COST,
-                  window_size = 15, n_keypoints = 50):
-        self.window_size = window_size
-        self.cost_func = cost_func
-        self.n_keypoints = n_keypoints
-        self.keypoints = None
+    cpdef cnp.int16_t[:] getKeypoints(self):
+        self.extractKeypoints()
+        return self.keypoints
+
+
+cdef class CusumDetector(MB):
+
+    cdef float epsilon
+
+    def __cinit__(self, *args, **kwargs):
+        MB.__init__(self, *args, **kwargs)
+        self.epsilon = 4.0
+
+    cpdef detectPoints(self, sequence): # not working
+        cdef Py_ssize_t n_threads = multiprocessing.cpu_count()
+        cdef size_t m = sequence.shape[1]
+        cdef Py_ssize_t i, j, k, t, T = len(sequence)
+        cdef Py_ssize_t best_i, best_j
+        cdef rbf_distance_t z_norm
+        cdef double S, fog
+        cdef Py_ssize_t N = self.window_size
+        self.n_steps = (T - N) / self.window_size
+        cdef cnp.double_t[:, :] signal_buffer = np.asarray(sequence)
+        self.n_fogs = T - N
+        self.fogs = <fog_t*>malloc(self.n_steps * sizeof(fog_t))
+        cdef cnp.double_t[::1] mu = np.ascontiguousarray(np.empty(N), dtype = np.double)
+        cdef cnp.double_t[::1] v  = np.ascontiguousarray(np.empty(N), dtype = np.double)
+        with nogil:
+            for t in prange(0, self.n_steps * N, N):
+                k = threadid()
+                memset(<void*>&mu[0], 0x00, N * sizeof(cnp.double_t))
+                memset(<void*>&v[0], 0x00, N * sizeof(cnp.double_t))
+                fog = -NUMPY_INF_VALUE
+                for i in range(N - 1):
+                    z_norm = <rbf_distance_t>getDistance(sequence[i], sequence[N - 1])
+                    mu[i] = mu[i + 1] + fast_gaussianRBF(z_norm, self.epsilon)
+                mu[N - 1] = fast_gaussianRBF(0.0, self.espilon)
+                for i in range(N - 2, -1, -1):
+                    S = 0.0
+                    for j in range(N - 1, i, -1):
+                        v[i] += <rbf_distance_t>getDistance(sequence[i], sequence[j])
+                        S += log((mu[j] * (j - i)) / (v[j] * (N - j)))
+                        if S > fog:
+                            fog = S
+                            best_i, best_j = i + t, j + t
+                self.fogs[t / N].begin = best_i
+                self.fogs[t / N].end   = best_j
+                self.fogs[t / N].value = fog
+
+
+cdef class GraphTheoreticDetector(MB):
+
+    def __cinit__(self, *args, **kwargs):
+        MB.__init__(self, *args, **kwargs)
 
     cpdef detectPoints(self, sequence):
-        ensure_PyObject_Buffer(sequence)
         cdef Py_ssize_t n_threads = multiprocessing.cpu_count()
         cdef Py_ssize_t i, j, k, t, T = len(sequence)
         cdef Py_ssize_t best_i, best_j
@@ -133,36 +205,15 @@ cdef class GraphTheoreticDetector(MB):
                 for j in range(N - 2, 1, -1):
                     C[k] = 0.0
                     for i in range(j - 1, 0, -1):
-                        beta[i] += self.getCost(signal_buffer[t + i], signal_buffer[t + j])
+                        beta[i] += self.getDistance(signal_buffer[t + i], signal_buffer[t + j])
                         C[k] += beta[i]
                         C_prime = C[k] / <double>((j - i) * (N - j))
                         if C_prime > fog:
                             fog = C_prime
                             best_i, best_j = i + t, j + t
-                # printf("%i, %i, %i, %f\n", k, best_j, best_i, fog)
                 self.fogs[t / N].begin = best_i
-                self.fogs[t / N].end = best_j
+                self.fogs[t / N].end   = best_j
                 self.fogs[t / N].value = fog
-        
-    cpdef cnp.int16_t[:] getKeypoints(self):
-        self.extractKeypoints()
-        return self.keypoints
-    
-    cdef inline cnp.double_t getCost(self, cnp.double_t[:] A, cnp.double_t[:] B) nogil except? -1:
-        cdef cnp.double_t cost
-        if self.cost_func == MAHALANOBIS_DISTANCE_COST:
-            """
-            cost = MahalanobisCost(costs_A, self.mu, self.inv_sigma) + \
-                MahalanobisCost(costs_B, self.mu, self.inv_sigma)
-            """
-            pass # TODO
-        elif self.cost_func == SUM_OF_SQUARES_COST:
-            cost = euclidean_distance(A, B)
-        else:
-            with gil:
-                raise NotImplementedError()
-        return cost
-
 
 cdef inline cnp.double_t computeTStat(cnp.double_t s_tot, cnp.double_t s_r, cnp.double_t s_l,
                                       Py_ssize_t N, Py_ssize_t i, Py_ssize_t j) nogil:
@@ -171,9 +222,8 @@ cdef inline cnp.double_t computeTStat(cnp.double_t s_tot, cnp.double_t s_r, cnp.
     cdef cnp.double_t B = (N - i) / ((j - i) * (N - j))
     return A / libc.math.sqrt(A * B)
 
+
 cdef class TStatDetector(MB):
-    cdef Py_ssize_t window_size
-    cdef unsigned int cost_func
 
     def __cinit__(self, kernel = KERNEL_RADIAL, window_size = 15, n_keypoints = 50):
         self.kernel = kernel
@@ -322,7 +372,7 @@ cdef class BatchCPD:
     cpdef cnp.int_t[:] getKeypoints(self):
         return self.keypoints
     
-    cdef double getCost(self, cnp.ndarray costs_A, cnp.ndarray costs_B) except? -1:
+    cdef double getDistance(self, cnp.ndarray costs_A, cnp.ndarray costs_B) except? -1:
         cdef double cost
         if self.cost_func == MAHALANOBIS_DISTANCE_COST:
             # TODO : remplacer aprx_A[1] par aprx_B[1] par les approximations de la régression
@@ -377,7 +427,7 @@ cdef class BatchCPD:
                 if self.aprx_func == POLYNOMIAL_APRX:
                     aprx_A = epolyfit(self.signal[begin:mid], self.aprx_degree, full = True)
                     aprx_B = epolyfit(self.signal[mid:end], self.aprx_degree, full = True)
-                    cost = self.getCost(aprx_A[1], aprx_B[1])
+                    cost = self.getDistance(aprx_A[1], aprx_B[1])
                 if cost < lowest_cost:
                     lowest_cost = cost
                     best_mid = mid
@@ -406,6 +456,3 @@ cdef class BatchCPD:
                 # self.evaluateSegment(begin + 1, best_mid, cost)
                 # self.evaluateSegment(best_mid, end - 1, cost)
         free(queue)
-
-
-        
