@@ -75,6 +75,7 @@ cdef class MB:
     cdef Py_ssize_t n_keypoints
     cdef Py_ssize_t window_size
     cdef unsigned int cost_func
+    cdef cnp.ndarray sorted_costs
 
     def __cinit__(self, cost_func = SUM_OF_SQUARES_COST,
                   window_size = 15, n_keypoints = 50):
@@ -82,6 +83,7 @@ cdef class MB:
         self.cost_func = cost_func
         self.n_keypoints = n_keypoints
         self.keypoints = None
+        self.sorted_costs = None
     property window_size:
         def __get__(self): return self.window_size
     property n_keypoints:
@@ -90,6 +92,8 @@ cdef class MB:
         def __get__(self): return self.n_steps
     property n_fogs:
         def __get__(self): return self.n_fogs
+    property costs:
+        def __get__(self): return self.sorted_costs
     property keypoints:
         def __get__(self):
             self.extractKeypoints()
@@ -109,6 +113,7 @@ cdef class MB:
         partition = np.argpartition(
             costs, -self.n_keypoints
         )[<Py_ssize_t>(-self.n_keypoints):]
+        self.sorted_costs = costs[partition]
 
         self.keypoints = np.asarray(
             np.asarray(fog_ends),
@@ -146,7 +151,7 @@ cdef class CusumDetector(MB):
     cpdef detectPoints(self, sequence): # not working
         cdef Py_ssize_t n_threads = multiprocessing.cpu_count()
         cdef size_t m = sequence.shape[1]
-        cdef Py_ssize_t i, j, k, t, T = len(sequence)
+        cdef Py_ssize_t i, j, k, reduction_var_id, t, T = len(sequence)
         cdef Py_ssize_t best_i, best_j
         cdef rbf_distance_t z_norm
         cdef double S, fog
@@ -158,26 +163,30 @@ cdef class CusumDetector(MB):
         cdef cnp.double_t[::1] mu = np.ascontiguousarray(np.empty(N), dtype = np.double)
         cdef cnp.double_t[::1] v  = np.ascontiguousarray(np.empty(N), dtype = np.double)
         with nogil:
+            """
             for t in prange(0, self.n_steps * N, N):
+                reduction_var_id = t / N
                 k = threadid()
                 memset(<void*>&mu[0], 0x00, N * sizeof(cnp.double_t))
                 memset(<void*>&v[0], 0x00, N * sizeof(cnp.double_t))
                 fog = -NUMPY_INF_VALUE
                 for i in range(N - 1):
-                    z_norm = <rbf_distance_t>getDistance(sequence[i], sequence[N - 1])
+                    z_norm = <rbf_distance_t>self.getDistance(sequence[i], sequence[N - 1])
                     mu[i] = mu[i + 1] + fast_gaussianRBF(z_norm, self.epsilon)
                 mu[N - 1] = fast_gaussianRBF(0.0, self.espilon)
                 for i in range(N - 2, -1, -1):
                     S = 0.0
                     for j in range(N - 1, i, -1):
-                        v[i] += <rbf_distance_t>getDistance(sequence[i], sequence[j])
+                        v[i] += <rbf_distance_t>self.getDistance(sequence[i], sequence[j])
                         S += log((mu[j] * (j - i)) / (v[j] * (N - j)))
                         if S > fog:
                             fog = S
                             best_i, best_j = i + t, j + t
-                self.fogs[t / N].begin = best_i
-                self.fogs[t / N].end   = best_j
-                self.fogs[t / N].value = fog
+                self.fogs[reduction_var_id].begin = best_i
+                self.fogs[reduction_var_id].end   = best_j
+                self.fogs[reduction_var_id].value = fog
+            """
+            pass
 
 
 cdef class GraphTheoreticDetector(MB):
@@ -266,9 +275,6 @@ cdef class TStatDetector(MB):
                 self.fogs[t].end = best_j
                 self.fogs[t].value = fog
         """
-
-    cpdef cnp.int_t[:] getKeypoints(self):
-        pass
 
 cdef class BatchCPD:
     """Implementation of the batch Change Point Detection Algorithm.

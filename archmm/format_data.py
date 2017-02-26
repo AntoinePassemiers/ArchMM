@@ -38,7 +38,7 @@ class TimeSeries3D:
 			self.sigma = np.cov(axis = 0)
 		return self.sigma
 
-class DataWrapper(TimeSeries):
+class DataWrapper(TimeSeries3D):
 	def __init__(self, data, ndim = 3):
 		self.ndim = ndim
 		data = np.asanyarray(data, order = 'C')
