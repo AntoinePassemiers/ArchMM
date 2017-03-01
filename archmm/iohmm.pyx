@@ -27,13 +27,10 @@ ctypedef cnp.float32_t ln_prob_t
 cdef ln_prob_t LOGZERO = np.nan_to_num(-np.inf)
 
 cdef inline ln_prob_t eln(prob_t x) nogil:
-    if x == 0:
+    if x <= 0:
         return LOGZERO
-    elif x > 0:
-        return libc.math.log(x)
     else:
-        printf("Error. Input should not be negative.")
-        exit(EXIT_FAILURE)
+        return libc.math.log(x)
 
 cdef inline ln_prob_t elnproduct(ln_prob_t eln_x, ln_prob_t eln_y) nogil:
     if eln_x == LOGZERO or eln_y == LOGZERO:
@@ -215,7 +212,6 @@ def IOHMMLogFit(inputs, targets = None, n_states = 2, dynamic_features = False, 
     cdef size_t n = n_states
     cdef size_t output_dim = targets[0].shape[1] if len(targets[0].shape) == 2 else 1
     cdef size_t r = n_classes if is_classifier else output_dim
-    cdef object supervisor = Supervisor(targets, parameters.n_iterations, n_sequences, n_states)
     cdef cnp.double_t[:, :] loglikelihood = np.zeros((parameters.n_iterations, n_sequences), dtype = np.double)
     cdef cnp.double_t[:] pistate_cost  = np.zeros(parameters.n_iterations, dtype = np.double)
     cdef cnp.double_t[:, :] state_cost    = np.zeros((parameters.n_iterations, n), dtype = np.double)
@@ -256,14 +252,12 @@ def IOHMMLogFit(inputs, targets = None, n_states = 2, dynamic_features = False, 
                         A[j, k, i, :] = np.log(N[i].computeOutput(U[j][k, :])[0])
         for j in range(n_sequences):
             if not is_mv[j, 0]:
-                ln_initial_probs = np.log(piN.computeOutput(U[j][0, :]))
-                memory[j, 0, :] = ln_initial_probs
+                memory[j, 0, :] = np.log(piN.computeOutput(U[j][0, :]))
                 for l in range(n):
-                    sequence_probs[l] = elnproduct(B[j, l, 0, <Py_ssize_t>targets[j][0]], ln_initial_probs[l])
-                    ln_alpha[j, l, 0] = sequence_probs[l]
+                    ln_alpha[j, l, 0] = elnproduct(B[j, l, 0, <size_t>targets[j][0]], memory[j, 0, l])
             else:
-                memory[j, 0, :] = sequence_probs = np.ones(n, np.float32)
-                ln_alpha[j, :, 0] = np.zeros(n, dtype = np.float32)
+                memory[j, 0, :] = np.ones(n, np.float32)
+                ln_alpha[j, :, 0] = 0
             for k in range(1, T[j]):
                 for l in range(n):
                     memory[j, k, l] = new_internal_state[l]
@@ -295,7 +289,7 @@ def IOHMMLogFit(inputs, targets = None, n_states = 2, dynamic_features = False, 
                                     A[j, k + 1, i, l],
                                     elnproduct(
                                         B[j, l, k, <Py_ssize_t>targets[j][k]],
-                                        beta[j, l, k + 1]
+                                        ln_beta[j, l, k + 1]
                                     )
                                 )
                             )
@@ -326,28 +320,26 @@ def IOHMMLogFit(inputs, targets = None, n_states = 2, dynamic_features = False, 
                                 A[j, k + 1, i, l],
                                 elnproduct(
                                     ln_beta[j, i, k + 1],
-                                    B[j, l, k, <Py_ssize_t>targets[j][k]]
+                                    B[j, l, k, <Py_ssize_t>targets[j][k]] # B[j, l, k + 1, <Py_ssize_t>targets[j][k]] ?
                                 )
                             )
                         )
         print("\tEnd of expectation step")
-        print("\t\t-> Average log-likelihood : %f" % loglikelihood[iter].mean())
+        # print("\t\t-> Average log-likelihood : %f" % loglikelihood[iter].mean())
         """ M-Step """
         try:                    
-            pistate_cost[iter] = piN.train(U, gamma, e_weights, n_epochs = parameters.pi_nepochs, 
+            pistate_cost[iter] = piN.train(U, ln_gamma, e_weights, n_epochs = parameters.pi_nepochs, 
                                            learning_rate = parameters.pi_learning_rate)
             for j in range(n):
                 state_cost[iter, j]  = N[j].train(U, ln_xi, t_weights[0] * e_weights, 
                             is_mv, n_epochs = parameters.s_nepochs, learning_rate = parameters.s_learning_rate)
                 output_cost[iter, j] = O[j].train(U, targets, memory, t_weights[1] * e_weights * o_weights[j], 
                             is_mv, n_epochs = parameters.o_nepochs, learning_rate = parameters.o_learning_rate)
-            e_weights, t_weights, o_weights = supervisor.next(loglikelihood[iter], 
-                    pistate_cost[iter], state_cost[iter], output_cost[iter])
             print("\tEnd of maximization step")
             print("\t\t-> Cost of the initial state subnetwork : %f" % pistate_cost[iter])
-            print("\t\t-> Average cost of the state subnetworks : %f" % state_cost[iter].mean())
-            print("\t\t-> Average cost of the output subnetworks : %f" % output_cost[iter].mean())
+            print("\t\t-> Average cost of the state subnetworks : %f" % np.asarray(state_cost[iter]).mean())
+            print("\t\t-> Average cost of the output subnetworks : %f" % np.asarray(output_cost[iter]).mean())
         except MemoryError:
             print("\tMemory error : the maximization step had to be skipped")
             return loglikelihood[:iter], pistate_cost[:iter], state_cost[:iter], output_cost[:iter]
-    return piN, N, O, loglikelihood, pistate_cost, state_cost, output_cost, supervisor.weights
+    return piN, N, O, loglikelihood, pistate_cost, state_cost, output_cost, None

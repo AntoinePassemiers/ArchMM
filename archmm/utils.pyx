@@ -54,15 +54,14 @@ class Version:
 
 VERSION_ANY = np.inf
 
-if False: # TODO
-    try:
-        import theano
-        import theano.tensor
-        USE_THEANO = True # theano.__version__
-        THEANO_VERSION = Version(VERSION_ANY)
-    except ImportError:
-        USE_THEANO = False
-        THEANO_VERSION = Version(None)
+try:
+    import theano
+    import theano.tensor
+    USE_THEANO = True # theano.__version__
+    THEANO_VERSION = Version(VERSION_ANY)
+except ImportError:
+    USE_THEANO = False
+    THEANO_VERSION = Version(None)
 try:
     import cvxpy
     USE_CVXPY = True
@@ -113,7 +112,7 @@ def genericRequirementFunction(package_name, test_variable, test_version):
         return requiresPackage_decorator
     return requiresPackage
 
-# requiresTheano = genericRequirementFunction("Theano", USE_THEANO, THEANO_VERSION)
+requiresTheano = genericRequirementFunction("Theano", USE_THEANO, THEANO_VERSION)
 requiresCvxPy  = genericRequirementFunction("cvxpy", USE_CVXPY, CVXPY_VERSION)
 requiresPyplot = genericRequirementFunction("matplotlib", USE_PYPLOT, PYPLOT_VERSION)
 

@@ -21,15 +21,16 @@ def id_generator(dict):
 
 class IOConfig:
     def __init__(self, config_filepath = None):
-        if not config_filepath:
-            config_filepath = "default_ioconfig.json"
-        config_file = open(config_filepath, 'r')
-        data = json.load(config_file)
-        for value in id_generator(data):
-            print(value)
-        close(config_file)
-
-
+        try:
+            if not config_filepath:
+                config_filepath = "default_ioconfig.json"
+            config_file = open(config_filepath, 'r')
+            data = json.load(config_file)
+            for value in id_generator(data):
+                print(value)
+            close(config_file)
+        except:
+            print("Warning : default ioconfig file cound not be found")
 
 class HMM:
     arch_names = collections.defaultdict()

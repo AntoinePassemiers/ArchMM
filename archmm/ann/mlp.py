@@ -3,6 +3,8 @@
 from archmm.ann.layers import *
 from archmm.ann.cnn import *
 
+USE_LOG_BAUM_WELCH = True
+
 RELEASE_MODE = False
 
 SUBNETWORK_PI_STATE = 300
@@ -111,8 +113,14 @@ class PiStateSubnetwork(MLP):
         self.gamma = theano.tensor.tensor3(name = 'gamma', dtype = theano.config.floatX)
         self.learning_rate = theano.tensor.scalar("learning_rate", dtype = theano.config.floatX)
         self.s = theano.tensor.lscalar('s')
-        self.cost = - theano.tensor.dot(self.gamma[self.s, :, 0],
-            theano.tensor.log(self.processOutput(self.train_set_x[self.s, 0, :])[0]))
+
+        if USE_LOG_BAUM_WELCH:
+            self.cost = - expsum(theano.tensor.add(self.gamma[self.s, :, 0],
+                theano.tensor.log(self.processOutput(self.train_set_x[self.s, 0, :])[0])))
+        else:
+            self.cost = - theano.tensor.dot(self.gamma[self.s, :, 0],
+                theano.tensor.log(self.processOutput(self.train_set_x[self.s, 0, :])[0]))
+        
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = list()
         for param, gparam in zip(self.params, self.gparams):
@@ -125,6 +133,7 @@ class PiStateSubnetwork(MLP):
             updates = self.updates
         )
 
+    @requiresTheano(True)
     def train(self, train_set_x, gamma, weights, n_epochs = 1, learning_rate = 0.01):
         if self.architecture == ERGODIC_LAYER:
             epoch = 0
@@ -179,7 +188,12 @@ class StateSubnetwork(MLP):
         self.learning_rate = theano.tensor.fscalar("learning_rate")
         
         phi = self.processOutput(self.symbolic_x[self.s, self.t, :])[0]
-        self.cost = - (self.symbolic_xi[self.s, self.state_id, self.t, :] * theano.tensor.log(phi)).sum()
+
+        if USE_LOG_BAUM_WELCH:
+            self.cost = -expsum(self.symbolic_xi[self.s, self.state_id, self.t, :] + theano.tensor.log(phi))
+        else:
+            self.cost = - (self.symbolic_xi[self.s, self.state_id, self.t, :] * theano.tensor.log(phi)).sum()
+        
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = list()
         for param, gparam in zip(self.params, self.gparams):
@@ -205,7 +219,8 @@ class StateSubnetwork(MLP):
             outputs = self.log_cost,
             updates = self.log_updates
         )
-        
+       
+    @requiresTheano(True) 
     def train(self, train_set_x, xi, weights, is_mv, n_epochs = 1, learning_rate = 0.01):
         if not (self.architecture == LINEAR_LAYER and self.state_id == self.n_out - 1):
             N = len(train_set_x)
@@ -220,7 +235,8 @@ class StateSubnetwork(MLP):
                     for sequence_id in range(N):
                         if not is_mv[sequence_id, j]:
                             if weights[sequence_id] != 0:
-                                cost = self.train_model(train_set_x, xi, sequence_id, j, float(learning_rate * weights[sequence_id]))
+                                cost = self.train_model(train_set_x, xi, sequence_id, 
+                                    j, float(learning_rate * weights[sequence_id]))
                                 avg_cost += cost
                             M += 1
             return avg_cost / float(M)
@@ -276,8 +292,14 @@ class OutputSubnetwork(MLP):
         self.symbolic_target = theano.tensor.imatrix(name = "target")
         
         eta = self.processOutput(self.symbolic_x[self.s, self.t, :])[0]
-        self.cost = - (self.symbolic_memory[self.s, self.t, self.state_id] * \
-                       theano.tensor.log(eta[self.symbolic_target[self.s, self.t]])).sum()
+
+        if USE_LOG_BAUM_WELCH:
+            self.cost = -expsum(self.symbolic_memory[self.s, self.t, self.state_id] + \
+                           theano.tensor.log(eta[self.symbolic_target[self.s, self.t]]))
+        else:
+            self.cost = - (self.symbolic_memory[self.s, self.t, self.state_id] * \
+                           theano.tensor.log(eta[self.symbolic_target[self.s, self.t]])).sum()
+
         self.gparams = [theano.tensor.grad(self.cost, param) for param in self.params]
         self.updates = list()
         for param, gparam in zip(self.params, self.gparams):
@@ -290,7 +312,7 @@ class OutputSubnetwork(MLP):
             updates = self.updates
         )
         
-        
+    @requiresTheano(True)
     def train(self, train_set_x, target_set, memory_array, weights, is_mv, n_epochs = 1, learning_rate = 0.05):
         N = len(train_set_x)
         T = len(train_set_x[0]) # Warning : Sequence length is supposed to be constant

@@ -8,6 +8,8 @@ import theano.tensor as T
 from theano.tensor.signal import pool
 from theano.tensor.shared_randomstreams import RandomStreams
 
+from archmm.utils import requiresTheano
+
 
 theano.config.floatX = 'float32'
 theano.config.allow_gc = True
