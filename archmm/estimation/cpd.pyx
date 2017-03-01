@@ -99,7 +99,7 @@ cdef class MB:
             self.extractKeypoints()
             return np.asarray(self.keypoints)
 
-    @cython.wraparound(True) # Important
+    @cython.wraparound(True)
     cdef extractKeypoints(self):
         cdef cnp.double_t[:] fog_values = np.empty(self.n_steps, dtype = np.double)
         cdef cnp.int16_t[:] fog_ends = np.empty(self.n_steps, dtype = np.int16)

@@ -4,8 +4,14 @@
 # cython: wraparound=False
 # cython: initializedcheck=False
 # cython: nonecheck=False
-# cython: profile=True
+# cython: overflowcheck=False
+# cython: embedsignature=False
+# cython: profile=False
 # cython: cdivision=True
+# cython: cdivision_warnings=False
+# cython: always_allow_keywords=True
+# cython: linetrace=False
+# cython: infer_types=True
 
 import numpy as np
 cimport numpy as cnp
@@ -23,8 +29,10 @@ from cpython.mem cimport PyMem_Malloc, PyMem_Free
 
 from archmm.artifacts import *
 from archmm.estimation.cpd import *
+from archmm.estimation.clustering import kMeans
 from archmm.estimation.clustering cimport *
 from archmm.iohmm cimport *
+from archmm.math cimport *
 
 ARCHITECTURE_LINEAR = 1
 ARCHITECTURE_BAKIS = 2
@@ -42,6 +50,7 @@ DISTRIBUTION_GAUSSIAN = 201
 DISTRIBUTION_MULTINOMIAL = 202
 
 cdef double M_PI = np.pi
+NP_INF = np.nan_to_num(np.inf)
 
 """ Extended versions of the ln, exp, and log product functions 
 to prevent the Baum-Welch algorithm from causing overflow/underflow """
@@ -130,7 +139,7 @@ def stableMahalanobis(x, mu, sigma):
     delta = x - mu[np.newaxis]
     distance = np.sqrt(np.dot(np.dot(delta, inv_A), delta))
     """
-    q[np.isnan(q)] = NUMPY_INF_VALUE
+    q[np.isnan(q)] = NP_INF
     return q
 
 cdef cnp.ndarray gaussianLoglikelihood(cnp.ndarray obs, cnp.ndarray mu, cnp.ndarray sigma):
@@ -308,7 +317,7 @@ cdef class BaseHMM:
                 self.sigma[i] = np.cov(segment.T)
             # TODO : problem : self.mu[-1] contains outliers
         elif self.architecture == ARCHITECTURE_ERGODIC:
-            self.mu = kMeans(obs, self.n_states)
+            self.mu, _ = kMeans(obs, self.n_states)
             self.sigma = np.tile(np.identity(obs.shape[1]),(self.n_states, 1, 1))
             self.initial_probs = np.tile(1.0 / self.n_states, self.n_states)
             self.transition_probs = dirichlet([1.0] * self.n_states, self.n_states)
