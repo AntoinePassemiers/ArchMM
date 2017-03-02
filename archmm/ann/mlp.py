@@ -115,8 +115,8 @@ class PiStateSubnetwork(MLP):
         self.s = theano.tensor.lscalar('s')
 
         if USE_LOG_BAUM_WELCH:
-            self.cost = - expsum(theano.tensor.add(self.gamma[self.s, :, 0],
-                theano.tensor.log(self.processOutput(self.train_set_x[self.s, 0, :])[0])))
+            self.cost = theano.tensor.exp(-expsum(theano.tensor.add(self.gamma[self.s, :, 0],
+                theano.tensor.log(self.processOutput(self.train_set_x[self.s, 0, :])[0]))))
         else:
             self.cost = - theano.tensor.dot(self.gamma[self.s, :, 0],
                 theano.tensor.log(self.processOutput(self.train_set_x[self.s, 0, :])[0]))
@@ -190,7 +190,7 @@ class StateSubnetwork(MLP):
         phi = self.processOutput(self.symbolic_x[self.s, self.t, :])[0]
 
         if USE_LOG_BAUM_WELCH:
-            self.cost = -expsum(self.symbolic_xi[self.s, self.state_id, self.t, :] + theano.tensor.log(phi))
+            self.cost = theano.tensor.exp(-expsum(self.symbolic_xi[self.s, self.state_id, self.t, :] + theano.tensor.log(phi)))
         else:
             self.cost = - (self.symbolic_xi[self.s, self.state_id, self.t, :] * theano.tensor.log(phi)).sum()
         
@@ -205,26 +205,12 @@ class StateSubnetwork(MLP):
             outputs = self.cost,
             updates = self.updates
         )
-        
-        phi = self.processOutput(self.symbolic_x[self.s, self.t, :])[0]
-        self.log_cost = - expsum(self.symbolic_xi[self.s, self.state_id, self.t, :] + theano.tensor.log(phi))
-        self.log_gparams = [theano.tensor.grad(self.log_cost, param) for param in self.params]
-        self.log_updates = list()
-        for param, gparam in zip(self.params, self.log_gparams):
-            weight_update = param - self.learning_rate * gparam
-            self.log_updates.append((param, theano.tensor.switch(theano.tensor.isnan(weight_update), 
-                                self.dropout_or_nan_to_num, weight_update)))
-        self.train_log_model = theano.function(
-            inputs = [self.symbolic_x, self.symbolic_xi, self.s, self.t, self.learning_rate],
-            outputs = self.log_cost,
-            updates = self.log_updates
-        )
        
     @requiresTheano(True) 
     def train(self, train_set_x, xi, weights, is_mv, n_epochs = 1, learning_rate = 0.01):
         if not (self.architecture == LINEAR_LAYER and self.state_id == self.n_out - 1):
             N = len(train_set_x)
-            T = len(train_set_x[0]) # Warning : Sequence length is supposed to be constant
+            T = len(train_set_x[0]) # TODO : Sequence length is supposed to be constant
             epoch = 0
             avg_cost = 0
             while (epoch < n_epochs):
@@ -294,8 +280,8 @@ class OutputSubnetwork(MLP):
         eta = self.processOutput(self.symbolic_x[self.s, self.t, :])[0]
 
         if USE_LOG_BAUM_WELCH:
-            self.cost = -expsum(self.symbolic_memory[self.s, self.t, self.state_id] + \
-                           theano.tensor.log(eta[self.symbolic_target[self.s, self.t]]))
+            self.cost = theano.tensor.exp(-expsum(self.symbolic_memory[self.s, self.t, self.state_id] + \
+                           theano.tensor.log(eta[self.symbolic_target[self.s, self.t]])))
         else:
             self.cost = - (self.symbolic_memory[self.s, self.t, self.state_id] * \
                            theano.tensor.log(eta[self.symbolic_target[self.s, self.t]])).sum()
@@ -327,40 +313,11 @@ class OutputSubnetwork(MLP):
                     if not is_mv[sequence_id, j]:
                         if weights[sequence_id] != 0:
                             cost = self.train_model(train_set_x, target_set,
-                                    memory_array, sequence_id, j, float(learning_rate * weights[sequence_id]))
+                                    memory_array, sequence_id, j, 
+                                    float(learning_rate * weights[sequence_id]))
                             avg_cost += cost
                             M += 1
         return avg_cost / float(M)
-    
-class Supervisor:
-    def __init__(self, targets, n_iterations, n_examples, n_states):
-        self.n_examples = n_examples
-        self.n_states = n_states
-        self.n_iterations = n_iterations
-        self.history = np.empty((n_iterations + 1, n_examples), dtype = np.float32)
-        self.history[0, :] = - np.inf
-        self.weights = np.ones((n_iterations + 1, n_examples), dtype = np.float32)
-        self.labels = np.empty(n_examples, dtype = np.int32)
-        for i in range(n_examples):
-            self.labels[i] = targets[i, -1]
-        self.current_iter = 0
-        self.hardworker = 0
-    def next(self, loglikelihoods, pi_state_costs, state_costs, output_costs):
-        self.hardworker = output_costs.argmax()
-        self.current_iter += 1
-        self.history[self.current_iter] = loglikelihoods
-        signs = np.sign(loglikelihoods - self.history[self.current_iter - 1])
-        signs[np.isnan(signs)] = 0
-        # indexes = (signs <= 0)
-        indexes = np.less(loglikelihoods, 0)
-        decay = float(self.n_iterations - self.current_iter) / float(self.n_iterations)
-        self.weights[self.current_iter, indexes] = 3 * decay * np.sqrt(self.weights[self.current_iter - 1, indexes]) + 1
-        self.weights[self.current_iter, loglikelihoods > 0] = 0
-        print(loglikelihoods, self.weights[self.current_iter])
-        t_weights = np.ones(2, dtype = np.float32)
-        o_weights = np.ones(self.n_states, dtype = np.float32)
-        # o_weights[self.hardworker] = 1.0
-        return self.weights[self.current_iter], t_weights, o_weights
 
 def new3DVLMArray(P, T, ndim = 0, ndim_2 = 0, dtype = np.double):
     if isinstance(ndim, int):

@@ -34,6 +34,7 @@ source_files = [
     (["ann/cnn.py"], "ann.cnn"),
     (["ann/layers.py"], "ann.layers"),
     (["ann/mlp.py"], "ann.mlp"),
+    (["ann/optimizers.py"], "ann.optimizers"),
     (["estimation/clustering.c"], "estimation.clustering"),
     (["estimation/cpd.c", "estimation/kernel_.c"], "estimation.cpd"),
     (["plot/tools.py"], "plot.tools"),
