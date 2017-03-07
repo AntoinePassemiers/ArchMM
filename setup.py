@@ -18,15 +18,16 @@ except ImportError:
 
 source_folder = "archmm"
 source_files = [
-    "utils.pyx",
-    "math.pyx",
-    "structs.pyx",
+    "anomaly.pyx",
+    "dbn.pyx",
     "fuzzy.pyx",
-    "artifacts.pyx",
-    "parallel.pyx",
-    "queue.pyx",
-    "iohmm.pyx",
     "hmm.pyx",
+    "iohmm.pyx",
+    "math.pyx",
+    "parallel.pyx",
+    "structs.pyx",
+    "queue.pyx",
+    "utils.pyx",
     "estimation/clustering.pyx",
     "estimation/cpd.pyx",
     "trees/tree.pyx",

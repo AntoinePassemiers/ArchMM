@@ -19,10 +19,11 @@ sub_packages = [
     "trees"
 ]
 source_files = [
-    (["artifacts.c"], "artifacts"),
+    (["anomaly.c"], "anomaly"),
     (["core.py"], "core"),
     (["format_data.py"], "format_data"),
     (["fuzzy.c"], "fuzzy"),
+    (["dbn.c"], "dbn"),
     (["hmm.c"], "hmm"),
     (["iohmm.c"], "iohmm"),
     (["math.c"], "math"),

@@ -9,6 +9,14 @@ import numpy as np
 
 from archmm.hmm import *
 
+# TODO
+# ----
+# - Coupled HMM (CHMM) (Example : 2 chains -> one for audio and one for video)
+# - Factorial HMM (FHMM)
+# - Hierarchical HMM (HHMM) : when some states are pointing to sub-HMMs
+# - Abstract HMM (AHMM)
+# - Avoid the "explaining away" phenomenon
+
 def id_generator(dict):
     for k, v in dict.items():
         if k != "description":

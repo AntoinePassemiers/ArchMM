@@ -7,19 +7,57 @@
 import numpy as np
 cimport numpy as cnp
 from libc.stdlib cimport *
-from libc.stdio cimport * 
+from libc.stdio cimport *
 
-""" TODO
-- Detect drop-outs sequences
-https://www.quora.com/How-can-I-estimate-the-parameters-of-a-discrete-time-HMM-when-some-observations-are-missing
-- Detect outliers
-"""
+from scipy import stats
 
 
 DEFAULT_MISSING_VALUE = -87.89126015
 
 NUMPY_NAN = 0.0
 NUMPY_INF = np.nan_to_num(np.inf)
+
+
+class GrubbsTest:
+    def __init__(self, N, alpha = 0.01):
+        self.N = N
+        self.alpha = alpha
+        self.crit_value = stats.t.isf(alpha / float(2 * N), N - 2)
+    def test(self, signal, replace = True):
+        N = len(signal)
+        Y_argmin = signal.argmin()
+        Y_argmax = signal.argmax()
+        Y_argopt = Y_argmax if signal[Y_argmax] > - signal[Y_argmin] else Y_argmin
+        Y_mean = signal.mean()
+        s = signal.std()
+        if s > 0:
+            G = np.abs(signal[Y_argopt] - Y_mean) / s
+            G_crit = np.sqrt(self.crit_value ** 2 / (N - 2 + self.crit_value ** 2)) * float(N - 1) / np.sqrt(N)
+            if G > G_crit:
+                if replace:
+                    signal[Y_argopt] = np.random.normal(loc = Y_mean, scale = s)
+                return True
+            else:
+                return False
+        else:
+            return False
+
+cdef class AnomalyDetector:
+    cdef size_t window_size
+    cdef cnp.float_t alpha
+    cdef cnp.double_t crit_value
+
+    def __cinit__(self, window_size, alpha = 0.01):
+        self.window_size = window_size
+        self.alpha = alpha
+        self.crit_value = stats.t.isf(alpha / float(2 * window_size), window_size - 2)
+    property window_size:
+        def __get__(self): return self.window_size
+    property alpha:
+        def __get__(self): return self.alpha
+    property crit_value:
+        def __get__(self): return self.crit_value
+
 
 cpdef cnp.ndarray getMissingValuesIndexes(cnp.ndarray data, double missing_value):
     return np.where(data == missing_value)[0]
