@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# optimizers.py : Optimizer for stable convergence during stochastic gradient descent
+# author: Antoine Passemiers
 
 import numpy as np
 

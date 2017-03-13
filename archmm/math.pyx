@@ -61,7 +61,7 @@ cdef inline gaussianSample2d* bivariateMarsagliaPolarMethod() nogil:
 
 cdef inline cnp.double_t cMahalanobisDistance(cnp.double_t[:] X, cnp.double_t[:] mu, 
                                               cnp.double_t[:, :] inv_sigma) nogil:
-    dev_alloc_vector_t diff = <dev_alloc_data_t[:X.shape[0]]>malloc(X.shape[0] * sizeof(dev_alloc_data_t))
+    cdef dev_alloc_data_t* diff = <dev_alloc_data_t*>malloc(X.shape[0] * sizeof(dev_alloc_data_t))
     cdef size_t i, j
     for i in range(X.shape[0]):
         diff[i] = X[i] - mu[i]

@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# hmm.pyx : Generalized Hidden Markov Model
+# author: Antoine Passemiers
 # distutils: language=c
 # cython: boundscheck=False
 # cython: wraparound=False
@@ -83,14 +85,18 @@ ctypedef cnp.double_t data_t
 
 
 cdef GaussianGenerator(mu, sigma, n = 1):
-    """ Random variables from a gaussian distribution using
-    mean [[mu]] and variance-covariance matrix [[sigma]]
+    """ 
+    Random variables from a gaussian distribution using
+    the mean and the variance-covariance matrix
     
     Parameters
     ----------
-    mu : mean of the input signal
-    sigma : variance-covariance matrix of the input signal
-    n : number of samples to generate
+    mu : np.array
+        1D array representing the mean of the inputs
+    sigma : np.array
+        variance-covariance matrix of the input signal
+    n : int
+        number of samples to generate
     Returns
     -------
     Array containing the random variables
@@ -115,13 +121,19 @@ cdef unsigned int numParametersGaussian(unsigned int n):
     return <unsigned int>(0.5 * n * (n + 3.0))
 
 def stableMahalanobis(x, mu, sigma):
-    """ Stable version of the Mahalanobis distance
+    """ 
+    Stable version of the Mahalanobis distance
+    If the variance-covariance matrix is singular,
+    the trace of the matrix is increased until it is inversible.
     
     Parameters
     ----------
-    x : input vector
-    mu : mean of the input signal
-    sigma : variance-covariance matrix of the input signal
+    x : np.array
+        1D array representing the input vector
+    mu : np.array
+        1D array representing the mean of the input signal
+    sigma : np.array
+        variance-covariance matrix of the input signal
     """
     has_nans = True
     mcv = 0.00001
@@ -220,21 +232,24 @@ cdef class BaseHMM:
     
     Parameters
     ----------
-    n_states : number of hidden states of the model
-    architecture : type of architecture of the HMM
-                   [ARCHITECTURE_ERGODIC] All the nodes are connected in a reciprocal way.
-                   [ARCHITECTURE_LINEAR] Each node is connected to the next node in a one_sided way.
-                   [ARCHITECTURE_BAKIS] Each node is connected to the n next nodes in a one_sided way.
-                   [ARCHITECTURE_LEFT_TO_RIGHT] Each node is connected to all the next nodes in a 
-                                                one_sided way.
-                   [ARCHITECTURE_CYCLIC] Each node is connected to the next one in a one_sided way,
-                                         except the last node which loops back to the first one.
-    distribution : type of the input signal's distribution
-                   [DISTRIBUTION_GAUSSIAN] For variable following a normal law
-                   [DISTRIBUTION_MULTINOMIAL] For discrete variables with a finite set of values
-    missing_value : numeric value representing the missing values in the observations
-                    If no value is provided, the training and scoring algorithms will not check
-                    for the missing values before processing the data.
+    n_states : int
+        number of hidden states of the model
+    architecture : int
+        type of architecture of the HMM
+        * ARCHITECTURE_ERGODIC - All the nodes are connected in a reciprocal way.
+        * ARCHITECTURE_LINEAR - Each node is connected to the next node in a one_sided way.
+        * ARCHITECTURE_BAKIS - Each node is connected to the n next nodes in a one_sided way.
+        * ARCHITECTURE_LEFT_TO_RIGHT - Each node is connected to all the next nodes in a one_sided way.
+        * ARCHITECTURE_CYCLIC - Each node is connected to the next one in a one_sided way,
+                                except the last node which loops back to the first one.
+    distribution : int
+        type of the input sequence distribution
+        * DISTRIBUTION_GAUSSIAN - For variable following a normal law
+        * DISTRIBUTION_MULTINOMIAL - For discrete variables with a finite set of values
+    missing_value : double
+        numeric value representing the missing values in the observations
+        If no value is provided, the training and scoring algorithms will not check
+        for the missing values before processing the data.
     
     Attributes
     ----------
@@ -278,19 +293,21 @@ cdef class BaseHMM:
             raise NotImplementedError("This distribution is not supported yet") # TODO
         
     def getMu(self):
+        """ Returns the mean of the input samples """
         return self.mu
     
     def getA(self):
+        """ Returns the variance-covariance matrix of the input samples """
         return self.transition_probs
             
     cdef int initParameters(self, obs) except -1:
         """ Initialize the parameters of the model according to the output of the
         parameter estimation algorithm. The latter (a clustering or a change point 
         detection algorithm) must be executed before this method is called.
-        if architecture == ARCHITECTURE_ERGODIC : the parameter estimation algorithm
-        must be a clustering algorithm.
-        if architecture == ARCHITECTURE_LINEAR : the parameter estimation algorithm
-        must be the change point detection algorithm.
+        * ARCHITECTURE_ERGODIC - the parameter estimation algorithm
+                                 must be a clustering algorithm.
+        * ARCHITECTURE_LINEAR - the parameter estimation algorithm
+                                must be the change point detection algorithm.
         """
         cdef Py_ssize_t n = obs.shape[0]
         cdef Py_ssize_t n_dim = obs.shape[1]
@@ -466,15 +483,37 @@ cdef class BaseHMM:
         self.initial_probs = normalizeMatrix(np.abs(eigenvalues[1][:, eigenvalues[0].argmax()]))
 
     def fit(self, obs, mu, sigma, **kwargs):
+        """ 
+        Fit the Markov Model using the Baum-Welch algorithm, which consists of :
+        1) The parameters pre-estimation (with k-means, change point detection, ...)
+        2) The expectation part : computing the initial state probabilities and 
+           state transition probabilities
+        3) The maximization part : find the distribution parameters that maximizes the likelihood,
+           knowing the previously computed probabilities
+
+        Parameters
+        ----------
+        obs : np.array
+            2D array representing the input sequence
+            Shape of the sequence : (n_samples, n_features),
+            where n_samples is the length of the sequence and
+            n_features is the dimensionality of the input
+        mu : np.array
+            1D array representing the mean of the input samples
+        sigma : np.array
+            2D array representing the variance-covariance matrix
+            of the input samples
+        """
         self.BaumWelch(obs, mu, sigma, **kwargs)
         
     def fitIO(self, inputs, targets = None, mu = None, sigma = None,
               dynamic_features = False, delta_window = 1, is_classifier = True, n_classes = 2,
               parameters = None):
         """
-        Expectation step  : the likelihood of each output sequence is computing, knowing the input sequence
-        Maximization step : the gradient descent is used to adjust the model's parameters in such a way
-                            that the likelihood is maximized for each output sequence
+        Generalized Expectation-Maximization algorithm for training Input-Output Hidden Markov Models (IOHMM)
+        The expectation part is implemented the old-fashioned way, like in a regular expectation-maximization
+        algorithm. The maximization part is based on the MLP stochastic gradient descent.
+        See iohhm.pyx for details.
         """
         self.MU = mu
         self.SIGMA = sigma
@@ -494,7 +533,23 @@ cdef class BaseHMM:
         return loglikelihood, pistate_cost, state_cost, output_cost, weights
             
     def predictIO(self, input, binary_prediction = True):
-        """ Classification using multiple Viterbi decoders """
+        """
+        Classification algorithm for trained iohmm models.
+        Each distinct label is linked with a unique Viterbi decoder.
+        The predicted label will be the one linked with the decoder that maximizes
+        the log-likelihood of observing the label throughout the sequence.
+
+        Parameters
+        ----------
+        input : np.array
+            2D array representing the input sequence
+            Shape of the sequence : (n_samples, n_features),
+            where n_samples is the length of th sequence and
+            n_features is the dimensionality of the input
+        binary_prediction : bool
+            if true, a binary prediction will be returned (preferable by nature)
+            if false, a vector of probability will be returned
+        """
         assert(len(input.shape) == 2)
         cdef Py_ssize_t T = input.shape[0]
         cdef object piN = self.pi_state_subnetwork
@@ -615,13 +670,15 @@ cdef class BaseHMM:
         
         Parameters
         ----------
-        obs : input signal
-        mode : score function to use
-               [CRITERION_AIC] Akaike Information Criterion
-               [CRITERION_AICC] Akaike Information Criterion with correction 
-                                (for small-sample sized models)
-               [CRITERION_BIC] Bayesian Information Criterion
-               [CRITERION_LIKELIHOOD] Negative Likelihood
+        obs : np.array
+            2D array representing the input signal
+        mode : int
+            score function to use
+            * CRITERION_AIC - Akaike Information Criterion
+            * CRITERION_AICC - Akaike Information Criterion with correction 
+                               (for small-sample sized models)
+            * CRITERION_BIC - Bayesian Information Criterion
+            * CRITERION_LIKELIHOOD - Negative Likelihood
         """
         self.setMissingValues(obs)
         n = obs.shape[0]        
@@ -649,7 +706,14 @@ cdef class BaseHMM:
         return criterion
     
     def decode(self, obs):
-        """ Returns the index of the most probable states, given the observations """
+        """ 
+        Returns the sequence of the most probable states, given the observation sequence
+
+        Parameters
+        ----------
+        obs : np.array
+            2D array representing the input sequence
+        """
         cdef cnp.ndarray lnf = gaussianLoglikelihood(obs, self.mu, self.sigma)
         cdef size_t T = len(obs)
         cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty

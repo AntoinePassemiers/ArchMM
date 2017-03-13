@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# layers.py : Neural network layers
+# author: Antoine Passemiers
 
 import numpy as np
 import os, timeit

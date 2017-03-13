@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
+# mlp.py : Multi-Layer Perceptrons for IOHMMs
+# author: Antoine Passemiers
 
 from archmm.ann.layers import *
 from archmm.ann.cnn import *
+
 
 USE_LOG_BAUM_WELCH = True
 

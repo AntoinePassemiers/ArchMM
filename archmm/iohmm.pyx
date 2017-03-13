@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# iohmm.pyx : Input-Output Hidden Markov Model
+# author: Antoine Passemiers
 # distutils: language=c
 # cython: boundscheck=False
 # cython: wraparound=False
@@ -23,27 +25,58 @@ from archmm.anomaly cimport *
 from archmm.dbn cimport *
 from archmm.structs cimport *
 
+
 cdef ln_prob_t MINUS_INF = np.nan_to_num(-np.inf)
 
 cdef inline prob_t eexp(ln_prob_t x) nogil:
+    """ Extended exponential function designed for numerical stability purposes """
     if x == MINUS_INF:
         return 0.0
     else:
         return libc.math.exp(x)
 
 cdef inline ln_prob_t eln(prob_t x) nogil:
+    """ Extended logarithmic function designed for numerical stability purposes """
     if x <= 0:
         return MINUS_INF
     else:
         return libc.math.log(x)
 
 cdef inline ln_prob_t elnproduct(ln_prob_t eln_x, ln_prob_t eln_y) nogil:
+    """ 
+    Extended log-product designed for numerical stability purposes 
+
+    Parameters
+    ----------
+    eln_x : ln_prob_t
+        value that is equivalent to log(x)
+    eln_y : ln_prob_t
+        value that is equivalent to log(y)
+
+    Return
+    ------
+    Return value is equivalent to log(x) + log(y)
+    """
     if (eln_x == MINUS_INF) or (eln_y == MINUS_INF):
         return MINUS_INF
     else:
         return eln_x + eln_y
 
 cdef inline ln_prob_t elnsum(ln_prob_t eln_x, ln_prob_t eln_y) nogil:
+    """ 
+    Extended log-sum designed for numerical stability purposes 
+
+    Parameters
+    ----------
+    eln_x : ln_prob_t
+        value that is equivalent to log(x)
+    eln_y : ln_prob_t
+        value that is equivalent to log(y)
+
+    Return
+    ------
+    Return value is equivalent to log(x + y)
+    """
     if (eln_x == MINUS_INF) or (eln_y == MINUS_INF):
         if eln_x == MINUS_INF:
             return eln_y
@@ -53,10 +86,46 @@ cdef inline ln_prob_t elnsum(ln_prob_t eln_x, ln_prob_t eln_y) nogil:
         return libc.math.log(libc.math.exp(eln_x) + libc.math.exp(eln_y))
 
 def pyLogsum(x):
+    """ Elemwise log-sum function """
     return np.log(np.sum(np.exp(x)))
 
 def IOHMMLogFit(inputs, targets = None, n_states = 2, dynamic_features = False, delta_window = 1, 
                 is_classifier = True, n_classes = 2, parameters = None):
+    """
+    Generalized Expectation-Maximization algorithm for training Input-Output Hidden Markov Models (IOHMM)
+    The expectation part is implemented the old-fashioned way, like in a regular expectation-maximization
+    algorithm. The maximization part is based on the MLP stochastic gradient descent.
+
+    Parameters
+    ----------
+    inputs : list
+        list of input sequences, where each sequence is a 3D buffer
+        Shape of each sequence : (n_samples, n_features),
+        where n_samples is the length of the sequence
+        ans n_features is the dimensionality of the input
+        n_samples can vary from one sequence to another
+    targets : np.array
+        array of labels for classification (length = number of sequences)
+    n_states : int
+        number of hidden states
+    dynamic_features : bool
+        concatenate dynamic features to the initial inputs
+        This is commonly used in HMM speech synthesis
+        see for details :
+        https://wiki.inf.ed.ac.uk/twiki/pub/CSTR/TrajectoryModelling/HTS-Introduction.pdf
+    delta_window : int
+        window size to use when computing dynamic features
+    is_classifier : bool
+        if true, the model will be a classifier
+        if false, the model will be a regressor
+    n_classes : int
+        number of distinct labels to consider for classification tasks
+    parameters : IOConfig
+        parameters of the model
+        see Core.py for details
+
+
+    """
     cdef Py_ssize_t i, j, k, l, p, iter
     cdef size_t n_sequences = len(inputs)
     assert(n_sequences == len(targets))
