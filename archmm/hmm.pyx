@@ -149,6 +149,7 @@ def stableMahalanobis(x, mu, sigma):
                 inv_sigma = np.nan_to_num(inv_sigma)
                 inv_sigma = np.linalg.inv(inv_sigma)
             mcv *= 10 
+    print(x.shape, mu[np.newaxis].shape)
     q = (cdist(x, mu[np.newaxis],"mahalanobis", VI = inv_sigma)**2).reshape(-1) # TODO : réécrire
     """
     delta = x - mu[np.newaxis]
@@ -719,7 +720,7 @@ cdef class BaseHMM:
         cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
         cdef cnp.ndarray ln_beta = np.zeros((T, self.n_states))
         cdef cnp.ndarray ln_eta = np.zeros((T - 1, self.n_states, self.n_states))       
-        ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
+        _, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
         gamma = ieexp2d(ln_gamma)
         return gamma.argmax(1)
     

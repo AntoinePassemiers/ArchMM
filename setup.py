@@ -25,6 +25,7 @@ source_files = [
     "hmm.pyx",
     "iohmm.pyx",
     "math.pyx",
+    "mms/msd.pyx",
     "parallel.pyx",
     "structs.pyx",
     "queue.pyx",

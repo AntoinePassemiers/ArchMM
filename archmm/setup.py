@@ -13,6 +13,7 @@ sub_packages = [
     "adaptation",
     "ann",
     "estimation",
+    "mms",
     "plot",
     "kernel",
     "tests"
@@ -41,6 +42,7 @@ source_files = [
     (["plot/tools.py"], "plot.tools"),
     (["kernel/kernel.c"], "kernel.kernel"),
     (["kernel/svm.py"], "kernel.svm"),
+    (["mms/msd.c"], "msd"),
     (["tests/HMM_test.py"], "tests.HMM_tests"),
     (["tests/test_clustering.py"], "tests.test_clustering"),
     (["tests/test_kernels.py"], "tests.test_kernels"),

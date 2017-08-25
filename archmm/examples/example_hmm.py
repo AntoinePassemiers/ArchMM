@@ -14,11 +14,13 @@ if __name__ == "__main__":
 	signal[500:600] = np.random.normal(2.4, 0.2, 100)
 	signal[600:1000] = np.random.normal(0.2, 2.0, 400)
 
-	signal = np.asarray([signal, signal]).T
+	# signal = np.asarray([signal, signal]).T
 
 	hmm = HMM(4, "ergodic")
 	hmm.fit(signal)
 	d = hmm.decode(signal)
+
+	print(d)
 
 	plt.plot(signal)
 	plt.show()

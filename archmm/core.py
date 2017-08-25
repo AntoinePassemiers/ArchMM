@@ -97,15 +97,16 @@ class HMM:
     def fit(self, observations, **kwargs):
         if not self.has_io:
             self.sigma = np.cov(observations.T)
-            self.stdvs = np.sqrt(np.diag(self.sigma))
-            self.mu = np.mean(observations, axis = 0)
+            if (len(observations.shape) == 1) or (observations.shape[1] == 1):
+                self.stdvs = np.asarray([np.sqrt(self.sigma)])
+                self.mu    = np.asarray([self.mu])
+            else:
+                self.stdvs = np.sqrt(np.diag(self.sigma))
+                self.mu    = np.mean(observations, axis = 0)
             if self.standardize:
                 observations = (observations - self.mu) / self.stdvs
             if len(observations.shape) == 1:
-                obs = np.zeros((len(observations), 2), dtype = np.double)
-                obs[:, 0] = observations[:]
-                obs[:, 1] = np.random.rand(len(observations))
-                observations = obs
+                observations = observations.reshape(len(observations), 1)
             return self.hmm.fit(observations, self.mu, self.sigma, **kwargs)
         else:
 
@@ -123,6 +124,8 @@ class HMM:
             return self.hmm.fitIO(observations, mu = self.mu, sigma = self.sigma, **kwargs)
 
     def decode(self, observations):
+        if len(observations.shape) == 1:
+            observations = observations.reshape(len(observations), 1)
         return self.hmm.decode(observations)
         
     def score(self, observations, mode = "aicc"):
