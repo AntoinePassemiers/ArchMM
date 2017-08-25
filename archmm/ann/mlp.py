@@ -17,9 +17,10 @@ SUBNETWORK_OUTPUT   = 302
 ERGODIC_LAYER = 401
 LINEAR_LAYER  = 402
 
-DEBUG_MODE = theano.compile.MonitorMode(
-    post_func = theano.compile.monitormode.detect_nan).excluding('local_elemwise_fusion', 'inplace')
-    
+if USE_THEANO:
+    DEBUG_MODE = theano.compile.MonitorMode(
+        post_func = theano.compile.monitormode.detect_nan).excluding('local_elemwise_fusion', 'inplace')
+        
 def expsum(x):
     return theano.tensor.sum(theano.tensor.exp(x))
 

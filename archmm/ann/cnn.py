@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-import theano
-from theano.tensor.signal import pool
+
+try:
+    import theano
+    from theano.tensor.signal import pool
+except:
+    pass
 
 from archmm.ann.layers import *
 

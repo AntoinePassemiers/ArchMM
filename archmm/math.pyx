@@ -16,27 +16,27 @@ from archmm.utils cimport *
 
 cdef cnp.float_t c_PI = np.pi
 
-cdef inline cnp.double_t[:] inplace_add(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
+cdef cnp.double_t[:] inplace_add(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
     for i in range(A.shape[0]):
         A[i] = A[i] + B[i]
     return A
 
-cdef inline cnp.double_t euclidean_distance(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
+cdef cnp.double_t euclidean_distance(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
     cdef size_t i
     cdef cnp.double_t result = 0.0
     for i in range(A.shape[0]):
         result += (A[i] - B[i]) ** 2
     return libc.math.sqrt(result)
 
-cdef inline double dabs(double value) nogil:
+cdef double dabs(double value) nogil:
     return -value if value < 0 else value
 
-cdef inline cnp.float_t univariateBoxMullerMethod() nogil:
+cdef cnp.float_t univariateBoxMullerMethod() nogil:
     cdef cnp.float_t U = cRand()
     cdef cnp.float_t V = cRand()
     return libc.math.sqrt(-2.0 * libc.math.log(U)) * libc.math.cos(2.0 * c_PI * V)
 
-cdef inline gaussianSample2d* bivariateBoxMullerMethod() nogil:
+cdef gaussianSample2d* bivariateBoxMullerMethod() nogil:
     cdef cnp.float_t U = cRand()
     cdef cnp.float_t V = cRand()
     cdef gaussianSample2d* sample = <gaussianSample2d*>malloc(sizeof(gaussianSample2d))
@@ -44,13 +44,13 @@ cdef inline gaussianSample2d* bivariateBoxMullerMethod() nogil:
     sample.Y = libc.math.sqrt(-2.0 * libc.math.log(V)) * libc.math.cos(2.0 * c_PI * U)
     return sample
 
-cdef inline cnp.float_t univariateMarsagliaPolarMethod() nogil:
+cdef cnp.float_t univariateMarsagliaPolarMethod() nogil:
     cdef cnp.float_t U = cRand()
     cdef cnp.float_t V = cRand()
     cdef cnp.float_t S = U * U + V * V
     return U * libc.math.sqrt(-2.0 * libc.math.log(S) / S)
 
-cdef inline gaussianSample2d* bivariateMarsagliaPolarMethod() nogil:
+cdef gaussianSample2d* bivariateMarsagliaPolarMethod() nogil:
     cdef cnp.float_t U = cRand()
     cdef cnp.float_t V = cRand()
     cdef cnp.float_t S = U * U + V * V
@@ -59,7 +59,7 @@ cdef inline gaussianSample2d* bivariateMarsagliaPolarMethod() nogil:
     sample.Y = V * libc.math.sqrt(-2.0 * libc.math.log(S) / S)
     return sample
 
-cdef inline cnp.double_t cMahalanobisDistance(cnp.double_t[:] X, cnp.double_t[:] mu, 
+cdef cnp.double_t cMahalanobisDistance(cnp.double_t[:] X, cnp.double_t[:] mu, 
                                               cnp.double_t[:, :] inv_sigma) nogil:
     cdef dev_alloc_data_t* diff = <dev_alloc_data_t*>malloc(X.shape[0] * sizeof(dev_alloc_data_t))
     cdef size_t i, j

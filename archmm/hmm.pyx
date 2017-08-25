@@ -23,7 +23,7 @@ import ctypes, pickle
 from numpy.random import randn, random, dirichlet
 from scipy.spatial.distance import cdist # TO REMOVE
 
-cimport libc.math, cython
+cimport cython
 from libc.stdio cimport *
 from cpython cimport array
 from cpython.object cimport PyObject
@@ -32,9 +32,9 @@ from cpython.mem cimport PyMem_Malloc, PyMem_Free
 from archmm.anomaly import *
 from archmm.estimation.cpd import *
 from archmm.estimation.clustering import kMeans
-from archmm.iohmm import *
 
 from archmm.dbn cimport *
+from archmm.estimation.cpd cimport *
 from archmm.estimation.clustering cimport *
 from archmm.math cimport *
 
@@ -407,7 +407,7 @@ cdef class BaseHMM:
                     for k in range(ln_eta.shape[1]):
                         for l in range(ln_eta.shape[2]):
                             ln_eta[j, k, l] = ln_eta[j, k, l] - lnP_f
-        ln_eta = np.nan_to_num(ln_eta)
+        ln_eta = np.asarray(np.nan_to_num(ln_eta))
         ln_gamma = np.asarray(ln_alpha) + np.asarray(ln_beta) - lnP_f
         return ln_eta, ln_gamma, lnP_f
 

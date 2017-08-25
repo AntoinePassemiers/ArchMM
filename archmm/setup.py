@@ -20,6 +20,7 @@ sub_packages = [
 ]
 source_files = [
     (["anomaly.c"], "anomaly"),
+    (["chains.c"], "chains"),
     (["core.py"], "core"),
     (["format_data.py"], "format_data"),
     (["fuzzy.c"], "fuzzy"),
@@ -50,6 +51,7 @@ source_files = [
     (["tests/utils.py"], "tests.test_utils")
 ]
 
+"""
 extra_compile_args = [
     "-std=c99", 
     "-fno-strict-aliasing",
@@ -69,6 +71,9 @@ extra_compile_args = [
     "-Wstrict-prototypes",
     "-Wuninitialized"
 ]
+"""
+extra_compile_args = list()
+
 
 libraries = ["m"] if os.name == "posix" else list()
 include_dirs = [np.get_include()]

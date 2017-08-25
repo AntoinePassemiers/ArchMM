@@ -15,7 +15,6 @@ from libc.time cimport time
 from cpython.buffer cimport PyObject_CheckBuffer
 
 import sys
-from StringIO import StringIO
 
 
 class ArrayTypeError(Exception): pass
@@ -24,14 +23,6 @@ class DependencyError(Exception): pass
 class NotImplementedError(Exception): pass
 class NotImplementedAbstractMethodError(Exception): pass
 
-class NullIO(StringIO):
-    """ Prevent function from printing :
-    sys.stdout = NullIO()
-    bothering_function()
-    sys.stdout = sys.__stdout__
-    """
-    def write(self, txt):
-       pass
 
 class Version:
     def __init__(self, major = None, minor = None, build = None, revision = None):

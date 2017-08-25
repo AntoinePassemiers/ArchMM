@@ -20,12 +20,12 @@ ctypedef struct gaussianSample2d:
     cnp.float_t Y
 
 ctypedef cnp.double_t datasample_t
-cdef inline cnp.double_t[:] inplace_add(cnp.double_t[:] A, cnp.double_t[:] B) nogil
-cdef inline cnp.double_t euclidean_distance(cnp.double_t[:] A, cnp.double_t[:] B) nogil
-cdef inline double dabs(double value) nogil
-cdef inline cnp.float_t univariateBoxMullerMethod() nogil
-cdef inline gaussianSample2d* bivariateBoxMullerMethod() nogil
-cdef inline cnp.float_t univariateMarsagliaPolarMethod() nogil
-cdef inline gaussianSample2d* bivariateMarsagliaPolarMethod() nogil
-cdef inline cnp.double_t cMahalanobisDistance(cnp.double_t[:] X, cnp.double_t[:] mu, 
+cdef cnp.double_t[:] inplace_add(cnp.double_t[:] A, cnp.double_t[:] B) nogil
+cdef cnp.double_t euclidean_distance(cnp.double_t[:] A, cnp.double_t[:] B) nogil
+cdef double dabs(double value) nogil
+cdef cnp.float_t univariateBoxMullerMethod() nogil
+cdef gaussianSample2d* bivariateBoxMullerMethod() nogil
+cdef cnp.float_t univariateMarsagliaPolarMethod() nogil
+cdef gaussianSample2d* bivariateMarsagliaPolarMethod() nogil
+cdef cnp.double_t cMahalanobisDistance(cnp.double_t[:] X, cnp.double_t[:] mu, 
                                               cnp.double_t[:, :] inv_sigma) nogil

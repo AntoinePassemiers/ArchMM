@@ -5,23 +5,28 @@
 import numpy as np
 import os, timeit
 
-import theano
-import theano.tensor as T
-from theano.tensor.signal import pool
-from theano.tensor.shared_randomstreams import RandomStreams
+try:
+    import theano
+    import theano.tensor as T
+    from theano.tensor.signal import pool
+    from theano.tensor.shared_randomstreams import RandomStreams
+    USE_THEANO = True
+except:
+    USE_THEANO = False
 
 from archmm.utils import requiresTheano
 
 
-theano.config.floatX = 'float32'
-theano.config.allow_gc = True
-theano.config.scan.allow_gc = True
-theano.config.scan.allow_output_prealloc = False
-theano.config.exception_verbosity = 'high'
-theano.config.profile = False
-theano.config.profile_memory = False
-theano.config.NanGuardMode.nan_is_error = False
-theano.config.NanGuardMode.inf_is_error = True
+if USE_THEANO:
+    theano.config.floatX = 'float32'
+    theano.config.allow_gc = True
+    theano.config.scan.allow_gc = True
+    theano.config.scan.allow_output_prealloc = False
+    theano.config.exception_verbosity = 'high'
+    theano.config.profile = False
+    theano.config.profile_memory = False
+    theano.config.NanGuardMode.nan_is_error = False
+    theano.config.NanGuardMode.inf_is_error = True
 
 class Layer:
     @requiresTheano(True)
@@ -81,8 +86,10 @@ class LogisticRegression(Layer):
 class HiddenLayer(Layer):
     @requiresTheano(True)
     def __init__(self, input, n_in, n_out, W = None, b = None,
-                 activation = T.nnet.nnet.sigmoid,
+                 activation = None,
                  rng = np.random.RandomState(1234)):
+        if activation is None:
+            activation = T.nnet.nnet.sigmoid
         self.n_in, self.n_out = n_in, n_out
         self.is_conv = False
         self.input = input

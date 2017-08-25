@@ -121,6 +121,9 @@ class HMM:
                 for i in range(len(observations)):
                     observations[i] = (observations[i] - self.mu) / self.stdvs
             return self.hmm.fitIO(observations, mu = self.mu, sigma = self.sigma, **kwargs)
+
+    def decode(self, observations):
+        return self.hmm.decode(observations)
         
     def score(self, observations, mode = "aicc"):
         l_mode = mode.lower()
