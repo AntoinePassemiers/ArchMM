@@ -31,7 +31,6 @@ source_files = [
     "utils.pyx",
     "estimation/clustering.pyx",
     "estimation/cpd.pyx",
-    "trees/tree.pyx",
     "kernel/kernel.pyx"
 ]
 

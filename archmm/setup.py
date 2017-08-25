@@ -15,8 +15,7 @@ sub_packages = [
     "estimation",
     "plot",
     "kernel",
-    "tests",
-    "trees"
+    "tests"
 ]
 source_files = [
     (["anomaly.c"], "anomaly"),
@@ -45,9 +44,6 @@ source_files = [
     (["tests/HMM_test.py"], "tests.HMM_tests"),
     (["tests/test_clustering.py"], "tests.test_clustering"),
     (["tests/test_kernels.py"], "tests.test_kernels"),
-    (["tests/test_trees.py"], "tests.test_trees"),
-    (["trees/tree.c", "trees/id3_.c", "trees/id4_.c",
-      "trees/queue_.c", "trees/utils_.c"], "trees.tree"),
     (["tests/utils.py"], "tests.test_utils")
 ]
 
