@@ -8,7 +8,7 @@ production_url : https://antoinepassemiers.github.io/ArchMM
 BASE_PATH : https://antoinepassemiers.github.io/ArchMM
 exclude: ["README.md"]
 
-gems:
+plugins:
   - jekyll-feed
   - jekyll-seo-tag
 

@@ -19,7 +19,7 @@ from cython cimport view
 
 
 class LabelEncoder:
-    pass
+    pass # TODO
 
 cdef class MarkovChainModel:
     cdef size_t n_symbols

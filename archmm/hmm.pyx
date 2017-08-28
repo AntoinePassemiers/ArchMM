@@ -60,7 +60,7 @@ NP_INF = np.nan_to_num(np.inf)
 """ Extended versions of the ln, exp, and log product functions 
 to prevent the Baum-Welch algorithm from causing overflow/underflow """
 
-LOG_ZERO = np.nan_to_num(- np.inf)
+cdef double LOG_ZERO = np.nan_to_num(- np.inf)
 
 @np.vectorize
 def elog(x):
@@ -72,13 +72,14 @@ def eexp(x):
     """ Vectorized version of the extended exponential """
     return np.exp(x) if x != LOG_ZERO else 0
 
-cdef ieexp2d(M):
+cdef ieexp2d(double[:, :] M):
     """ Extended exponential for 2d arrays (inplace operation) """
     cdef Py_ssize_t i, j
-    for i in range(M.shape[0]):
-        for j in range(M.shape[1]):
-            M[i][j] = libc.math.exp(M[i][j]) if M[i][j] != LOG_ZERO else 0.0
-    return M
+    with nogil:
+        for i in range(M.shape[0]):
+            for j in range(M.shape[1]):
+                M[i, j] = libc.math.exp(M[i, j]) if M[i, j] != <double>LOG_ZERO else 0.0
+    return np.asarray(M)
 
 ctypedef double signal_t
 ctypedef cnp.double_t data_t
@@ -86,8 +87,8 @@ ctypedef cnp.double_t data_t
 
 cdef GaussianGenerator(mu, sigma, n = 1):
     """ 
-    Random variables from a gaussian distribution using
-    the mean and the variance-covariance matrix
+    Random samples from a gaussian distribution using
+    mean and covariance matrix
     
     Parameters
     ----------
@@ -112,6 +113,7 @@ cdef GaussianGenerator(mu, sigma, n = 1):
             cholesky_sigma = np.linalg.cholesky(sigma)
             has_non_positive_definite_minor = False
         except np.linalg.LinAlgError:
+            print("Warning : Non positive-definite matrix")
             for i in range(len(sigma)):
                 sigma[i, i] += mcv
             mcv *= 10
@@ -148,8 +150,7 @@ def stableMahalanobis(x, mu, sigma):
             except:
                 inv_sigma = np.nan_to_num(inv_sigma)
                 inv_sigma = np.linalg.inv(inv_sigma)
-            mcv *= 10 
-    print(x.shape, mu[np.newaxis].shape)
+            mcv *= 10
     q = (cdist(x, mu[np.newaxis],"mahalanobis", VI = inv_sigma)**2).reshape(-1) # TODO : réécrire
     """
     delta = x - mu[np.newaxis]
@@ -343,12 +344,10 @@ cdef class BaseHMM:
             self.initial_probs = np.tile(1.0 / self.n_states, self.n_states)
             self.transition_probs = dirichlet([1.0] * self.n_states, self.n_states)
 
-        self.mu = np.nan_to_num(self.mu)
-        self.sigma = np.nan_to_num(self.sigma)
         self.previous_mu = np.copy(self.mu)
         self.previous_sigma = np.copy(self.sigma)
-        self.ln_initial_probs = np.nan_to_num(elog(self.initial_probs))
-        self.ln_transition_probs = np.nan_to_num(elog(self.transition_probs))
+        self.ln_initial_probs = elog(self.initial_probs)
+        self.ln_transition_probs = elog(self.transition_probs)
         
     cdef forwardProcedure(self, lnf, ln_alpha):
         """ Implementation of the forward procedure 
@@ -368,7 +367,6 @@ cdef class BaseHMM:
             ln_alpha[0, :] = self.ln_initial_probs + lnf[0, :]
             for t in range(1, T):
                 ln_alpha[t, :] = elogsum(ln_alpha[t - 1, :] + self.ln_transition_probs.T, 1) + lnf[t, :]
-            ln_alpha = np.nan_to_num(ln_alpha)
         return elogsum(ln_alpha[-1, :])
 
     cdef backwardProcedure(self, lnf, ln_beta):
@@ -387,9 +385,8 @@ cdef class BaseHMM:
         cdef Py_ssize_t t, T = len(lnf)
         with np.errstate(over = 'ignore'):
             ln_beta[T - 1, :] = 0.0
-            for t in range(T - 2, -1, -1):
+            for t in range(T - 2, -1, -1): # TODO ; fast loop (with nogil)
                 ln_beta[t, :] = elogsum(self.ln_transition_probs + lnf[t + 1, :] + ln_beta[t + 1, :], 1)
-            ln_beta = np.nan_to_num(ln_beta)
         return elogsum(ln_beta[0, :] + lnf[0, :] + self.ln_initial_probs)
     
     @cython.infer_types(False)
@@ -408,7 +405,7 @@ cdef class BaseHMM:
                     for k in range(ln_eta.shape[1]):
                         for l in range(ln_eta.shape[2]):
                             ln_eta[j, k, l] = ln_eta[j, k, l] - lnP_f
-        ln_eta = np.asarray(np.nan_to_num(ln_eta))
+        ln_eta = np.asarray(ln_eta)
         ln_gamma = np.asarray(ln_alpha) + np.asarray(ln_beta) - lnP_f
         return ln_eta, ln_gamma, lnP_f
 
@@ -450,6 +447,7 @@ cdef class BaseHMM:
         old_F = 1.0e20
         i = 0
         while i < n_iterations and not has_converged:
+            print("\tIteration %i" % i)
             lnf = gaussianLoglikelihood(obs, self.mu, self.sigma)
             ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
             F = - lnP
@@ -787,8 +785,8 @@ cdef class BaseHMM:
         self.n_states = attributes["n_states"]
         self.initial_probs = attributes["initial_probs"]
         self.transition_probs = attributes["transition_probs"]
-        self.ln_initial_probs = np.nan_to_num(elog(self.initial_probs))
-        self.ln_transition_probs = np.nan_to_num(elog(self.transition_probs))
+        self.ln_initial_probs = elog(self.initial_probs)
+        self.ln_transition_probs = elog(self.transition_probs)
         self.mu = attributes["mu"]
         self.sigma = attributes["sigma"]
         self.MU = self.mu = attributes["MU"]

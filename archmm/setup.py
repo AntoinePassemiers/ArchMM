@@ -42,6 +42,7 @@ source_files = [
     (["plot/tools.py"], "plot.tools"),
     (["kernel/kernel.c"], "kernel.kernel"),
     (["kernel/svm.py"], "kernel.svm"),
+    (["mms/mrf.c"], "mrf"),
     (["mms/msd.c"], "msd"),
     (["tests/HMM_test.py"], "tests.HMM_tests"),
     (["tests/test_clustering.py"], "tests.test_clustering"),
