@@ -25,11 +25,12 @@ def softmax(vec):
     Z = np.exp(vec)
     return Z / Z.sum()
 
-def univariate_gaussian_parameters_set(n_classes):
+def gaussian_parameters_set(n_classes, n_variables):
     return {
-        "n"     : np.zeros(n_classes, dtype = np.int),
-        "mu"    : np.zeros(n_classes, dtype = np.double),
-        "sigma" : np.zeros(n_classes, dtype = np.double)
+        "n"     : np.empty(n_classes, dtype = np.int),
+        "mu"    : np.empty((n_classes, n_variables), dtype = np.double),
+        "inv_sigma" : np.empty((n_classes, n_variables, n_variables), dtype = np.double),
+        "det"   : np.empty(n_classes, dtype = np.double)
     }
 
 cdef inline size_t weighted_rng(cnp.float_t[:] weights) nogil:
@@ -102,24 +103,31 @@ cdef class MarkovRandomField:
 
         self.n_channels = 1 if len(X[0].shape) < 3 else X[0].shape[2]
 
-        parameters = univariate_gaussian_parameters_set(self.n_classes)
+        self.parameters = gaussian_parameters_set(self.n_classes, self.n_channels)
         for c in range(self.n_classes):
             pixels = [x[y == c] for x, y in zip(X, Y)]
             cluster = np.concatenate(pixels, axis = 0)
             
-            if self.n_channels == 1: # If grayscale image
-                parameters["n"][c] = len(cluster)
-                parameters["mu"][c] = np.mean(cluster)
-                parameters["sigma"][c] = np.var(cluster)
-            else:
-                parameters["n"][c] = len(cluster)
-                parameters["mu"][c] = np.mean(cluster)
-                parameters["sigma"][c] = np.cov(cluster.T)
-            assert(not np.isnan(parameters["sigma"][c]).any())
+            self.parameters["n"][c] = len(cluster)
+            self.parameters["mu"][c] = np.mean(cluster, axis = 0)
+            sigma = np.cov(cluster.T)
+            self.parameters["inv_sigma"][c] = np.linalg.inv(sigma)
+            self.parameters["det"][c] = np.linalg.det(sigma)
+            assert(not np.isnan(self.parameters["inv_sigma"][c]).any())
 
-        self.parameters = parameters
-        self.label_weights = np.asarray(parameters["n"] / float(parameters["n"].sum()), dtype = np.float)
+        self.label_weights = np.asarray(self.parameters["n"] / float(self.parameters["n"].sum()), dtype = np.float)
         self.is_warm = True
+
+    cdef inline double singleton_potential(self, cnp.uint8_t[:] pixel, cnp.double_t[:] mu, cnp.double_t[:] d, 
+                                           cnp.double_t[:, :] inv_sigma, double det) nogil:
+        cdef double mahalanobis = 0.0
+        cdef Py_ssize_t i, j
+        for i in range(pixel.shape[0]):
+            d[i] = pixel[i] - mu[i]
+        for i in range(pixel.shape[0]):
+            for j in range(pixel.shape[0]):
+                mahalanobis += d[i] * inv_sigma[i, j] * d[j]
+        return 0.5 * mahalanobis + libc.math.log(libc.math.sqrt(det * libc.math.M_2_PI ** pixel.shape[0]))
 
     cdef inline double doubleton_potential(self, size_t pixel_label, size_t neighbor_label, double beta) nogil:
         if pixel_label == neighbor_label:
@@ -141,15 +149,20 @@ cdef class MarkovRandomField:
         max_n_iter: size_t
             Maximum number of iterations
         """
-        cdef cnp.uint8_t[:, :] X = img
+        cdef cnp.uint8_t[:, :, :] X
+        if self.n_channels == 1:
+            X = img.reshape(img.shape[0], img.shape[1], 1)
+        else:
+            X = img[:, :, :]
         cdef int[:, :] omega = np.random.randint(0, self.n_classes, size = img.shape[:2], dtype = np.int)
         cdef Py_ssize_t i, j
-        cdef cnp.double_t[:] mus = self.parameters["mu"]
-        cdef cnp.double_t[:] sigmas = self.parameters["sigma"]
+        cdef cnp.double_t[:, :] mus = self.parameters["mu"]
+        cdef cnp.double_t[:, :, :] inv_sigmas = self.parameters["inv_sigma"]
+        cdef cnp.double_t[:] dets = self.parameters["det"]
+        cdef cnp.double_t[:] buf = np.empty(mus.shape[1], dtype = np.double)
         cdef size_t c # random label
-        cdef double potential
-        cdef cnp.double_t[:, :] potentials = np.full(img.shape[:2], 9999999999.0, dtype = np.double)
-        cdef double energy
+        cdef cnp.double_t[:, :] potentials = np.full(img.shape[:2], np.finfo('d').max, dtype = np.double)
+        cdef double potential, energy
         cdef double temperature = T0
         cdef double temperature_decrease_factor = dq
         cdef double cbeta = beta
@@ -161,8 +174,7 @@ cdef class MarkovRandomField:
                 for i in range(X.shape[0]):
                     for j in range(X.shape[1]):
                         c = weighted_rng(self.label_weights)
-                        potential = (X[i, j] - mus[c]) ** 2 / (2.0 * sigmas[c])
-                        potential += libc.math.log(libc.math.sqrt(libc.math.M_2_PI * sigmas[c]))
+                        potential = self.singleton_potential(X[i, j, :], mus[c, :], buf, inv_sigmas[c, :, :], dets[c])
                         if i > 0:
                             potential += self.doubleton_potential(c, omega[i-1, j], cbeta)
                         if i < X.shape[0] - 1:

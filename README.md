@@ -1,13 +1,32 @@
 A r c h M M
 ===========
-ArchMM (Architectural Markov Models) is a Cython library for machine learning where most of the algorithms are based on the Markov assumption.
-It contains the implementation of different HMM topologies (ergodic, linear, Bakis, cyclic), and adaptations of popular machine learning
-algorithms used under the Markov hypothesis (such as the well-known Multi-Layer Perceptron, adapted to the IOHMM).
+ArchMM (Architectural Markov Models) is a Cython library for machine learning and data analysis where most of the algorithms are related to Markov models.
+Markov models are descriptive models with strong statistical background. They are very adaptive, quite fast, and rely only on the Markov assumption.
+ArchMM proposes the implementation of different HMM topologies (ergodic, linear, Bakis, cyclic), exotic Markov model variants, 
 
-The Input-Output Hidden Markov Model (IO-HMM) is a markovian model where both output values and transition probabilities are computed using 
-sub-models such as multi-layered perceptrons. The learning algorithm is based on the Generalized Expectation-Maximization procedure.
 
-ArchMM provides also clustering algorithms, change point detection algorithms, and fuzzy HMMs.
+Implementations
+---------------
+
+- Markov Chain Classifier
+- Gaussian Hidden Markov Model
+- Markov Random Field
+- Input-Output Hidden Markov Model
+
+- K-means
+- Fuzzy C-Means
+- Change Point Detection (through regression)
+
+Under development
+-----------------
+
+- Fuzzy Hidden Markov Model
+
+Design phase:
+
+- Maximum-Entropy Markov Model
+- Multi-Space Distribution Markov Model
+
 
 How to use it
 -------------

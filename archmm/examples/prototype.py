@@ -16,8 +16,7 @@ def rgb2gray(rgb):
 
 n_classes = 9
 targets = [imread("Segmentation/%i.png" % i) for i in range(n_classes)]
-X = [rgb2gray(x) for x in targets]
-# X = [x[:, :, :3] for x in X]
+X = [x[:, :, :3] for x in targets]
 Y = [np.full(x.shape[:2], i, dtype = np.int) for i, x in enumerate(X)]
 
 
@@ -25,9 +24,10 @@ mrf = MarkovRandomField(n_classes)
 mrf.fit(X, Y)
 img = imread("Segmentation/1840_paris_crop.png")
 
+print(mrf.parameters)
 
-img = np.asarray(rgb2gray(img), dtype = np.uint8)
-omega = mrf.simulated_annealing(img, max_n_iter = 100)
+# img = np.asarray(rgb2gray(img), dtype = np.uint8)
+omega = mrf.simulated_annealing(img, max_n_iter = 20)
 
 cmap = ListedColormap(["red", "white", "orange", "yellow",
     "black", "green", "blue", "cyan", "purple"], 'indexed')
