@@ -71,7 +71,8 @@ for source_file in source_files:
         )
     )
 
-GOT_BUILD_CMD = "install" in sys.argv or "build" in sys.argv
+build_cmds = {'install', 'build', 'build_ext'}
+GOT_BUILD_CMD = len(set(sys.argv) & build_cmds)  != 0
 GOT_TEST_CMD = "test" in sys.argv
 
 if USE_CYTHON and GOT_BUILD_CMD:
