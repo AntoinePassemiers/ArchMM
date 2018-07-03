@@ -19,21 +19,13 @@ except ImportError:
 source_folder = "archmm"
 source_files = [
     "anomaly.pyx",
-    "chains.pyx",
-    "dbn.pyx",
-    "fuzzy.pyx",
     "hmm.pyx",
     "iohmm.pyx",
+    "mrf.pyx",
     "math.pyx",
-    "mms/mrf.pyx",
-    "mms/msd.pyx",
-    "parallel.pyx",
-    "structs.pyx",
-    "queue.pyx",
     "utils.pyx",
     "estimation/clustering.pyx",
     "estimation/cpd.pyx",
-    "kernel/kernel.pyx"
 ]
 
 def configuration(parent_package = str(), top_path = None):

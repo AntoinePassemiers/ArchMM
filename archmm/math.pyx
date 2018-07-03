@@ -14,6 +14,12 @@ cimport libc.math
 from archmm.utils cimport *
 
 
+cdef cnp.ndarray sample_gaussian(cnp.ndarray mu, cnp.ndarray inv_sigma, int n_samples):
+    n_features = mu.shape[0]
+    r = np.random.randn(n_samples, n_features)
+    return np.dot(r, inv_sigma) + mu
+
+
 cdef cnp.float_t c_PI = np.pi
 
 cdef cnp.double_t[:] inplace_add(cnp.double_t[:] A, cnp.double_t[:] B) nogil:

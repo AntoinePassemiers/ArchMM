@@ -17,12 +17,11 @@ from libc.math cimport sqrt
 from cpython.buffer cimport PyBuffer_IsContiguous
 from cython cimport view
 
-from archmm.format_data import *
-from archmm.utils cimport *
-from archmm.fuzzy cimport *
+from archmm.math cimport sample_gaussian, euclidean_distance
 
-NP_INF_VALUE = np.nan_to_num(np.inf)
-cdef size_t INITIAL_CLUSTER_SIZE = 4
+
+cdef cnp.double_t NP_INF_VALUE = <cnp.double_t>np.inf
+
 
 cdef class ClusterSet:
 
@@ -31,13 +30,13 @@ cdef class ClusterSet:
         self.n_clusters = n_clusters
         self.n_points = n_points
         self.point_dim = point_dim
-        self.clusters = np.empty((n_clusters, n_points), dtype = int)
+        self.clusters = np.empty((n_clusters, n_points), dtype=int)
         self.cluster_sizes = <size_t*>calloc(n_clusters, sizeof(size_t))
             
     def __dealloc__(self):
         free(self.cluster_sizes)
         
-    cdef void insert(self, Py_ssize_t cluster_id, Py_ssize_t point_id) nogil:
+    cdef void insert(self, int cluster_id, int point_id) nogil:
         """ Inserts [[element]] in the cluster [[cluster_id]].
         The cluster is implemented using arrays. """
         if cluster_id < self.n_clusters:
@@ -47,140 +46,98 @@ cdef class ClusterSet:
             with gil:
                 raise MemoryError("Cluster max size exceeded")
         
-    cdef cnp.double_t[:] clusterMean(self, size_t cluster_id) nogil:
+    cdef void cluster_mean(self, cnp.double_t[:] buf, int cluster_id) nogil:
         """ Computes the mean of the cluster [[cluster_id]] by averaging the 
-        contained points """
-        cdef cnp.double_t[:] cmean
-        with gil:
-            cmean = <cnp.double_t[:self.point_dim]>calloc(self.point_dim, sizeof(cnp.double_t))
-        cdef size_t i, j
-        cdef size_t n_points = self.cluster_sizes[cluster_id]
-        for i in range(n_points):
-            for j in range(self.point_dim):
-                cmean[j] += self.data[self.clusters[cluster_id][i]][j]
+        contained points.
+        """
+        cdef int i, j, n_points = self.cluster_sizes[cluster_id]
         for j in range(self.point_dim):
-            cmean[j] /= n_points
-        return cmean
+            buf[j] = 0.0
+            for i in range(n_points):
+                buf[j] += self.data[self.clusters[cluster_id][i]][j]
+        for j in range(self.point_dim):
+            buf[j] /= n_points
         
-    cdef size_t getNClusters(self) nogil:
+    cdef size_t get_n_clusters(self) nogil:
         return self.n_clusters
 
-    cdef cnp.int16_t[:] getLabels(self):
-        cdef cnp.int16_t[:] labels = np.empty(self.data.shape[0], dtype = np.int16)
+    cdef cnp.int16_t[:] get_labels(self):
+        cdef cnp.int16_t[:] labels = np.empty(self.data.shape[0], dtype=np.int16)
         with nogil:
             for i in range(self.n_clusters):
                 for j in range(self.cluster_sizes[i]):
                     labels[self.clusters[i, j]] = i
         return labels
     
-    cdef unsigned int isClusterEmpty(self, Py_ssize_t cluster_id) nogil:
+    cdef unsigned int is_cluster_empty(self, int cluster_id) nogil:
         return 1 if self.cluster_sizes[cluster_id] == 0 else 0
             
      
-cdef ClusterSet perform_step(cnp.ndarray data, cnp.ndarray centroids, size_t n_clusters):
+cdef ClusterSet perform_step(cnp.double_t[:, :] data,
+                             cnp.double_t[:, :] centroids,
+                             int n_clusters):
     """ Computes the euclidean distances between each point of the dataset and 
     each of the centroids, finds the closest centroid from the distances, and
     updates the centroids by averaging the new clusters
     
-    Parameters
-    ----------
-    data : input dataset
-    centroids : positions of the centroids
-    clusters : objects containing all the information about each cluster
-               the points it contains, its centroid, etc.
+    Args:
+        data : input dataset
+        centroids : positions of the centroids
+        clusters : objects containing all the information about each cluster
+                   the points it contains, its centroid, etc.
     """
-    cdef Py_ssize_t n_dim = data.shape[1]
+    cdef int n_dim = data.shape[1]
     cdef ClusterSet clusters = ClusterSet(data, n_clusters, len(data), n_dim)
-    cdef Py_ssize_t mu_index, i, k = 0
-    cdef double min_distance = NP_INF_VALUE
-    cdef double current_distance
-    for k in range(len(data)):
-        for i in range(len(centroids)):
-            current_distance = np.linalg.norm(data[k] - centroids[i])
-            if current_distance < min_distance:
-                min_distance = current_distance
-                mu_index = i
-        clusters.insert(mu_index, k)
-        k += 1
-    for i in range(clusters.getNClusters()):
-        if clusters.isClusterEmpty(i):
-            clusters.insert(i, np.random.randint(0, len(data), size = 1)[0])
+    cdef int mu_index, i, k = 0
+    cdef cnp.double_t min_distance, current_distance
+    with nogil:
+        for k in range(data.shape[0]):
+            min_distance = NP_INF_VALUE
+            for i in range(centroids.shape[0]):
+                current_distance = euclidean_distance(data[k, :], centroids[i, :])
+                if current_distance < min_distance:
+                    min_distance = current_distance
+                    mu_index = i
+            clusters.insert(mu_index, k)
+    for i in range(clusters.get_n_clusters()):
+        if clusters.is_cluster_empty(i):
+            clusters.insert(i, np.random.randint(0, len(data), size=1)[0])
     return clusters
 
-cdef cnp.ndarray randomize_centroids(cnp.double_t[:, :] data, Py_ssize_t k):
+
+cdef cnp.ndarray init_centroids(cnp.ndarray data, int k, method='gaussian'):
     """ Initializes the centroids by picking random points from the dataset
     
-    Parameters
-    ----------
-    data : input dataset
-    k : number of clusters (= number of centroids)
+    Args:
+        data : input dataset
+        k : number of clusters (= number of centroids)
     """
-    cdef Py_ssize_t n_dim = data.shape[1]
-    cdef cnp.ndarray centroids = np.empty((k, n_dim), dtype = np.double)
-    cdef Py_ssize_t random_index
-    for cluster in range(0, k):
-        random_index = int(np.random.randint(0, len(data), size = 1))
-        centroids[cluster, :] = data[random_index, :]
+    method = method.strip().lower()
+    if method == 'uniform':
+        indices = np.random.randint(0, len(data), size=k)
+        centroids =  data[indices, :]
+    else:
+        mu = np.mean(data, axis=0)
+        sigma = np.cov(data.T)
+        inv_sigma = np.linalg.inv(sigma)
+        centroids = sample_gaussian(mu, inv_sigma, k)
     return centroids
 
-cpdef kMeans(data, k, n_iter = 100):
+
+cdef k_means(data, k, n_iter=10, init='gaussian'):
     """ Implementation of the k-means algorithm """
-    cdef Py_ssize_t n_dim = data.shape[1]
-    cdef Py_ssize_t i, j
-    cdef cnp.ndarray centroids = randomize_centroids(data, k)
-    cdef cnp.ndarray old_centroids = np.empty((k, n_dim), dtype = np.double)
+    cdef int n_dim = data.shape[1]
+    cdef int i, j
+    cdef cnp.ndarray centroids = init_centroids(data, k, method=init)
+    cdef cnp.ndarray old_centroids = np.zeros((k, n_dim), dtype=centroids.dtype)
     cdef size_t iterations = 0
     cdef ClusterSet clusters
     while not (iterations > n_iter or (old_centroids == centroids).all()):
         iterations += 1
-        clusters = perform_step(data, centroids, k)
-        for i in range(clusters.getNClusters()):
+        clusters = perform_step(
+            data.astype(np.double), centroids.astype(np.double), k)
+        for i in range(clusters.get_n_clusters()):
             old_centroids[i] = centroids[i]
-            centroids[i] = clusters.clusterMean(i)
-    labels = np.asarray(clusters.getLabels()) if iterations > 0 else None
+            clusters.cluster_mean(centroids[i, :], i)
+    labels = np.asarray(clusters.get_labels()) if iterations > 0 else None
     return centroids, np.asarray(labels)
-    
-
-cpdef fuzzyCMeans(data, n_clusters, n_iter = 100, fuzzy_coefficient = 2.0):
-    """ Implementation of the fuzzy C-means algorithm """
-    data = format_data(data)
-    cdef double m = fuzzy_coefficient
-    cdef size_t iterations = 0
-    cdef size_t max_iterations = n_iter
-    cdef size_t C = n_clusters
-    cdef Py_ssize_t n_dim = data.shape[2]
-    cdef size_t N = data.shape[1]
-    cdef sequence_elem_t[:, :] X = data[0, :, :]
-    cdef cnp.ndarray g = np.empty((C, n_dim), dtype = np.double)
-    cdef cnp.double_t[::view.strided, ::1] centroids = np.ascontiguousarray(g, dtype = np.double)
-    cdef dom_matrix_dec_t U = randomDOMMatrix(N, C)
-    cdef double denom, denomnum, denomdenom
-    cdef Py_ssize_t i, j, k, l
-    with nogil:
-        while iterations < max_iterations: # TODO
-            iterations += 1
-            memset(<void*>&centroids[0, 0], 0x00, n_dim * C * sizeof(cnp.double_t))
-            for j in range(C):
-                for i in range(N):
-                    for l in range(n_dim):
-                        centroids[j, l] += U[i, j] * X[i, l]
-                denom = 0.0
-                for i in range(N):
-                    denom += U[i, j]
-                for l in range(n_dim):
-                    centroids[j, l] /= denom
-            for j in range(C):
-                for i in range(N):
-                    denomnum = 0.0
-                    for l in range(n_dim):
-                        denomnum += (X[i, l] - centroids[j, l]) ** 2
-                    denomnum = sqrt(denomnum)
-                    denom = 0.0
-                    for k in range(C):
-                        denomdenom = 0.0
-                        for l in range(n_dim):
-                            denomdenom += (X[i, l] - centroids[k, l]) ** 2
-                        denomdenom = sqrt(denomdenom)
-                        denom += (denomnum / denomdenom) ** (2.0 / (m - 1.0))
-                    U[i, j] = 1.0 / denom
-    return np.asarray(centroids), np.asarray(U)

@@ -21,6 +21,7 @@ from cython cimport view
 class LabelEncoder:
     pass # TODO
 
+
 cdef class MarkovChainModel:
     cdef size_t n_symbols
     cdef size_t n_threads
@@ -44,7 +45,7 @@ cdef class MarkovChainModel:
         cdef size_t n_sequences = len(X)
         cdef Py_ssize_t i, n_transitions = 0
         with nogil:
-            for i in prange(n_sequences, num_threads = self.n_threads):
+            for i in prange(n_sequences, num_threads=self.n_threads):
                 with gil:
                     self.fit_sequence(X[i])
                     n_transitions += len(X[i]) - 1

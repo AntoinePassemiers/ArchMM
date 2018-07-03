@@ -19,7 +19,6 @@ from libc.string cimport memset
 from archmm.math import *
 from archmm.math cimport *
 from archmm.queue cimport *
-from archmm.utils cimport *
 
 
 def epolyfit(arr, degree, **kwargs):
@@ -127,55 +126,6 @@ cdef class MB:
         return self.keypoints
 
 
-cdef class CusumDetector(MB):
-
-    cdef float epsilon
-
-    def __cinit__(self, *args, **kwargs):
-        MB.__init__(self, *args, **kwargs)
-        self.epsilon = 4.0
-
-    cpdef detectPoints(self, sequence): # not working
-        cdef Py_ssize_t n_threads = multiprocessing.cpu_count()
-        cdef size_t m = sequence.shape[1]
-        cdef Py_ssize_t i, j, k, reduction_var_id, t, T = len(sequence)
-        cdef Py_ssize_t best_i, best_j
-        cdef rbf_distance_t z_norm
-        cdef double S, fog
-        cdef Py_ssize_t N = self.window_size
-        self.n_steps = (T - N) / self.window_size
-        cdef cnp.double_t[:, :] signal_buffer = np.asarray(sequence)
-        self.n_fogs = T - N
-        self.fogs = <fog_t*>malloc(self.n_steps * sizeof(fog_t))
-        cdef cnp.double_t[::1] mu = np.ascontiguousarray(np.empty(N), dtype = np.double)
-        cdef cnp.double_t[::1] v  = np.ascontiguousarray(np.empty(N), dtype = np.double)
-        with nogil:
-            """
-            for t in prange(0, self.n_steps * N, N):
-                reduction_var_id = t / N
-                k = threadid()
-                memset(<void*>&mu[0], 0x00, N * sizeof(cnp.double_t))
-                memset(<void*>&v[0], 0x00, N * sizeof(cnp.double_t))
-                fog = -NUMPY_INF_VALUE
-                for i in range(N - 1):
-                    z_norm = <rbf_distance_t>self.getDistance(sequence[i], sequence[N - 1])
-                    mu[i] = mu[i + 1] + fast_gaussianRBF(z_norm, self.epsilon)
-                mu[N - 1] = fast_gaussianRBF(0.0, self.espilon)
-                for i in range(N - 2, -1, -1):
-                    S = 0.0
-                    for j in range(N - 1, i, -1):
-                        v[i] += <rbf_distance_t>self.getDistance(sequence[i], sequence[j])
-                        S += log((mu[j] * (j - i)) / (v[j] * (N - j)))
-                        if S > fog:
-                            fog = S
-                            best_i, best_j = i + t, j + t
-                self.fogs[reduction_var_id].begin = best_i
-                self.fogs[reduction_var_id].end   = best_j
-                self.fogs[reduction_var_id].value = fog
-            """
-            pass
-
-
 cdef class GraphTheoreticDetector(MB):
 
     def __cinit__(self, *args, **kwargs):
@@ -187,8 +137,8 @@ cdef class GraphTheoreticDetector(MB):
         cdef Py_ssize_t best_i, best_j
         cdef Py_ssize_t N = self.window_size
         self.n_steps = (T - N) / self.window_size
-        cdef cnp.double_t[::1] beta = np.ascontiguousarray(np.empty(N), dtype = np.double)
-        cdef cnp.double_t[:] C = np.empty(n_threads, dtype = np.double)
+        cdef cnp.double_t[::1] beta = np.ascontiguousarray(np.empty(N), dtype=np.double)
+        cdef cnp.double_t[:] C = np.empty(n_threads, dtype=np.double)
         cdef double fog, C_prime
         cdef cnp.double_t[:, :] signal_buffer = np.asarray(sequence)
         self.n_fogs = T - N
@@ -315,9 +265,9 @@ cdef class BatchCPD:
     cdef cnp.double_t[:] mu
     cdef cnp.double_t[:, :] inv_sigma
     
-    def __cinit__(self, aprx_func = POLYNOMIAL_APRX, aprx_degree = 3, threshold = 0.01,
-                  cost_func = MAHALANOBIS_DISTANCE_COST, max_n_keypoints = 50, window_padding = 1, 
-                  n_keypoints = None):
+    def __cinit__(self, aprx_func=POLYNOMIAL_APRX, aprx_degree=3, threshold=0.01,
+                  cost_func=MAHALANOBIS_DISTANCE_COST, max_n_keypoints=50, window_padding=1,
+                  n_keypoints=None):
         if not (POLYNOMIAL_APRX <= aprx_func <= FOURIER_APRX):
             raise NotImplementedError(str(aprx_func) + " approximation function is not supported.")
         self.aprx_func = aprx_func
@@ -325,6 +275,7 @@ cdef class BatchCPD:
         self.stability_threshold = threshold
         self.cost_func = cost_func
         self.max_n_keypoints = max_n_keypoints if not n_keypoints else n_keypoints # TODO
+        print("max : ", self.max_n_keypoints)
         self.n_keypoints = 0
         self.n_potential_points = 0
         assert(window_padding > 0)
@@ -356,6 +307,7 @@ cdef class BatchCPD:
         self.evaluateSegment()
         self.keypoints[self.n_keypoints] = self.n
         self.keypoints[self.n_keypoints + 1] = 0
+        print(np.asarray(self.keypoints[:self.n_keypoints]))
         assert(len(self.keypoints) == self.n_keypoints + 2)
         self.keypoints = np.sort(self.keypoints[:self.n_keypoints + 2])
         print(list(self.keypoints))
@@ -392,11 +344,15 @@ cdef class BatchCPD:
                         ([[previous_cost]] - cost) / [[previous_cost]] is lower than
                         a given threshold.
         """
+        # Create empty queue
         cdef Queue* queue = newQueue()
+
+        # First iteration: segment = all points in the sequence
         cdef Iteration* current_iter = <Iteration*>malloc(sizeof(Iteration))
         current_iter.begin = 0
         current_iter.end = self.n
         current_iter.previous_cost = NUMPY_INF_VALUE
+
         cdef cnp.double_t[:] aprx
         cdef Py_ssize_t begin, end
         cdef double previous_cost, cost = 0
@@ -409,6 +365,7 @@ cdef class BatchCPD:
             begin = current_iter.begin
             end = current_iter.end
             previous_cost = current_iter.previous_cost
+            print(begin, end, previous_cost)
             free(current_iter)
             assert(begin < end)
             slice_size = end - begin
@@ -418,9 +375,10 @@ cdef class BatchCPD:
             for mid in range(begin + self.window_padding, end - self.window_padding):
                 cost = 0
                 if self.aprx_func == POLYNOMIAL_APRX:
-                    aprx_A = epolyfit(self.signal[begin:mid], self.aprx_degree, full = True)
-                    aprx_B = epolyfit(self.signal[mid:end], self.aprx_degree, full = True)
+                    aprx_A = epolyfit(self.signal[begin:mid], self.aprx_degree, full=True)
+                    aprx_B = epolyfit(self.signal[mid:end], self.aprx_degree, full=True)
                     cost = self.getDistance(aprx_A[1], aprx_B[1])
+                    print(cost)
                 if cost < lowest_cost:
                     lowest_cost = cost
                     best_mid = mid

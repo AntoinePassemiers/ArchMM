@@ -11,6 +11,8 @@ from libc.stdlib cimport *
 from libc.stdio cimport *
 
 
+cdef cnp.ndarray sample_gaussian(cnp.ndarray mu, cnp.ndarray inv_sigma, int n_samples)
+
 ctypedef cnp.double_t sample_vector_t
 ctypedef cnp.double_t dev_alloc_data_t
 ctypedef cnp.double_t[:] dev_alloc_vector_t

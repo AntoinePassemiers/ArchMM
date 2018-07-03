@@ -22,9 +22,10 @@ from archmm.ann.optimizers import *
 
 from archmm.anomaly import *
 from archmm.anomaly cimport *
-from archmm.dbn cimport *
-from archmm.structs cimport *
 
+
+ctypedef cnp.double_t prob_t
+ctypedef cnp.double_t ln_prob_t
 
 cdef ln_prob_t MINUS_INF = np.nan_to_num(-np.inf)
 
@@ -89,40 +90,32 @@ def pyLogsum(x):
     """ Elemwise log-sum function """
     return np.log(np.sum(np.exp(x)))
 
-def IOHMMLogFit(inputs, targets = None, n_states = 2, dynamic_features = False, delta_window = 1, 
-                is_classifier = True, n_classes = 2, parameters = None):
+def IOHMMLogFit(inputs, targets=None, n_states=2,
+                is_classifier=True, n_classes=2, parameters=None):
     """
     Generalized Expectation-Maximization algorithm for training Input-Output Hidden Markov Models (IOHMM)
     The expectation part is implemented the old-fashioned way, like in a regular expectation-maximization
     algorithm. The maximization part is based on the MLP stochastic gradient descent.
 
-    Parameters
-    ----------
-    inputs : list
-        list of input sequences, where each sequence is a 3D buffer
-        Shape of each sequence : (n_samples, n_features),
-        where n_samples is the length of the sequence
-        ans n_features is the dimensionality of the input
-        n_samples can vary from one sequence to another
-    targets : np.array
-        array of labels for classification (length = number of sequences)
-    n_states : int
-        number of hidden states
-    dynamic_features : bool
-        concatenate dynamic features to the initial inputs
-        This is commonly used in HMM speech synthesis
-        see for details :
-        https://wiki.inf.ed.ac.uk/twiki/pub/CSTR/TrajectoryModelling/HTS-Introduction.pdf
-    delta_window : int
-        window size to use when computing dynamic features
-    is_classifier : bool
-        if true, the model will be a classifier
-        if false, the model will be a regressor
-    n_classes : int
-        number of distinct labels to consider for classification tasks
-    parameters : IOConfig
-        parameters of the model
-        see Core.py for details
+    Args:
+        inputs (list):
+            list of input sequences, where each sequence is a 3D buffer
+            Shape of each sequence : (n_samples, n_features),
+            where n_samples is the length of the sequence
+            ans n_features is the dimensionality of the input
+            n_samples can vary from one sequence to another
+        targets (np.ndarray):
+            array of labels for classification (length = number of sequences)
+        n_states (int):
+            number of hidden states
+        is_classifier (bool):
+            if true, the model will be a classifier
+            if false, the model will be a regressor
+        n_classes (int):
+            number of distinct labels to consider for classification tasks
+        parameters (IOConfig):
+            parameters of the model
+            see Core.py for details
 
 
     """

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# hmm.pyx : Generalized Hidden Markov Model
+# hmm.pyx : Base class for Hidden Markov Model
 # author: Antoine Passemiers
 # distutils: language=c
 # cython: boundscheck=False
@@ -7,835 +7,629 @@
 # cython: initializedcheck=False
 # cython: nonecheck=False
 # cython: overflowcheck=False
-# cython: embedsignature=False
-# cython: profile=False
-# cython: cdivision=True
-# cython: cdivision_warnings=False
-# cython: always_allow_keywords=True
-# cython: linetrace=False
-# cython: infer_types=True
 
 import numpy as np
 cimport numpy as cnp
 cnp.import_array()
 
-import ctypes, pickle
-from numpy.random import randn, random, dirichlet
-from scipy.spatial.distance import cdist # TO REMOVE
+cimport libc.math
+from cython.parallel import parallel, prange
 
-cimport cython
-from libc.stdio cimport *
-from cpython cimport array
-from cpython.object cimport PyObject
-from cpython.mem cimport PyMem_Malloc, PyMem_Free
+from abc import abstractmethod
+import scipy.linalg
+import scipy.cluster
 
-from archmm.anomaly import *
 from archmm.estimation.cpd import *
-from archmm.estimation.clustering import kMeans
-
-from archmm.dbn cimport *
 from archmm.estimation.cpd cimport *
 from archmm.estimation.clustering cimport *
-from archmm.math cimport *
 
 
-ARCHITECTURE_LINEAR = 1
-ARCHITECTURE_BAKIS = 2
-ARCHITECTURE_LEFT_TO_RIGHT = 3
-ARCHITECTURE_ERGODIC = 4
-ARCHITECTURE_CYCLIC = 5
-
-CRITERION_AIC = 101
-CRITERION_AICC = 102
-CRITERION_BIC = 103
-CRITERION_LIKELIHOOD = 104
-CRITERION_NEG_LIKELIHOOD = 105
-
-DISTRIBUTION_GAUSSIAN = 201
-DISTRIBUTION_MULTINOMIAL = 202
-
-cdef double M_PI = np.pi
-NP_INF = np.nan_to_num(np.inf)
-
-""" Extended versions of the ln, exp, and log product functions 
-to prevent the Baum-Welch algorithm from causing overflow/underflow """
-
-cdef double LOG_ZERO = np.nan_to_num(- np.inf)
-
-@np.vectorize
-def elog(x):
-    """ Vectorized version of the extended logarithm """
-    return np.log(x) if x != 0 else LOG_ZERO
-
-@np.vectorize
-def eexp(x):
-    """ Vectorized version of the extended exponential """
-    return np.exp(x) if x != LOG_ZERO else 0
-
-cdef ieexp2d(double[:, :] M):
-    """ Extended exponential for 2d arrays (inplace operation) """
-    cdef Py_ssize_t i, j
-    with nogil:
-        for i in range(M.shape[0]):
-            for j in range(M.shape[1]):
-                M[i, j] = libc.math.exp(M[i, j]) if M[i, j] != <double>LOG_ZERO else 0.0
-    return np.asarray(M)
-
-ctypedef double signal_t
 ctypedef cnp.double_t data_t
+np_data_t = np.double
+
+cdef data_t INF = <data_t>np.inf
+cdef data_t LOG_ZERO = -INF
+cdef data_t ZERO = <data_t>0.0
 
 
-cdef GaussianGenerator(mu, sigma, n = 1):
-    """ 
-    Random samples from a gaussian distribution using
-    mean and covariance matrix
-    
-    Parameters
-    ----------
-    mu : np.array
-        1D array representing the mean of the inputs
-    sigma : np.array
-        variance-covariance matrix of the input signal
-    n : int
-        number of samples to generate
-    Returns
-    -------
-    Array containing the random variables
-    """
-    cdef bint has_non_positive_definite_minor = True
-    cdef double mcv = 0.00001 # TODO : Use standard deviations in place of a single constant
-    cdef Py_ssize_t i, ndim = len(mu)
-    r = np.random.randn(n, ndim)
-    if n == 1:
-        r.shape = (ndim,)
-    while has_non_positive_definite_minor:
-        try:
-            cholesky_sigma = np.linalg.cholesky(sigma)
-            has_non_positive_definite_minor = False
-        except np.linalg.LinAlgError:
-            print("Warning : Non positive-definite matrix")
-            for i in range(len(sigma)):
-                sigma[i, i] += mcv
-            mcv *= 10
-    return np.dot(r, cholesky_sigma.T) + mu
+cdef inline data_t _max(data_t[:] vec) nogil:
+    cdef int i
+    cdef data_t best_val = -INF
+    for i in range(vec.shape[0]):
+        if vec[i] > best_val:
+            best_val = vec[i]
+    return best_val
 
-cdef unsigned int numParametersGaussian(unsigned int n):
-    return <unsigned int>(0.5 * n * (n + 3.0))
 
-def stableMahalanobis(x, mu, sigma):
-    """ 
-    Stable version of the Mahalanobis distance
-    If the variance-covariance matrix is singular,
-    the trace of the matrix is increased until it is inversible.
-    
-    Parameters
-    ----------
-    x : np.array
-        1D array representing the input vector
-    mu : np.array
-        1D array representing the mean of the input signal
-    sigma : np.array
-        variance-covariance matrix of the input signal
-    """
-    has_nans = True
-    mcv = 0.00001
-    while has_nans:
-        try:
-            inv_sigma = np.array(np.linalg.inv(sigma), dtype = np.double)
-            has_nans = False
-        except np.linalg.LinAlgError:
-            inv_sigma = sigma + np.eye(len(sigma), dtype = np.double) * mcv # TODO - ERROR
-            try:
-                inv_sigma = np.linalg.inv(inv_sigma)
-            except:
-                inv_sigma = np.nan_to_num(inv_sigma)
-                inv_sigma = np.linalg.inv(inv_sigma)
-            mcv *= 10
-    q = (cdist(x, mu[np.newaxis],"mahalanobis", VI = inv_sigma)**2).reshape(-1) # TODO : réécrire
-    """
-    delta = x - mu[np.newaxis]
-    distance = np.sqrt(np.dot(np.dot(delta, inv_A), delta))
-    """
-    q[np.isnan(q)] = NP_INF
-    return q
+cdef inline data_t elogsum(data_t[:] vec) nogil:
+    cdef int i
+    cdef data_t s = 0.0
+    cdef data_t offset = _max(vec)
+    if libc.math.isinf(offset):
+        return -INF
+    for i in range(vec.shape[0]):
+        s += libc.math.exp(vec[i] - offset)
+    return libc.math.log(s) + offset
 
-cdef cnp.ndarray gaussianLoglikelihood(cnp.ndarray obs, cnp.ndarray mu, cnp.ndarray sigma):
-    """ Returns a matrix representing the log-likelihood of the distribution
-    
-    Parameters
-    ----------
-    obs : input signal
-    mu : mean of the input signal
-    sigma : variance-covariance matrix of the input signal
-    mv_indexes : positions of the missing values in [[obs]]
-    """
-    cdef Py_ssize_t nobs = obs.shape[0]
-    cdef Py_ssize_t ndim = obs.shape[1] 
-    cdef Py_ssize_t nmix = len(mu)
-    cdef double mcv
-    cdef Py_ssize_t k, j
-    cdef double dln2pi = ndim * libc.math.log(2.0 * M_PI)
-    cdef cnp.ndarray lnf = np.empty((nobs, nmix))
-    for k in range(nmix):
-        try:
-            det_sigma = np.linalg.det(sigma[k])
-        except ValueError:
-            sigma[k] = np.nan_to_num(sigma[k])
-            det_sigma = np.linalg.det(sigma[k])
-        lndetV = libc.math.log(det_sigma)
-        mcv = 0.00001
-        while det_sigma == 0 or np.isnan(lndetV):
-            for j in range(ndim):
-                sigma[k, j, j] += mcv
-            mcv *= 10
-            det_sigma = np.linalg.det(sigma[k])
-            lndetV = libc.math.log(det_sigma)
-        
-        q = stableMahalanobis(obs, mu[k], sigma[k])
-        # TODO : adjust lnf by taking into account self.missing_values_indexes 
-        lnf[:, k] = -0.5 * (dln2pi + lndetV + q) # TODO : check the log-likelihood constraints
-    return lnf
 
-cdef elogsum(matrix, axis = None):
-    M = matrix.max(axis)
-    if axis and matrix.ndim > 1:
-        shape = list(matrix.shape)
-        shape[axis] = 1
-        M.shape = shape
-    sum = np.log(np.sum(eexp(matrix - M), axis))
-    sum += M.reshape(sum.shape)
-    if axis:
-        sum[np.isnan(sum)] = LOG_ZERO
-    return sum
+cdef inline data_t elogadd(data_t val1, data_t val2) nogil:
+    if val1 == -INF:
+        return val2
+    elif val2 == -INF:
+        return val1
+    else:
+        return libc.math.fmax(val1, val2) + libc.math.log1p(
+            libc.math.exp(-libc.math.fabs(val1 - val2)))
 
-def normalizeMatrix(matrix):
+
+def normalize_matrix(matrix):
+    matrix = np.asarray(matrix)
     matrix += np.finfo(float).eps
-    return matrix / matrix.sum(None)
+    return matrix / matrix.sum()
 
 
-cdef class BaseHMM:
-    """ Base class for all the library's HMM classes, which provides support
-    for all the existing HMM architectures (ergodic, linear, cyclic, Bakis,...)
-    and the most used probability distributions. It has been implemented mostly
-    for machine learning purposes, this can be achieved by fitting several sets
-    of observations, evaluate how the unlabeled data matches each of the trained
-    models, and finally pick the less costly one.
-    
-    Example
-    -------
-    >>> hmm  = BaseHMM(15, distribution = DISTRIBUTION_LINEAR)
-    >>> hmm.fit(dataset1, n_iterations = 25)
-    >>> hmm2 = BaseHMM(15, distribution = DISTRIBUTION_LINEAR)
-    >>> hmm2.fit(dataset2, n_iterations = 25)
-    >>> best_fit = min(hmm.score(dataset3), hmm2.score(dataset3))
-    
-    In the example, the most probable label for the unlabeled data is the model
-    among (hmm, hmm2) which minimizes its information criterion
-    
-    Parameters
-    ----------
-    n_states : int
-        number of hidden states of the model
-    architecture : int
-        type of architecture of the HMM
-        * ARCHITECTURE_ERGODIC - All the nodes are connected in a reciprocal way.
-        * ARCHITECTURE_LINEAR - Each node is connected to the next node in a one_sided way.
-        * ARCHITECTURE_BAKIS - Each node is connected to the n next nodes in a one_sided way.
-        * ARCHITECTURE_LEFT_TO_RIGHT - Each node is connected to all the next nodes in a one_sided way.
-        * ARCHITECTURE_CYCLIC - Each node is connected to the next one in a one_sided way,
-                                except the last node which loops back to the first one.
-    distribution : int
-        type of the input sequence distribution
-        * DISTRIBUTION_GAUSSIAN - For variable following a normal law
-        * DISTRIBUTION_MULTINOMIAL - For discrete variables with a finite set of values
-    missing_value : double
-        numeric value representing the missing values in the observations
-        If no value is provided, the training and scoring algorithms will not check
-        for the missing values before processing the data.
-    
-    Attributes
-    ----------
-    initial_probs : array containing the probability, for each hidden state, to be processed at first
-    transition_probs : matrix where the element i_j represents the probability to move to the hidden
-                       state j knowing that the current state is the state i  
+cdef inline void eexp2d(data_t[:, :] dest, data_t[:, :] src) nogil:
+    cdef int i, j
+    for i in range(src.shape[0]):
+        for j in range(src.shape[1]):
+            dest[i, j] = libc.math.exp(src[i, j]) \
+                if src[i, j] != LOG_ZERO else 0.0
+
+
+cdef inline void elog1d(data_t[:] dest, data_t[:] src) nogil:
+    cdef int i
+    for i in range(src.shape[0]):
+        dest[i] = libc.math.log(src[i]) \
+            if src[i] != 0 else LOG_ZERO
+
+
+cdef inline void elog2d(data_t[:, :] dest, data_t[:, :] src) nogil:
+    cdef int i, j
+    for i in range(src.shape[0]):
+        for j in range(src.shape[1]):
+            dest[i, j] = libc.math.log(
+                src[i, j]) if src[i, j] != 0 else LOG_ZERO
+
+
+cdef class HMM:
+    """
+    References:
+        HMM by Dr Philip Jackson
+        Centre for Vision Speech & Signal Processing,
+        University of Surrey, Guildford GU2 7XH.
+        http://homepages.inf.ed.ac.uk/rbf/IAPR/researchers/D2PAGES/TUTORIALS/hmm_isspr.pdf
     """
 
-    cdef unsigned int architecture, distribution
-    cdef Py_ssize_t n_states
-    cdef cnp.ndarray initial_probs, transition_probs, previous_A
-    cdef cnp.ndarray ln_initial_probs
-    cdef data_t[:, :] ln_transition_probs
-    cdef cnp.ndarray mu
-    cdef cnp.ndarray previous_mu, sigma, previous_sigma, MU, SIGMA
-    cdef unsigned int (*numParameters)(unsigned int)
-    cdef cnp.ndarray (*loglikelihood)(cnp.ndarray, cnp.ndarray, cnp.ndarray)
-    # Arguments for handling missing values
-    cdef double missing_value
-    cdef cnp.ndarray mv_indexes
-    # Arguments for the input-output HMM topology
-    cdef object pi_state_subnetwork, state_subnetworks, output_subnetworks
-    cdef object parameters
-    cdef size_t n_classes, m, n, r
+    cdef str arch
+    cdef int n_states
+    cdef int n_features
 
-    def __cinit__(self, n_states, distribution = DISTRIBUTION_GAUSSIAN,
-                  architecture = ARCHITECTURE_LINEAR, missing_value = DEFAULT_MISSING_VALUE):
-        if not (ARCHITECTURE_LINEAR <= architecture <= ARCHITECTURE_CYCLIC): 
-            raise NotImplementedError("This architecture is not supported yet")
-        self.architecture = architecture
-        self.distribution = distribution
+    cdef cnp.int_t[:, ::1] transition_mask
+    cdef data_t[::1] initial_probs
+    cdef data_t[:, ::1] transition_probs
+    cdef data_t[::1] ln_initial_probs
+    cdef data_t[:, ::1] ln_transition_probs
+
+    def __init__(self, n_states, arch='ergodic'):
         self.n_states = n_states
-        self.missing_value = missing_value
-        self.pi_state_subnetwork = None
-        self.state_subnetworks = None
-        self.output_subnetworks = None
-        if distribution == DISTRIBUTION_GAUSSIAN:
-            self.numParameters = &numParametersGaussian
-            self.loglikelihood = &gaussianLoglikelihood
-        else:
-            raise NotImplementedError("This distribution is not supported yet") # TODO
-        
-    def getMu(self):
-        """ Returns the mean of the input samples """
-        return self.mu
+        self.n_features = -1
+
+        self.ln_initial_probs = np.empty(
+            self.n_states, dtype=np_data_t)
+        self.ln_transition_probs = np.empty(
+            (self.n_states, self.n_states), dtype=np_data_t)
+        self.initial_probs = np.copy(self.ln_initial_probs)
+        self.transition_probs = np.copy(self.ln_transition_probs)
+
+        self.arch = arch.lower().strip()
+        self.init_topology()
     
-    def getA(self):
-        """ Returns the variance-covariance matrix of the input samples """
-        return self.transition_probs
-            
-    cdef int initParameters(self, obs) except -1:
-        """ Initialize the parameters of the model according to the output of the
-        parameter estimation algorithm. The latter (a clustering or a change point 
-        detection algorithm) must be executed before this method is called.
-        * ARCHITECTURE_ERGODIC - the parameter estimation algorithm
-                                 must be a clustering algorithm.
-        * ARCHITECTURE_LINEAR - the parameter estimation algorithm
-                                must be the change point detection algorithm.
-        """
-        cdef Py_ssize_t n = obs.shape[0]
-        cdef Py_ssize_t n_dim = obs.shape[1]
-        cdef size_t i
-        self.setMissingValues(obs)
+    def get_num_params_per_state(self):
+        pass # TODO: ABSTRACT METHOD
         
-        if self.architecture == ARCHITECTURE_LINEAR:
-            cpd = BatchCPD(n_keypoints = self.n_states, window_padding = 1,
-                           cost_func = SUM_OF_SQUARES_COST, aprx_degree = 2)
-            cpd.detectPoints(obs, self.MU, self.SIGMA)
-            printf("\tParameter estimation finished\n")
-            keypoint_indexes = cpd.getKeypoints()
-            # self.n_states = len(keypoint_indexes)
-            self.transition_probs = np.zeros((self.n_states, self.n_states), dtype = np.float)
-            self.transition_probs[-1, -1] = 1.0
-            for i in range(self.n_states - 1):
-                a_ij = <float>1.0 / <float>(keypoint_indexes[i + 1] - keypoint_indexes[i])
-                self.transition_probs[i, i + 1] = a_ij
-                self.transition_probs[i, i] = 1.0 - a_ij
-            self.initial_probs = np.zeros(self.n_states, dtype = np.float)
-            self.initial_probs[0] = 1.0
-            self.mu = np.empty((self.n_states, n_dim), dtype = np.double)
-            self.sigma = np.empty((self.n_states, n_dim, n_dim), dtype = np.double)
+    def estimate_params(self, X):
+        pass # TODO: ABSTRACT METHOD
+    
+    def emission_log_proba(self, X):
+        pass # TODO: ABSTRACT METHOD
+    
+    def update_emission_params(self, X, gamma):
+        pass # TODO: ABSTRACT METHOD
+    
+    cdef data_t[::1] sample_one_from_state(self, int state_id) nogil:
+        pass # TODO: ABSTRACT METHOD
+    
+    def init_topology(self):
+        self.transition_mask = np.zeros(
+            (self.n_states, self.n_states), dtype=np.int)
+
+    cdef data_t forward(self,
+                        data_t[:, ::1] lnf,
+                        data_t[:, ::1] ln_alpha,
+                        data_t[::1] tmp) nogil:
+        cdef int i, j, t
+        cdef int n_samples = lnf.shape[0]
+        for i in range(self.n_states):
+            ln_alpha[0, i] = self.ln_initial_probs[i] + lnf[0, i]
+        for t in range(1, n_samples):
+            for j in range(self.n_states):
+                for i in range(self.n_states):
+                    tmp[i] = ln_alpha[t-1, i] + self.ln_transition_probs[i, j]
+                ln_alpha[t, j] = elogsum(tmp) + lnf[t, j]
+        return elogsum(ln_alpha[n_samples-1, :])
+
+    cdef data_t backward(self,
+                         data_t[:, ::1] lnf,
+                         data_t[:, ::1] ln_beta,
+                         data_t[::1] tmp):
+        cdef Py_ssize_t i, j, t
+        cdef int n_samples = lnf.shape[0]
+        with nogil:
             for i in range(self.n_states):
-                segment = obs[keypoint_indexes[i]:keypoint_indexes[i + 1], :]
-                self.mu[i] = segment.mean(axis = 0)
-                self.sigma[i] = np.cov(segment.T)
-            # TODO : problem : self.mu[-1] contains outliers
-        elif self.architecture == ARCHITECTURE_ERGODIC:
-            self.mu, _ = kMeans(obs, self.n_states)
-            self.sigma = np.tile(np.identity(obs.shape[1]),(self.n_states, 1, 1))
-            self.initial_probs = np.tile(1.0 / self.n_states, self.n_states)
-            self.transition_probs = dirichlet([1.0] * self.n_states, self.n_states)
+                ln_beta[n_samples-1, i] = 0.0
+            for t in range(n_samples-2, -1, -1):
+                for i in range(self.n_states):
+                    for j in range(self.n_states):
+                        tmp[j] = self.ln_transition_probs[i, j] + ln_beta[t+1, j] + lnf[t+1, j]
+                    ln_beta[t, i] = elogsum(tmp)
+        return elogsum(np.asarray(ln_beta[0, :]) + np.asarray(lnf[0, :]) + np.asarray(self.ln_initial_probs))
 
-        self.previous_mu = np.copy(self.mu)
-        self.previous_sigma = np.copy(self.sigma)
-        self.ln_initial_probs = elog(self.initial_probs)
-        self.ln_transition_probs = elog(self.transition_probs)
-        
-    cdef forwardProcedure(self, lnf, ln_alpha):
-        """ Implementation of the forward procedure 
-        (1st part of the forward-backward algorithm)
-        
-        Parameters
-        ----------
-        lnf : log-probability of the input signal's distribution
-        ln_alpha : logarithm of the alpha matrix
-                   See the documentation for further information about alpha
-        Returns
-        -------
-        The loglikelihood of the forward procedure 
-        """ 
-        cdef Py_ssize_t t, T = len(lnf)
-        with np.errstate(over = 'ignore'):
-            ln_alpha[0, :] = self.ln_initial_probs + lnf[0, :]
-            for t in range(1, T):
-                ln_alpha[t, :] = elogsum(ln_alpha[t - 1, :] + self.ln_transition_probs.T, 1) + lnf[t, :]
-        return elogsum(ln_alpha[-1, :])
+    cdef e_step(self, data_t[:, ::1] lnf,
+                data_t[:, ::1] ln_alpha,
+                data_t[:, ::1] ln_beta,
+                data_t[:, ::1] ln_gamma,
+                data_t[:, :, ::1] ln_xi):
+        cdef Py_ssize_t i, j, t, k, l
+        cdef int n_samples = ln_alpha.shape[0]
 
-    cdef backwardProcedure(self, lnf, ln_beta):
-        """ Implementation of the backward procedure 
-        (2nd part of the forward-backward algorithm)
-        
-        Parameters
-        ----------
-        lnf : log-probability of the input signal's distribution
-        ln_alpha : logarithm of the beta matrix
-                   See the documentation for further information about beta
-        Returns
-        -------
-        The loglikelihood of the backward procedure
-        """
-        cdef Py_ssize_t t, T = len(lnf)
-        with np.errstate(over = 'ignore'):
-            ln_beta[T - 1, :] = 0.0
-            for t in range(T - 2, -1, -1): # TODO ; fast loop (with nogil)
-                ln_beta[t, :] = elogsum(self.ln_transition_probs + lnf[t + 1, :] + ln_beta[t + 1, :], 1)
-        return elogsum(ln_beta[0, :] + lnf[0, :] + self.ln_initial_probs)
-    
-    @cython.infer_types(False)
-    cdef E_step(self, data_t[:, :] lnf, data_t[:, :] ln_alpha, data_t[:, :] ln_beta, data_t[:, :, :] ln_eta):
-        cdef Py_ssize_t i, j, t, k, l, T = len(lnf)
-        cdef double lnP_f = self.forwardProcedure(np.asarray(lnf), np.asarray(ln_alpha))
-        cdef double lnP_b = self.backwardProcedure(np.asarray(lnf), np.asarray(ln_beta))
-        if dabs(<double>(lnP_f - lnP_b) / <double>lnP_f) > 1.0e-6:
-            printf("Error. Forward and backward algorithm must produce the same loglikelihood.\n")
+        cdef data_t[::1] tmp = np.empty((self.n_states), dtype=np_data_t)
+        cdef double lnP_f = self.forward(lnf, ln_alpha, tmp)
+        cdef double lnP_b = self.backward(lnf, ln_beta, tmp)
+        # TODO: CHECK THAT lnP_f AND lnP_b ARE ALMOST EQUAL
+
         with nogil:
             for i in range(self.n_states):
                 for j in range(self.n_states):
-                    for t in range(T - 1):
-                        ln_eta[t, i, j] = ln_alpha[t, i] + self.ln_transition_probs[i, j] + lnf[t + 1, j] + ln_beta[t + 1, j]
-                for j in range(ln_eta.shape[0]):
-                    for k in range(ln_eta.shape[1]):
-                        for l in range(ln_eta.shape[2]):
-                            ln_eta[j, k, l] = ln_eta[j, k, l] - lnP_f
-        ln_eta = np.asarray(ln_eta)
-        ln_gamma = np.asarray(ln_alpha) + np.asarray(ln_beta) - lnP_f
-        return ln_eta, ln_gamma, lnP_f
-
-    @cython.infer_types(True)
-    def BaumWelch(self, obs, mu, sigma, n_iterations = 100,
-            dynamic_features = False, delta_window = 1):
-        """
-        Launches the iterative Baum-Welch algorithm for parameter re-estimation.
-        Call this method for training purposes, after having executed a parameter estimation
-        algorithm such as a clustering function.
+                    ln_xi[0, i, j] = self.ln_transition_probs[i, j] + \
+                        lnf[0, j] + ln_beta[0, j] - lnP_f # Can be replaced by any value
+                    for t in range(1, n_samples):
+                        ln_xi[t, i, j] = ln_alpha[t-1, i] + self.ln_transition_probs[i, j] + \
+                            lnf[t, j] + ln_beta[t, j] - lnP_f
         
-        Parameters
-        ----------
-        obs : input signal
-        n_iterations : maximum number of iterations
-        convergence_threshold : minimum decrease rate for the cost function
-                                Under this value, we consider that the algorithm has converged.
-                                If [[n_terations]] is small enough, the algorithm may stop 
-                                before the convergence criterion can be fulfilled.
-        dynamic_features : 
-        sigma : variance-covariance matrix of the WHOLE signal
-        """
-        self.MU = mu
-        self.SIGMA = sigma
-        assert(len(obs.shape) == 2)
-        if dynamic_features:
-            deltas, delta_deltas = self.getDeltas(obs, delta_window = delta_window)
-            obs = np.concatenate((obs, deltas, delta_deltas), axis = 1)
-            
-        T, D = obs.shape[0], obs.shape[1]
-        self.initParameters(obs)
-        cpdef data_t[:, :] ln_alpha  = np.zeros((T, self.n_states))
-        cpdef data_t[:, :] ln_beta   = np.zeros((T, self.n_states))
-        cpdef data_t[:, :, :] ln_eta = np.zeros((T - 1, self.n_states, self.n_states))
-        cpdef data_t[:, :] lnf
-
-        cdef long convergence_threshold = <long>0.0001
-        cdef bint has_converged = False
-        old_F = 1.0e20
-        i = 0
-        while i < n_iterations and not has_converged:
-            print("\tIteration %i" % i)
-            lnf = gaussianLoglikelihood(obs, self.mu, self.sigma)
-            ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
-            F = - lnP
-            dF = F - old_F
-            if(np.abs(dF) < convergence_threshold):
-                has_converged = True
-            old_F = F
-            
-            gamma = ieexp2d(ln_gamma) # inplace exp function
-            for k in range(self.n_states):
-                post = gamma[:, k]
-                post_sum = post.sum()
-                norm = 1.0 / post_sum if post_sum != 0.0 else -LOG_ZERO
-                temp = np.dot(post * obs.T, obs)
-                avg_sigma = temp * norm
-                self.mu[k] = np.dot(post, obs) * norm
-                self.sigma[k] = avg_sigma - np.outer(self.mu[k], self.mu[k])
-                
-                if np.all(self.mu[k] == 0):
-                    self.mu[k] = self.previous_mu[k]
-                
-            is_nan = (self.mu == np.nan)
-            self.mu[is_nan] = self.previous_mu[is_nan]
-            is_nan = (self.sigma == np.nan)
-            self.sigma[is_nan] = self.previous_sigma[is_nan]
-            self.previous_mu[:] = self.mu[:]
-            self.previous_sigma[:] = self.sigma[:]
-            i += 1
-            
-        self.transition_probs = eexp(self.ln_transition_probs)
-        eigenvalues = np.linalg.eig(self.transition_probs.T)
-        self.initial_probs = normalizeMatrix(np.abs(eigenvalues[1][:, eigenvalues[0].argmax()]))
-
-    def fit(self, obs, mu, sigma, **kwargs):
-        """ 
-        Fit the Markov Model using the Baum-Welch algorithm, which consists of :
-        1) The parameters pre-estimation (with k-means, change point detection, ...)
-        2) The expectation part : computing the initial state probabilities and 
-           state transition probabilities
-        3) The maximization part : find the distribution parameters that maximizes the likelihood,
-           knowing the previously computed probabilities
-
-        Parameters
-        ----------
-        obs : np.array
-            2D array representing the input sequence
-            Shape of the sequence : (n_samples, n_features),
-            where n_samples is the length of the sequence and
-            n_features is the dimensionality of the input
-        mu : np.array
-            1D array representing the mean of the input samples
-        sigma : np.array
-            2D array representing the variance-covariance matrix
-            of the input samples
-        """
-        self.BaumWelch(obs, mu, sigma, **kwargs)
-        
-    def fitIO(self, inputs, targets = None, mu = None, sigma = None,
-              dynamic_features = False, delta_window = 1, is_classifier = True, n_classes = 2,
-              parameters = None):
-        """
-        Generalized Expectation-Maximization algorithm for training Input-Output Hidden Markov Models (IOHMM)
-        The expectation part is implemented the old-fashioned way, like in a regular expectation-maximization
-        algorithm. The maximization part is based on the MLP stochastic gradient descent.
-        See iohhm.pyx for details.
-        """
-        self.MU = mu
-        self.SIGMA = sigma
-        self.missing_value = parameters.missing_value_sym
-        self.n_classes = n_classes
-        piN, N, O, loglikelihood, pistate_cost, state_cost, output_cost, weights = IOHMMLogFit(inputs, targets = targets, 
-              n_states = self.n_states, dynamic_features = dynamic_features, delta_window = 1, 
-              is_classifier = is_classifier, n_classes = n_classes, parameters = parameters)
-        self.parameters = parameters
-        self.n = self.n_states
-        self.m = inputs[0].shape[1]
-        output_dim = targets[0].shape[1] if len(targets[0].shape) == 2 else 1
-        self.r = n_classes if is_classifier else output_dim
-        self.pi_state_subnetwork = piN
-        self.state_subnetworks = N
-        self.output_subnetworks = O
-        return loglikelihood, pistate_cost, state_cost, output_cost, weights
-            
-    def predictIO(self, input, binary_prediction = True):
-        """
-        Classification algorithm for trained iohmm models.
-        Each distinct label is linked with a unique Viterbi decoder.
-        The predicted label will be the one linked with the decoder that maximizes
-        the log-likelihood of observing the label throughout the sequence.
-
-        Parameters
-        ----------
-        input : np.array
-            2D array representing the input sequence
-            Shape of the sequence : (n_samples, n_features),
-            where n_samples is the length of th sequence and
-            n_features is the dimensionality of the input
-        binary_prediction : bool
-            if true, a binary prediction will be returned (preferable by nature)
-            if false, a vector of probability will be returned
-        """
-        assert(len(input.shape) == 2)
-        cdef Py_ssize_t T = input.shape[0]
-        cdef object piN = self.pi_state_subnetwork
-        cdef object N   = self.state_subnetworks
-        cdef object O   = self.output_subnetworks
-        cdef cnp.ndarray state_sequence = np.zeros((self.n_classes, T), dtype = np.int8)
-        cdef cnp.ndarray output_sequence = np.zeros(T, dtype = np.float32)
-        cdef cnp.ndarray current_eta = np.empty((self.n_states, self.n_classes), dtype = np.float32)
-        cdef cnp.ndarray memory
-        cdef Py_ssize_t i, t
-        cdef cnp.ndarray is_mv = hasMissingValues(input, self.missing_value, n_datadim = 1)
-        input = np.asarray(input, dtype = np.float32)
-        if binary_prediction:
-            memory = np.zeros((self.n_classes, self.n_states), dtype = np.float32)
-            if not is_mv[0]:
-                has_nan = False
-                temp = np.tile(np.log2(piN.computeOutput(input[0])[0]), (self.n_classes, 1))
-                if not np.isnan(temp).any():
-                    memory[:] = temp[:]
-                else:
-                    has_nan = True
+            for t in range(n_samples):
                 for i in range(self.n_states):
-                    current_eta[i, :] = O[i].computeOutput(input[0])[0]
-                for i in range(self.n_classes):
-                    temp = np.log2(current_eta[:, i])
-                    if not (has_nan or np.isnan(temp).any()):
-                        memory[i, :] += temp[:]
-                        state_sequence[i, 0] = memory[i].argmax()
-                        memory[i, :] = memory[i, state_sequence[i, 0]]
-                    else:
-                        state_sequence[i, 0] = 0
-            else:
-                memory = np.zeros((self.n_classes, self.n_states), dtype = np.float32)
-            output_sequence[0] = state_sequence[:, 0].argmax()
-            for t in range(1, T):
-                if not is_mv[t]:
-                    has_nan = False
-                    for i in range(self.n_classes):
-                        temp = np.log2(N[state_sequence[i, t - 1]].computeOutput(input[t])[0].reshape(self.n_states))
-                        if not np.isnan(temp).any():
-                            memory[i, :] += temp
-                        else:
-                            has_nan = True
-                    for i in range(self.n_states):
-                        current_eta[i, :] = O[i].computeOutput(input[t])[0]
-                    for i in range(self.n_classes):
-                        temp = np.log2(current_eta[:, i])
-                        if not (has_nan or np.isnan(temp).any()):
-                            memory[i, :] += temp[:]
-                            state_sequence[i, t] = memory[i].argmax()
-                            memory[i, :] = memory[i, state_sequence[i, t]]
-                        else:
-                            state_sequence[i, t] = state_sequence[i, t - 1]
-                output_sequence[t] = state_sequence[:, t].argmax()
-            if memory.sum() == 0:
-                return 0.5, memory, state_sequence
-            return np.argmax(memory.max(axis = 1)), memory, state_sequence, output_sequence
-        else:
-            raise NotImplementedError("Probability prediction not implemented")
+                    ln_gamma[t, i] = ln_alpha[t, i] + ln_beta[t, i] - lnP_f
+        return lnP_f
 
-    def noisedDistribution(self, state):
-        return GaussianGenerator(self.mu[state], self.sigma[state])
-    
-    def cleanDistribution(self, state):
-        return self.mu[state]
-    
-    cdef getDeltas(self, obs, delta_window = 1):
-        cdef Py_ssize_t n = len(obs)
-        cdef cnp.double_t[:] deltas = np.zeros(obs.shape)
-        cdef cnp.double_t[:] delta_deltas = np.zeros(obs.shape)
-        cdef Py_ssize_t k, theta
-        cdef double num, den
-        for k in range(delta_window, n - delta_window):
-            num = den = 0.0
-            for theta in range(1, delta_window + 1):
-                num += theta * (obs[k + theta] - obs[k - theta])
-                den += theta ** 2
-            den = 2.0 * den
-            deltas[k] = num / den
-        for k in range(2 * delta_window, n - 2 * delta_window):
-            num = den = 0.0
-            for theta in range(1, delta_window + 1):
-                num += theta * (deltas[k + theta] - deltas[k - theta])
-                den += theta ** 2
-            den = 2.0 * den
-            delta_deltas[k] = num / den
-        return deltas, delta_deltas
-    
-    def randomSequence(self, T, start_from_left = True, dynamic_features = False, noised_distribution = False):
-        distribution_func = self.noisedDistribution if noised_distribution else self.cleanDistribution        
-        N, D = self.mu.shape[0], self.mu.shape[1]
-        pi_cdf = self.initial_probs.cumsum()
-        A_cdf = self.transition_probs.cumsum(1)
-        states = np.zeros(T, dtype = np.int)
-        observations = np.zeros((T, D))
-        r = random(T)
-        if not start_from_left:
-            states[0] = (pi_cdf > r[0]).argmax()
-        else:
-            states[0] = 0
-        observations[0] = distribution_func(states[0])
-        for t in range(1,T):
-            states[t] = (A_cdf[states[t-1]] > r[t]).argmax()
-            observations[t] = distribution_func(states[t])
-        return states, observations
-    
-    cdef void setMissingValues(self, cnp.ndarray observations):
-        if self.missing_value == DEFAULT_MISSING_VALUE:
-            self.mv_indexes = getMissingValuesIndexes(observations, self.missing_value)
-        else:
-            self.mv_indexes = np.empty(0)
+    def baum_welch(self, X, max_n_iter=100, eps=1e-04):  
+        n_samples = X.shape[0]
+        cpdef data_t[:, ::1] ln_alpha = np.zeros((n_samples, self.n_states))
+        cpdef data_t[:, ::1] ln_beta = np.zeros((n_samples, self.n_states))
+        cpdef data_t[:, ::1] ln_gamma = np.zeros((n_samples, self.n_states))
+        cpdef data_t[:, :, ::1] ln_xi = np.zeros((n_samples, self.n_states, self.n_states))
+        cpdef data_t[:, ::1] lnf
+        cdef int k, l
 
-    def score(self, obs, mode = CRITERION_AICC):
-        """
-        Evaluates how the model fits the data, by taking into account the complexity
-        (number of parameters) of the model. The best model both minimizes its complexity
-        and maximizes its likelihood
-        
-        Parameters
-        ----------
-        obs : np.array
-            2D array representing the input signal
-        mode : int
-            score function to use
-            * CRITERION_AIC - Akaike Information Criterion
-            * CRITERION_AICC - Akaike Information Criterion with correction 
-                               (for small-sample sized models)
-            * CRITERION_BIC - Bayesian Information Criterion
-            * CRITERION_LIKELIHOOD - Negative Likelihood
-        """
-        self.setMissingValues(obs)
-        n = obs.shape[0]        
-        cdef size_t T = len(obs)
-        cdef data_t[:, :] lnf = gaussianLoglikelihood(obs, self.mu, self.sigma)
-        cdef data_t[:, :] ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
-        cdef data_t[:, :] ln_beta  = np.zeros((T, self.n_states))
-        cdef data_t[:, :, :] ln_eta   = np.zeros((T - 1, self.n_states, self.n_states))    
-        ln_eta, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
-        nmix, ndim = self.mu.shape[0], self.mu.shape[1]
-        # k is the complexity of the model
-        k = self.n_states * (1.0 + self.n_states) + nmix * self.numParameters(ndim)
-        if mode == CRITERION_AIC:
-            criterion = 2 * k - 2 * lnP
-        elif mode == CRITERION_AICC:
-            criterion = 2 * k - 2 * lnP + float(2 * k * (k + 1)) / float(n - k - 1)
-        elif mode == CRITERION_BIC:
-            criterion = k * elog(n) - lnP
-        elif mode == CRITERION_LIKELIHOOD:
-            criterion = - lnP
-        elif mode == CRITERION_NEG_LIKELIHOOD:
-            criterion = lnP
+        old_F = 1.0e20
+        for i in range(max_n_iter):
+            print("\tIteration %i" % i)
+
+            lnf = self.emission_log_proba(X)
+            lnP = self.e_step(lnf, ln_alpha, ln_beta, ln_gamma, ln_xi)
+            F = -lnP
+            dF = F - old_F
+            if(np.abs(dF) < <long>eps):
+                break
+            old_F = F
+            gamma = np.empty_like(ln_gamma)
+            eexp2d(gamma, ln_gamma)
+
+            self.initial_probs = gamma[0, :]
+            self.initial_probs /= np.sum(self.initial_probs)
+            elog1d(self.ln_initial_probs, self.initial_probs)
+
+            with nogil:
+                for k in range(self.n_states):
+                    for l in range(self.n_states): 
+                        self.ln_transition_probs[k, l] = \
+                            elogsum(ln_xi[1:, k, l]) - elogsum(ln_gamma[:-1, k])
+            self.ln_transition_probs = np.nan_to_num(self.ln_transition_probs)
+            eexp2d(self.transition_probs, self.ln_transition_probs)
+            np.asarray(self.transition_probs)[np.isnan(self.transition_probs)] = ZERO
+            self.transition_probs /= np.sum(self.transition_probs, axis=1)[:, None]
+
+            # Update emission parameters (for example, Gaussian parameters)
+            self.update_emission_params(X, gamma)
+
+    def fit(self, X, **kwargs):
+        # TODO: CHECK X
+        if len(X.shape) == 1:
+            self.n_features = 1
         else:
-            raise NotImplementedError("The given information criterion is not supported")
-        return criterion
+            self.n_features = X.shape[1]
+        self.estimate_params(X)
+        self.baum_welch(X, **kwargs)
     
-    def decode(self, obs):
-        """ 
-        Returns the sequence of the most probable states, given the observation sequence
+    def log_likelihood(self, X):
+        # TODO: CHECK X
+        n_samples = len(X)
+        lnf = self.emission_log_proba(X)
+        cpdef data_t[:, ::1] ln_alpha = np.zeros((n_samples, self.n_states))
+        cpdef data_t[:, ::1] ln_beta = np.zeros((n_samples, self.n_states))
+        cpdef data_t[:, ::1] ln_gamma = np.zeros((n_samples, self.n_states))
+        cpdef data_t[:, :, ::1] ln_xi = np.zeros(
+            (n_samples, self.n_states, self.n_states))
+        lnP = self.e_step(lnf, ln_alpha, ln_beta, ln_gamma, ln_xi)
 
-        Parameters
-        ----------
-        obs : np.array
-            2D array representing the input sequence
-        """
-        cdef cnp.ndarray lnf = gaussianLoglikelihood(obs, self.mu, self.sigma)
-        cdef size_t T = len(obs)
-        cdef cnp.ndarray ln_alpha = np.zeros((T, self.n_states)) # TODO : replace np.zeros by np.empty
-        cdef cnp.ndarray ln_beta = np.zeros((T, self.n_states))
-        cdef cnp.ndarray ln_eta = np.zeros((T - 1, self.n_states, self.n_states))       
-        _, ln_gamma, lnP = self.E_step(lnf, ln_alpha, ln_beta, ln_eta)
-        gamma = ieexp2d(ln_gamma)
-        return gamma.argmax(1)
+        gamma = np.empty_like(ln_gamma)
+        eexp2d(gamma, ln_gamma)
     
-    cpdef cSave(self, char* filename):
-        cdef size_t i, j, k
-        cdef Py_ssize_t n_dim = self.sigma.shape[1]
-        cdef FILE* ptr_fw = fopen(filename, "wb")
-        if ptr_fw == NULL:
-            printf("Error. Could not open file %s\n", filename)
-            exit(EXIT_FAILURE)
-        cdef cnp.double_t* mu = <cnp.double_t*>self.mu.data
-        cdef cnp.double_t* sigma = <cnp.double_t*>self.sigma.data
-        cdef cnp.float_t* initial_probs = <cnp.float_t*>self.initial_probs.data
-        cdef cnp.float_t* transition_probs = <cnp.float_t*>self.transition_probs.data
-        fwrite(&(self.architecture), sizeof(unsigned int), sizeof(unsigned int), ptr_fw)
-        fwrite(&(self.distribution), sizeof(unsigned int), sizeof(unsigned int), ptr_fw)
-        fwrite(&(self.n_states), sizeof(Py_ssize_t), sizeof(Py_ssize_t), ptr_fw)
-        fwrite(&n_dim, sizeof(Py_ssize_t), sizeof(Py_ssize_t), ptr_fw)
-        fwrite(&mu, sizeof(cnp.double_t), self.n_states * n_dim * sizeof(cnp.double_t), ptr_fw)
-        fwrite(&sigma, sizeof(cnp.double_t), self.n_states * n_dim * n_dim * sizeof(cnp.double_t), ptr_fw)
-        fwrite(&initial_probs, sizeof(cnp.float_t), self.n_states * sizeof(cnp.float_t), ptr_fw)
-        fwrite(&transition_probs, sizeof(cnp.float_t), self.n_states * self.n_states * sizeof(cnp.float_t), ptr_fw)
-        fclose(ptr_fw)
+        return lnP, gamma
 
-    cpdef cLoad(self, char* filename):
-        cdef Py_ssize_t i, j, k
-        cdef Py_ssize_t n_dim
-        cdef FILE* ptr_fr = fopen(filename, "rb")
-        if ptr_fr == NULL:
-            printf("Error. Could not open file %s\n", filename)
-            exit(EXIT_FAILURE)
-        fread(&(self.architecture), sizeof(unsigned int), sizeof(unsigned int), ptr_fr)
-        fread(&(self.distribution), sizeof(unsigned int), sizeof(unsigned int), ptr_fr)
-        fread(&(self.n_states), sizeof(Py_ssize_t), sizeof(Py_ssize_t), ptr_fr)
-        fread(&n_dim, sizeof(Py_ssize_t), sizeof(Py_ssize_t), ptr_fr)
-        self.mu = np.empty((self.n_states, n_dim), dtype = np.double)
-        self.mu = np.empty((self.n_states, n_dim), dtype = np.double)
-        cdef cnp.double_t* mu = <cnp.double_t*>self.mu.data
-        cdef double* sigma = <double*>self.sigma.data
-        cdef float* initial_probs = <float*>self.initial_probs.data
-        cdef float* transition_probs = <float*>self.transition_probs.data
-        fclose(ptr_fr)
+    def decode(self, X):
+        _, gamma = self.log_likelihood(X)
+        return gamma.argmax(axis=1)
+
+    def get_num_params(self):
+        n_emission_params = self.get_num_params_per_state() * self.n_states
+        n_start_params = self.n_states - 1
+        n_transition_params = self.n_states * (self.n_states - 1)
+        return n_emission_params + n_start_params + n_transition_params
+
+    def score(self, X, criterion='aic'):
+        criterion = criterion.strip().lower()
+        n = X.shape[0]
+
+        # Compute "best" log-likelihood of sequence X
+        # given the parameters of the model
+        lnP, _ = self.log_likelihood(X)
+
+        # Compute the model complexity
+        k = self.get_num_params()
+
+        # Compute information criterion
+        if criterion == 'aic': # Akaike Information Criterion
+            score_val = 2. * k - 2. * lnP
+        elif criterion == 'aicc': # Akaike Information Criterion (corrected version)
+            score_val = 2. * k - 2. * lnP + (2. * k * (k + 1.)) / (n - k - 1.)
+        elif criterion == 'bic': # Bayesian Information Criterion
+            score_val = k * elog(n) - lnP
+        elif criterion == 'negloglh': # Negative log-likelihood
+            score_val = -lnP
+        else:
+            raise NotImplementedError(
+                "Unknown information criterion %s" % str(criterion))
+        return score_val
+
+    def sample(self, n_samples):
+        # Initialize observation history and state history
+        states = np.zeros(n_samples+1, dtype=np.int)
+        observations = np.zeros((n_samples, self.n_features), dtype=np_data_t)
+
+        # Randomly pick an initial state
+        states[0] = np.random.choice(np.arange(self.n_states), p=self.initial_probs)
+
+        # TODO: OPTIMIZATION WITH A NOGIL BLOCK
+        for t in range(1, n_samples+1):
+            state_id = states[t-1]
+            observations[t-1, :] = self.sample_one_from_state(state_id)
+
+            # Randomly pick next state w.r.t. transition probabilities
+            states[t] = np.random.choice(
+                np.arange(self.n_states), p=self.transition_probs[state_id])
+        return states[:-1], observations
+    
+    def __str__(self):
+        s = "HMM of type '%s'\n" % self.__class__.__name__
+        s += "Topology '%s' with %i state(s)\n" % (self.arch, self.n_states) # TODO
+        s += "Max number of free parameters: %i" % self.get_num_params()
+        return s + "\n"
+    
+    def __repr__(self):
+        return self.__str__()
+    
+    property pi:
+        def __get__(self):
+            return np.asarray(self.initial_probs)
+        def __set__(self, arr):
+            self.initial_probs = np.asarray(arr, dtype=np_data_t)
+            self.ln_initial_probs = np.empty_like(arr)
+            elog1d(self.ln_initial_probs, self.initial_probs)
+
+    property a:
+        def __get__(self):
+            return np.asarray(self.transition_probs)
+        def __set__(self, arr):
+            self.transition_probs = np.asarray(arr, dtype=np_data_t)
+            self.ln_transition_probs = np.empty_like(arr)
+            elog2d(self.ln_transition_probs, self.transition_probs)
+
+
+cdef class GHMM(HMM):
+
+    cdef data_t[:, ::1] mu
+    cdef data_t[:, :, ::1] sigma
+
+    def __init__(self, n_states, arch='ergodic'):
+        HMM.__init__(self, n_states, arch=arch)
+
+    def estimate_params(self, X):
+        n_samples = X.shape[0]
+        self.n_features = X.shape[1]
+
+        self.mu = np.empty(
+            (self.n_states, self.n_features), dtype=np_data_t)
+        self.sigma = np.empty(
+            (self.n_states, self.n_features, self.n_features), dtype=np_data_t)
+
+        if self.arch == 'linear':
+            # Make Change Point Detection
+            """
+            cpdetector  = GraphTheoreticDetector(
+                n_keypoints=self.n_states-1, window_size=7)
+            cpdetector.detectPoints(np.asarray(X, dtype=np.double))
+            keypoint_indices = [0] + list(cpdetector.keypoints) + [len(X)]
+            assert(len(keypoint_indices) == self.n_states+1)
+            print(keypoint_indices)
+            """
+            cpd = BatchCPD(n_keypoints=self.n_states, window_padding=1,
+                           cost_func=SUM_OF_SQUARES_COST, aprx_degree=2)
+            cpd.detectPoints(X, X.mean(axis=0), np.cov(X.T))
+            keypoint_indexes = cpd.getKeypoints()
+
+            # Estimate start and transition probabilities
+            self.transition_probs = np.zeros(
+                (self.n_states, self.n_states), dtype=np.float)
+            self.transition_probs[-1, -1] = 1.
+            for i in range(self.n_states):
+                a_ij = 1. / (keypoint_indices[i+1] - keypoint_indices[i])
+                self.transition_probs[i, i+1] = a_ij
+                self.transition_probs[i, i] = 1. - a_ij
+            self.initial_probs[0] = 1.0
+
+            # Estimate Gaussian parameters
+            for i in range(self.n_states):
+                segment = X[keypoint_indices[i]:keypoint_indices[i+1], :]
+                self.mu[i] = segment.mean(axis=0)
+                self.sigma[i] = np.cov(segment.T)
+        elif self.arch == 'ergodic':
+            # Apply clustering algorithm, and estimate Gaussian parameters
+            self.mu, indices = k_means(X, self.n_states)
+            # self.mu, indices = scipy.cluster.vq.kmeans2(X, self.n_states)
+
+            self.sigma = np.empty(
+                (n_samples, self.n_features, self.n_features), dtype=np_data_t)
+            n_features = X.shape[1]
+            for i in range(self.n_states):
+                tmp = np.cov(X[indices == i].T)
+                for j in range(self.n_features):
+                    for k in range(self.n_features):
+                        self.sigma[i, j, k] = tmp[j, k]
+
+            # Estimate start and transition probabilities
+            self.initial_probs = np.tile(1.0 / self.n_states, self.n_states)
+            self.transition_probs = np.random.dirichlet([1.0] * self.n_states, self.n_states)
         
-    def pySave(self, filename):
-        attributes = {
-            "architecture" : int(self.architecture),
-            "distribution" : int(self.distribution),
-            "n_states" : int(self.n_states),
-            "initial_probs" : self.initial_probs,
-            "transition_probs" : self.transition_probs,
-            "mu" : self.mu, "sigma" : self.sigma,
-            "MU" : self.mu, "SIGMA" : self.sigma,
-            "missing_value" : self.missing_value,
-            "piN" : self.pi_state_subnetwork,
-            "N" : self.state_subnetworks,
-            "O" : self.output_subnetworks
-        }
-        pickle.dump(attributes, open(filename, "wb"))
-        
-    def pyLoad(self, filename):
-        attributes = pickle.load(open(filename, "rb"))
-        self.architecture = attributes["architecture"]
-        self.distribution = attributes["distribution"]
-        self.n_states = attributes["n_states"]
-        self.initial_probs = attributes["initial_probs"]
-        self.transition_probs = attributes["transition_probs"]
-        self.ln_initial_probs = elog(self.initial_probs)
-        self.ln_transition_probs = elog(self.transition_probs)
-        self.mu = attributes["mu"]
-        self.sigma = attributes["sigma"]
-        self.MU = self.mu = attributes["MU"]
-        self.SIGMA = self.sigma = attributes["SIGMA"]
-        self.missing_value = attributes["missing_value"]
-        
-    def saveIO(self, filename):
-        pi_state = self.pi_state_subnetwork.__getstate__()
-        N_states, O_states = list(), list()
-        for i in range(self.n_states):
-            N_states.append(self.state_subnetworks[i].__getstate__())
-            O_states.append(self.output_subnetworks[i].__getstate__())
-        attributes = {
-            "m" : self.m,
-            "n" : self.n,
-            "r" : self.r,
-            "parameters" : self.parameters,
-            "pi_state" : pi_state,
-            "N_states" : N_states,
-            "O_states" : O_states
-        }
-        save_file = open(filename, "wb")
-        pickle.dump(attributes, save_file)
-        save_file.close()
-        
-    def loadIO(self, filename):
-        attributes = pickle.load(open(filename, "rb"))
-        m = attributes["m"]
-        n = attributes["n"]
-        r = attributes["r"]
-        pi_state = attributes["pi_state"]
-        N_states = attributes["N_states"]
-        O_states = attributes["O_states"]
-        parameters = attributes["parameters"]
-        if not hasattr(parameters, 'architecture'):
-            parameters.architecture = "ergodic"
-        N, O = list(), list()
-        for i in range(n):
-            N.append(StateSubnetwork(i, m, parameters.s_nhidden, n, learning_rate = parameters.s_learning_rate,
-                                     hidden_activation_function = parameters.s_activation, architecture = parameters.architecture))
-            N[i].__setstate__(N_states[i])
-            O.append(OutputSubnetwork(i, m, parameters.o_nhidden, r, learning_rate = parameters.o_learning_rate,
-                                      hidden_activation_function = parameters.o_activation))
-            O[i].__setstate__(O_states[i])
-        piN = PiStateSubnetwork(m, parameters.pi_nhidden, n, learning_rate = parameters.pi_learning_rate,
-                                hidden_activation_function = parameters.pi_activation, architecture = parameters.architecture)
-        piN.__setstate__(pi_state)
-        self.pi_state_subnetwork = piN
-        self.state_subnetworks = N
-        self.output_subnetworks = O
-        self.n_states = n
-        self.n_classes = r
+        else:
+            pass # TODO: Exception: unknown arch
+
+
+        self.ln_initial_probs = np.log(np.asarray(self.initial_probs))
+        self.ln_transition_probs = np.log(np.asarray(self.transition_probs))
+
+    def emission_log_proba(self, X):
+        mu = np.asarray(self.mu)
+        sigma = np.asarray(self.sigma)
+
+        n_samples, n_features = X.shape[0], X.shape[1] 
+        n_states = mu.shape[0]
+        lnf = np.empty((n_samples, n_states), dtype=np_data_t)
+
+        for k in range(n_states):
+            try:
+                cholesky = scipy.linalg.cholesky(
+                    sigma[k, :, :], lower=True, check_finite=True)
+            except scipy.linalg.LinAlgError:
+                mcv = 1.e-7
+                is_not_spd = True
+                while is_not_spd:
+                    try:
+                        cholesky = scipy.linalg.cholesky(
+                            sigma[k, :, :] + mcv * np.eye(n_features),
+                            lower=True, check_finite=True)
+                        is_not_spd = False
+                    except scipy.linalg.LinAlgError:
+                        mcv *= 10
+
+            log_det = 2 * np.sum(np.log(np.diagonal(cholesky)))
+            mahalanobis = scipy.linalg.solve_triangular(
+                cholesky, (np.asarray(X) - np.asarray(mu[k, :])).T, lower=True).T
+            lnf[:, k] = -0.5 * (np.sum(mahalanobis ** 2, axis=1) + \
+                n_features * np.log(2 * np.pi) + log_det)
+        return lnf
+    
+    def nan_to_zeros(self):
+        np.asarray(self.mu)[np.isnan(self.mu)] = ZERO
+        np.asarray(self.sigma)[np.isnan(self.sigma)] = ZERO
+
+    def update_emission_params(self, X, gamma):
+        self.nan_to_zeros()
+        n_samples, n_features = X.shape[0], X.shape[1]
+        for k in range(self.n_states):
+            # Compute denominator for means and covariances
+            posteriors = gamma[:, k]
+            post_sum = posteriors.sum()
+            norm = 1.0 / post_sum if post_sum != 0.0 else 1. # TODO
+
+            # Update covariance matrix of state k
+            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
+            covs = list()
+            for t in range(n_samples):
+                diff = X[t, :] - self.mu[k, :]
+                covs.append(np.outer(diff, diff))
+            covs = np.transpose(np.asarray(covs), (1, 2, 0))
+            temp = np.sum(covs * posteriors, axis=2)
+
+            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
+            for j in range(n_features):
+                for l in range(n_features):
+                    self.sigma[k, j, l] = temp[j, l]
+
+            # Update mean of state k
+            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
+            temp = np.dot(posteriors, X) * norm
+            for j in range(n_features):
+                self.mu[k, j] = temp[j]
+
+        self.nan_to_zeros()
+    
+    cdef data_t[::1] sample_one_from_state(self, int state_id) nogil:
+        with gil: # TODO: GET RID OF PYTHON CALLS
+            cholesky_sigma = np.linalg.cholesky(self.sigma[state_id, :, :])
+            r = np.random.randn(self.n_features)
+            return np.dot(r, cholesky_sigma.T) + self.mu[state_id, :]
+    
+    def get_num_params_per_state(self):
+        # Number of parameters in mean vector
+        n_mu = self.n_features
+        # Number of parameters in half-vectorized covariance matrix
+        n_sigma = self.n_features * (self.n_features + 1.) / 2.
+        return n_mu + n_sigma
+
+    property mu:
+        def __get__(self):
+            return np.asarray(self.mu)
+        def __set__(self, arr):
+            self.mu = np.asarray(arr)
+    
+    property sigma:
+        def __get__(self):
+            return np.asarray(self.sigma)
+        def __set__(self, arr):
+            self.sigma = np.asarray(arr)
+
+
+cdef class GMMHMM(HMM):
+
+    cdef int n_components
+    cdef data_t[:, ::1] weights
+    cdef data_t[:, :, ::1] mu
+    cdef data_t[:, :, :, ::1] sigma
+
+    def __init__(self, n_states, arch='ergodic', n_components=3):
+        HMM.__init__(self, n_states, arch=arch)
+        self.n_components = n_components
+
+    def estimate_params(self, X):
+        self.n_features = X.shape[1]
+        self.weights = np.empty((self.n_states, self.n_components), dtype=np_data_t)
+        self.mu = np.empty(
+            (self.n_states, self.n_components, self.n_features), dtype=np_data_t)
+        self.sigma = np.empty(
+            (self.n_states, self.n_components, self.n_features, self.n_features), dtype=np_data_t)
+        # TODO: random initialization
+    
+    def emission_log_proba(self, X):
+        pass # TODO
+
+    def nan_to_zeros(self):
+        np.asarray(self.weights)[np.isnan(self.weights)] = ZERO
+        np.asarray(self.mu)[np.isnan(self.mu)] = ZERO
+        np.asarray(self.sigma)[np.isnan(self.sigma)] = ZERO
+    
+    def update_emission_params(self, X, gamma):
+        n_samples = len(X)
+        _gamma = np.empty((n_samples, self.n_states, self.n_components), dtype=np_data_t)
+        _gamma[:, :, :] = gamma
+    
+    cdef data_t[::1] sample_one_from_state(self, int state_id) nogil:
+        with gil: # TODO: GET RID OF PYTHON CALLS
+            component = np.random.choice(
+                np.arange(self.n_components), p=self.weights[state_id, :])
+            cholesky_sigma = np.linalg.cholesky(
+                self.sigma[state_id, component, :, :])
+            r = np.random.randn(self.n_features)
+            return np.dot(r, cholesky_sigma.T) + self.mu[state_id, component, :]
+
+    def get_num_params_per_state(self):
+        # Number of parameters in mean vector
+        n_mu = self.n_features
+        # Number of parameters in half-vectorized covariance matrix
+        n_sigma = self.n_features * (self.n_features + 1.) / 2.
+        return (n_mu + n_sigma) * self.n_components
+
+    property mu:
+        def __get__(self):
+            return np.asarray(self.mu)
+        def __set__(self, arr):
+            self.mu = np.asarray(arr)
+    
+    property sigma:
+        def __get__(self):
+            return np.asarray(self.sigma)
+        def __set__(self, arr):
+            self.sigma = np.asarray(arr)
+
+
+cdef class MHMM(HMM):
+
+    cdef int n_unique
+    cdef data_t[:, ::1] proba
+
+    def __init__(self, n_states, arch='ergodic'):
+        HMM.__init__(self, n_states, arch=arch)
+
+    def estimate_params(self, X):
+        # TODO: CHECK X
+        self.n_unique = len(np.unique(np.squeeze(X)))
+        self.proba = np.random.rand(self.n_states, self.n_unique).astype(np_data_t)
+        self.proba /= np.sum(self.proba, axis=1)[:, None]
+        # TODO: estimation algorithms
+
+        self.initial_probs = np.random.rand(self.n_states).astype(np_data_t)
+        self.initial_probs /= np.sum(self.initial_probs)
+        self.ln_initial_probs = np.log(self.initial_probs)
+
+        self.transition_probs = np.random.rand(self.n_states, self.n_states).astype(np_data_t)
+        self.transition_probs /= np.sum(self.transition_probs, axis=1)[:, None]
+        self.ln_transition_probs = np.log(self.transition_probs)
+
+    def emission_log_proba(self, data_t[:] X):
+        cdef int n_samples = X.shape[0]
+        cdef data_t[:, ::1] lnf = np.empty((n_samples, self.n_states), dtype=np_data_t)
+        with nogil:
+            for k in range(self.n_states):
+                for t in range(n_samples):
+                    lnf[t, k] = libc.math.log(self.proba[k, <int>X[t]])
+        return np.asarray(lnf)
+
+    def nan_to_zeros(self):
+        np.asarray(self.proba)[np.isnan(self.proba)] = ZERO
+    
+    def update_emission_params(self, X, gamma):
+        self.nan_to_zeros()
+
+        # TODO: OPTIMIZATION WITH A NOGIL BLOCK
+        for k in range(self.n_states):
+            posteriors = gamma[:, k]
+            post_sum = posteriors.sum()
+            norm = 1.0 / post_sum if post_sum != 0.0 else 1.
+            for i in range(self.n_unique):
+                self.proba[k, i] = np.dot(posteriors, X == i) * norm
+
+        self.nan_to_zeros()
+    
+    cdef data_t[::1] sample_one_from_state(self, int state_id) nogil:
+        with gil: # TODO: REMOVE GIL BLOCK
+            weights = self.proba[state_id]
+            return np.random.choice(np.arange(self.n_unique), p=weights)
+
+    def get_num_params_per_state(self):
+        # Number of free parameters in proba vector
+        return self.n_unique - 1
+
+    property proba:
+        def __get__(self):
+            return np.asarray(self.proba)
+        def __set__(self, arr):
+            self.proba = np.asarray(arr)

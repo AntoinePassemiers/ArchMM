@@ -10,44 +10,21 @@ from numpy.distutils.core import setup as np_setup
 
 source_folder = "archmm"
 sub_packages = [
-    "adaptation",
-    "ann",
     "estimation",
-    "mms",
-    "plot",
-    "kernel",
-    "tests"
 ]
 source_files = [
     (["anomaly.c"], "anomaly"),
-    (["chains.c"], "chains"),
-    (["core.py"], "core"),
-    (["format_data.py"], "format_data"),
-    (["fuzzy.c"], "fuzzy"),
-    (["dbn.c"], "dbn"),
     (["hmm.c"], "hmm"),
     (["iohmm.c"], "iohmm"),
+    (["mrf.c"], "mrf"),
     (["math.c"], "math"),
-    (["parallel.c"], "parallel"),
-    (["queue.c"], "queue"),
-    (["structs.c"], "structs"),
     (["utils.c"], "utils"),
-    (["adaptation/mllr.py"], "adaptation.mllr"),
     (["ann/cnn.py"], "ann.cnn"),
     (["ann/layers.py"], "ann.layers"),
     (["ann/mlp.py"], "ann.mlp"),
     (["ann/optimizers.py"], "ann.optimizers"),
     (["estimation/clustering.c"], "estimation.clustering"),
     (["estimation/cpd.c", "estimation/kernel_.c"], "estimation.cpd"),
-    (["plot/tools.py"], "plot.tools"),
-    (["kernel/kernel.c"], "kernel.kernel"),
-    (["kernel/svm.py"], "kernel.svm"),
-    (["mms/mrf.c"], "mrf"),
-    (["mms/msd.c"], "msd"),
-    (["tests/HMM_test.py"], "tests.HMM_tests"),
-    (["tests/test_clustering.py"], "tests.test_clustering"),
-    (["tests/test_kernels.py"], "tests.test_kernels"),
-    (["tests/utils.py"], "tests.test_utils")
 ]
 
 """
