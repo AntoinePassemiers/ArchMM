@@ -39,12 +39,12 @@ Design phase:
 How to use it
 -------------
 
-Let's create a simple Gaussian HMM :
+Let's create a simple Multinomial HMM,
+using 5 hidden states and a fully-connected topology.
 ```python
-from archmm.core import AdaptiveHMM
+from archmm.hmm import MHMM
 
-# Using 5 hidden states and a fully-connected topology
-hmm = GHMM(5, arch='ergodic')
+hmm = MHMM(5, arch='ergodic')
 ```
 
 Then learn from the data using Baum-Welch algorithm :
@@ -55,10 +55,30 @@ hmm.fit(data, max_n_iter=20)
 The data can be either an array of shape (n_samples, n_features)
 or a list of such arrays.
 
-Finally evaluate how the model fits a new sequence :
+Evaluate how the model fits a new sequence :
 ```python
 # Using the Akaike Information Criterion
 hmm.score(new_data, criterion='aic')
+```
+
+Retrieve the most likely sequence of hidden states:
+```python
+hidden_sequence = hmm.decode(new_data)
+```
+
+Manually set pre-estimated parameters:
+```python
+hmm = GHMM(11, arch='linear') # Gaussian HMM
+hmm.a = a # Transition probabilities
+hmm.pi = pi # Initial state probabilities
+hmm.mu = mu # Mean vectors
+hmm.sigma = sigma # Covariance matrices
+```
+
+Generate random samples based on the estimated distribution parameters:
+```python
+n_samples = 3000
+new_data = hmm.sample(n_samples)
 ```
 
 Full examples can be found in *examples/* folder
@@ -99,3 +119,4 @@ python setup.py install
 - [ ] Markov chains: n-transition probabilities
 - [ ] Implement MSD-HMM (for fun)
 - [ ] Automatic setup.py scripts that recursively look for *.c, *.py and *.pyx files
+- [ ] Visualize models using matplotlib and networkx
