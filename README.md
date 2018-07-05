@@ -58,7 +58,8 @@ or a list of such arrays.
 Evaluate how the model fits a new sequence :
 ```python
 # Using the Akaike Information Criterion
-hmm.score(new_data, criterion='aic')
+# The score value must be as small as possible
+score = hmm.score(new_data, criterion='aic')
 ```
 
 Retrieve the most likely sequence of hidden states:
@@ -106,8 +107,8 @@ python setup.py install
 
 ## Todo
 
-- [ ] Docstrings
-- [ ] IO-HMM: change nn backend?
+- [ ] Docstrings and automatic doc generation
+- [ ] IO-HMM: Get rid of theano backend and implement mlp from scratch
 - [ ] Multi-sequence support for HMMs
 - [ ] Working with missing values
 - [ ] Finish implementing GMM-HMM
