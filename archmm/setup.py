@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import os, sys
+import os
+import sys
 from distutils.extension import Extension
 
 import numpy as np
@@ -14,10 +15,12 @@ sub_packages = [
 ]
 source_files = [
     (["anomaly.c"], "anomaly"),
+    (["check_data.py"], "check_data"),
     (["hmm.c"], "hmm"),
     (["iohmm.c"], "iohmm"),
     (["mrf.c"], "mrf"),
     (["math.c"], "math"),
+    (["stats.c"], "stats"),
     (["utils.c"], "utils"),
     (["ann/cnn.py"], "ann.cnn"),
     (["ann/layers.py"], "ann.layers"),
@@ -62,10 +65,9 @@ for sources, extension_name in source_files:
     print(extension_name, sources)
     config.add_extension(
         extension_name, 
-        sources = sources,
-        include_dirs = include_dirs + [os.curdir],
-        libraries = libraries,
-        extra_compile_args = extra_compile_args
-    )
+        sources=sources,
+        include_dirs=include_dirs+[os.curdir],
+        libraries=libraries,
+        extra_compile_args=extra_compile_args)
 
 np_setup(**config.todict())
