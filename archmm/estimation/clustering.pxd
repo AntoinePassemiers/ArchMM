@@ -19,4 +19,5 @@ cdef ClusterSet perform_step(cnp.double_t[:, :] data,
                              cnp.double_t[:, :] centroids,
                              int n_clusters)
 cdef cnp.ndarray init_centroids(cnp.ndarray data, int k, method=*)
-cdef k_means(data, k, n_iter=*, init=*)
+cdef k_means_one_run(data, k, n_iter=*, init=*)
+cdef k_means(data, k, n_iter=*, init=*, n_runs=*)

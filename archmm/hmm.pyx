@@ -394,7 +394,7 @@ cdef class GHMM(HMM):
                 self.sigma[i] = np.cov(segment.T)
         elif self.arch == 'ergodic':
             # Apply clustering algorithm, and estimate Gaussian parameters
-            self.mu, indices = k_means(X, self.n_states)
+            self.mu, indices = k_means(X, self.n_states, n_runs=5)
             # self.mu, indices = scipy.cluster.vq.kmeans2(X, self.n_states)
 
             self.sigma = np.empty(

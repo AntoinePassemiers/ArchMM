@@ -124,7 +124,7 @@ cdef cnp.ndarray init_centroids(cnp.ndarray data, int k, method='gaussian'):
     return centroids
 
 
-cdef k_means(data, k, n_iter=10, init='gaussian'):
+cdef k_means_one_run(data, k, n_iter=10, init='gaussian'):
     """ Implementation of the k-means algorithm """
     cdef int n_dim = data.shape[1]
     cdef int i, j
@@ -141,3 +141,16 @@ cdef k_means(data, k, n_iter=10, init='gaussian'):
             clusters.cluster_mean(centroids[i, :], i)
     labels = np.asarray(clusters.get_labels()) if iterations > 0 else None
     return centroids, np.asarray(labels)
+
+
+cdef k_means(data, k, n_iter=10, init='gaussian', n_runs=5):
+    best_cost = np.inf
+    for i in range(n_runs):
+        centroids, labels = k_means_one_run(data, k, n_iter=n_iter, init=init)
+        # Evaluate k-means cost function
+        cost = sum([np.sqrt(np.sum((data[labels==c]-centroids[c])**2,
+            axis=1)).sum() for c in range(k)])
+        if cost < best_cost:
+            best_cost = cost
+            result = (centroids, labels)
+    return result
