@@ -66,7 +66,6 @@ for source_file in source_files:
 
 build_cmds = {'install', 'build', 'build_ext'}
 GOT_BUILD_CMD = len(set(sys.argv) & build_cmds) != 0
-GOT_TEST_CMD = "test" in sys.argv
 
 if USE_CYTHON and GOT_BUILD_CMD:
     # Setting "archmm" as the root package
@@ -81,9 +80,3 @@ if USE_CYTHON and GOT_BUILD_CMD:
 
 if GOT_BUILD_CMD:
     np_setup(**setup_args)
-
-if GOT_TEST_CMD:
-    test_path = os.path.join(os.path.realpath(__file__), "../archmm/tests")
-    for file in os.listdir(test_path):
-        if file.endswith(".py"):
-            subprocess.call(["nosetests", os.path.join(test_path, file)])

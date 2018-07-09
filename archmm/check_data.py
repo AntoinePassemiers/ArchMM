@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-import ctypes
+import collections
 
 from archmm.utils import *
 
-PYTHON_32_BITS_MODE = 32
-PYTHON_64_BITS_MODE = 64
-PYTHON_XX_BITS_MODE = ctypes.sizeof(ctypes.c_voidp) * 8
-
 SEQUENCE_ELEM_T = np.double
 INT_ELEM_T = np.int
+
+
+def is_iterable(obj):
+	return isinstance(obj, collections.Iterable)
+
 
 class TimeSeries3D:
 	def __init__(self):
