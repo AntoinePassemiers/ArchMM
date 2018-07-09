@@ -124,7 +124,7 @@ cdef cnp.ndarray init_centroids(cnp.ndarray data, int k, method='gaussian'):
     return centroids
 
 
-cdef k_means_one_run(data, k, n_iter=10, init='gaussian'):
+cdef k_means_one_run(data, k, n_iter, init):
     """ Implementation of the k-means algorithm """
     cdef int n_dim = data.shape[1]
     cdef int i, j
@@ -143,7 +143,7 @@ cdef k_means_one_run(data, k, n_iter=10, init='gaussian'):
     return centroids, np.asarray(labels)
 
 
-cdef k_means(data, k, n_iter=10, init='gaussian', n_runs=5):
+def k_means(data, k, n_iter=10, init='gaussian', n_runs=5):
     best_cost = np.inf
     for i in range(n_runs):
         centroids, labels = k_means_one_run(data, k, n_iter=n_iter, init=init)

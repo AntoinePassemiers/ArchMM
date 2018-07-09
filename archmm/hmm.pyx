@@ -395,7 +395,6 @@ cdef class GHMM(HMM):
         elif self.arch == 'ergodic':
             # Apply clustering algorithm, and estimate Gaussian parameters
             self.mu, indices = k_means(X, self.n_states, n_runs=5)
-            # self.mu, indices = scipy.cluster.vq.kmeans2(X, self.n_states)
 
             self.sigma = np.empty(
                 (n_samples, self.n_features, self.n_features), dtype=np_data_t)
@@ -527,10 +526,63 @@ cdef class GMMHMM(HMM):
             (self.n_states, self.n_components, self.n_features), dtype=np_data_t)
         self.sigma = np.empty(
             (self.n_states, self.n_components, self.n_features, self.n_features), dtype=np_data_t)
+        
         # TODO: random initialization
+        # TODO: make distinction between ergodic and linear
+
+        self.mu, indices = k_means(X, self.n_states, n_runs=5)
+        for i in range(self.n_states):
+            cluster = X[indices == i]
+            sub_mu, sub_indices = k_means(cluster, self.n_components, n_runs=5)
+            self.mu[i, :, :] = sub_mu
+            for c in range(self.n_components):
+                tmp = np.cov(cluster[sub_indices == c].T)
+                for j in range(self.n_features):
+                    for k in range(self.n_features):
+                        self.sigma[i, c, j, k] = tmp[j, k]
+                self.weights = len(tmp)
+            # Normalize weights per cluster
+            self.weights[i, :] /= np.sum(self.weights[i, :])
+
+        # Estimate start and transition probabilities
+        self.initial_probs = np.tile(1.0 / self.n_states, self.n_states)
+        self.transition_probs = np.random.dirichlet([1.0] * self.n_states, self.n_states)
     
     def emission_log_proba(self, X):
-        pass # TODO
+        mu = np.asarray(self.mu)
+        sigma = np.asarray(self.sigma)
+        weights = np.asarray(self.weights)
+
+        n_samples, n_features = X.shape[0], X.shape[1] 
+        n_states = mu.shape[0]
+        lnf = np.empty((n_samples, n_states), dtype=np_data_t)
+
+        for k in range(n_states):
+            lnf_by_component = np.empty(n_samples, self.n_components, dtype=np_data_t)
+            for c in range(self.n_components):
+                try:
+                    cholesky = scipy.linalg.cholesky(
+                        sigma[k, :, :], lower=True, check_finite=True)
+                except scipy.linalg.LinAlgError:
+                    mcv = 1.e-7
+                    is_not_spd = True
+                    while is_not_spd:
+                        try:
+                            cholesky = scipy.linalg.cholesky(
+                                sigma[k, :, :] + mcv * np.eye(n_features),
+                                lower=True, check_finite=True)
+                            is_not_spd = False
+                        except scipy.linalg.LinAlgError:
+                            mcv *= 10
+
+                log_det = 2 * np.sum(np.log(np.diagonal(cholesky)))
+                mahalanobis = scipy.linalg.solve_triangular(
+                    cholesky, (np.asarray(X) - np.asarray(mu[k, c, :])).T, lower=True).T
+                lnf_by_component[:, c] = -0.5 * (np.sum(mahalanobis ** 2, axis=1) + \
+                    n_features * np.log(2 * np.pi) + log_det)
+            
+            # TODO: update lnf[:, k] with vectorized elogsum
+        return lnf
 
     def nan_to_zeros(self):
         np.asarray(self.weights)[np.isnan(self.weights)] = ZERO
