@@ -1,3 +1,4 @@
+[![Travis-CI Build Status](https://travis-ci.org/AntoinePassemiers/ArchMM.svg?branch=master)](https://travis-ci.org/AntoinePassemiers/ArchMM)
 A r c h M M
 ===========
 ArchMM (Architectural Markov Models) is a Cython library for machine learning and data analysis where most of the models and 
