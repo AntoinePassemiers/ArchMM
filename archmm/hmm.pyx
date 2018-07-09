@@ -540,9 +540,9 @@ cdef class GMMHMM(HMM):
                 for j in range(self.n_features):
                     for k in range(self.n_features):
                         self.sigma[i, c, j, k] = tmp[j, k]
-                self.weights = len(tmp)
+                self.weights[i, c] = len(tmp)
             # Normalize weights per cluster
-            self.weights[i, :] /= np.sum(self.weights[i, :])
+            self.weights[i, :] = self.weights[i, :] + np.sum(self.weights[i, :])
 
         # Estimate start and transition probabilities
         self.initial_probs = np.tile(1.0 / self.n_states, self.n_states)
