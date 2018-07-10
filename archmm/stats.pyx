@@ -36,7 +36,6 @@ def gaussian_log_proba(X, mu, sigma):
                 is_not_spd = False
             except scipy.linalg.LinAlgError:
                 mcv *= 10
-
     log_det = 2 * np.sum(np.log(np.diagonal(cholesky)))
     mahalanobis = scipy.linalg.solve_triangular(
         cholesky, (np.asarray(X) - np.asarray(mu)).T, lower=True).T

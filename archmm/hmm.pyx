@@ -21,7 +21,7 @@ import scipy.cluster
 
 from archmm.estimation.cpd import *
 from archmm.estimation.cpd cimport *
-from archmm.estimation.clustering cimport *
+from archmm.estimation.clustering import k_means
 from archmm.stats import np_data_t, gaussian_log_proba
 
 cdef data_t INF = <data_t>np.inf

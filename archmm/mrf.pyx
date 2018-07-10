@@ -41,14 +41,19 @@ cdef inline double doubleton_potential(size_t pixel_label, size_t neighbor_label
 
 cdef inline double neighborhood_doubleton_potential(
     size_t i, size_t j, cnp.int_t[:, :] omega, cnp.int_t[:, :] clique, float beta, size_t c) nogil:
-
-    cdef Py_ssize_t k, l
+    cdef int hh = clique.shape[0] // 2 # Half clique height
+    cdef int hw = clique.shape[1] // 2 # Half clique width
+    cdef Py_ssize_t k, l, n_neighbors = 0
     cdef double potential = 0.0
-    for k in range(i-1, i+2):
-        if 0 <= k < omega.shape[0]:
-            for l in range(j-1, j+2):
-                if (0 <= l < omega.shape[1]) and (k != i or l != j):
-                    potential += doubleton_potential(c, omega[k, l], beta)
+    for k in range(<int>libc.math.fmax(<double>i-hh, <double>0), \
+            <int>libc.math.fmin(<double>omega.shape[0], <double>i+hh+1)):
+        for l in range(<int>libc.math.fmax(<double>j-hw, <double>0), \
+                <int>libc.math.fmin(<double>omega.shape[1], <double>j+hw+1)):
+            if k != i or l != j:
+                potential += doubleton_potential(c, omega[k, l], beta)
+                n_neighbors += 1
+    if n_neighbors > 0:
+        potential /= <double>n_neighbors
     return potential
 
 
@@ -133,7 +138,7 @@ def simulated_annealing(parameters, img, label_weights, clique=FIRST_ORDER_CLIQU
 class MarkovRandomField:
 
     def __init__(self, clique=FIRST_ORDER_CLIQUE, 
-        max_n_iter=50, beta=0.07, threshold=0.0, n_threads=1):
+        max_n_iter=50, beta=0.07, t0=10.0, dq=0.95, threshold=0.0, n_threads=1):
         """
         Args:
             threshold (double):
@@ -162,6 +167,8 @@ class MarkovRandomField:
 
         self.n_classes = 2
         self.beta = beta
+        self.t0 = t0
+        self.dq = dq
         self.max_n_iter = max_n_iter
         self.threshold = threshold
         self.n_threads = n_threads
@@ -215,8 +222,8 @@ class MarkovRandomField:
         predictions = list()
         for x in X:
             omega, potentials, sp, dp = simulated_annealing(
-                self.parameters, x, self.label_weights,
-                clique=self.clique, beta=self.beta, max_n_iter=self.max_n_iter)
+                self.parameters, x, self.label_weights, clique=self.clique,
+                beta=self.beta, max_n_iter=self.max_n_iter, T0=self.t0, dq=self.dq)
             
             if rettype == 'proba':
                 proba = np.empty_like(potentials)
