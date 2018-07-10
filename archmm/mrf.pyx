@@ -232,6 +232,10 @@ class MarkovRandomField:
                 predictions.append(np.nan_to_num(proba))
             elif rettype == 'energy':
                 predictions.append(np.asarray(potentials))
+            elif rettype == 'sp':
+                predictions.append(np.asarray(sp))
+            elif rettype == 'dp':
+                predictions.append(np.asarray(dp))
             else:
                 predictions.append(np.asarray(omega))
         return predictions
