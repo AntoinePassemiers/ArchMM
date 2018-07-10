@@ -24,7 +24,6 @@ from archmm.estimation.cpd cimport *
 from archmm.estimation.clustering cimport *
 
 
-ctypedef cnp.double_t data_t
 np_data_t = np.double
 
 cdef data_t INF = <data_t>np.inf
@@ -99,16 +98,6 @@ cdef class HMM:
         University of Surrey, Guildford GU2 7XH.
         http://homepages.inf.ed.ac.uk/rbf/IAPR/researchers/D2PAGES/TUTORIALS/hmm_isspr.pdf
     """
-
-    cdef str arch
-    cdef int n_states
-    cdef int n_features
-
-    cdef cnp.int_t[:, ::1] transition_mask
-    cdef data_t[::1] initial_probs
-    cdef data_t[:, ::1] transition_probs
-    cdef data_t[::1] ln_initial_probs
-    cdef data_t[:, ::1] ln_transition_probs
 
     def __init__(self, n_states, arch='ergodic'):
         self.n_states = n_states
