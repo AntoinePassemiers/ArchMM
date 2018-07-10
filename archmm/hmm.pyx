@@ -22,9 +22,7 @@ import scipy.cluster
 from archmm.estimation.cpd import *
 from archmm.estimation.cpd cimport *
 from archmm.estimation.clustering cimport *
-
-
-np_data_t = np.double
+from archmm.stats import np_data_t, gaussian_log_proba
 
 cdef data_t INF = <data_t>np.inf
 cdef data_t LOG_ZERO = -INF
@@ -406,34 +404,11 @@ cdef class GHMM(HMM):
         self.ln_transition_probs = np.log(np.asarray(self.transition_probs))
 
     def emission_log_proba(self, X):
-        mu = np.asarray(self.mu)
-        sigma = np.asarray(self.sigma)
-
         n_samples, n_features = X.shape[0], X.shape[1] 
-        n_states = mu.shape[0]
+        n_states = self.mu.shape[0]
         lnf = np.empty((n_samples, n_states), dtype=np_data_t)
-
         for k in range(n_states):
-            try:
-                cholesky = scipy.linalg.cholesky(
-                    sigma[k, :, :], lower=True, check_finite=True)
-            except scipy.linalg.LinAlgError:
-                mcv = 1.e-7
-                is_not_spd = True
-                while is_not_spd:
-                    try:
-                        cholesky = scipy.linalg.cholesky(
-                            sigma[k, :, :] + mcv * np.eye(n_features),
-                            lower=True, check_finite=True)
-                        is_not_spd = False
-                    except scipy.linalg.LinAlgError:
-                        mcv *= 10
-
-            log_det = 2 * np.sum(np.log(np.diagonal(cholesky)))
-            mahalanobis = scipy.linalg.solve_triangular(
-                cholesky, (np.asarray(X) - np.asarray(mu[k, :])).T, lower=True).T
-            lnf[:, k] = -0.5 * (np.sum(mahalanobis ** 2, axis=1) + \
-                n_features * np.log(2 * np.pi) + log_det)
+            lnf[:, k] = gaussian_log_proba(X, self.mu[k, :], self.sigma[k, :, :])
         return lnf
     
     def nan_to_zeros(self):
@@ -538,37 +513,14 @@ cdef class GMMHMM(HMM):
         self.transition_probs = np.random.dirichlet([1.0] * self.n_states, self.n_states)
     
     def emission_log_proba(self, X):
-        mu = np.asarray(self.mu)
-        sigma = np.asarray(self.sigma)
-        weights = np.asarray(self.weights)
-
         n_samples, n_features = X.shape[0], X.shape[1] 
         n_states = mu.shape[0]
         lnf = np.empty((n_samples, n_states), dtype=np_data_t)
-
         for k in range(n_states):
             lnf_by_component = np.empty(n_samples, self.n_components, dtype=np_data_t)
             for c in range(self.n_components):
-                try:
-                    cholesky = scipy.linalg.cholesky(
-                        sigma[k, :, :], lower=True, check_finite=True)
-                except scipy.linalg.LinAlgError:
-                    mcv = 1.e-7
-                    is_not_spd = True
-                    while is_not_spd:
-                        try:
-                            cholesky = scipy.linalg.cholesky(
-                                sigma[k, :, :] + mcv * np.eye(n_features),
-                                lower=True, check_finite=True)
-                            is_not_spd = False
-                        except scipy.linalg.LinAlgError:
-                            mcv *= 10
-
-                log_det = 2 * np.sum(np.log(np.diagonal(cholesky)))
-                mahalanobis = scipy.linalg.solve_triangular(
-                    cholesky, (np.asarray(X) - np.asarray(mu[k, c, :])).T, lower=True).T
-                lnf_by_component[:, c] = -0.5 * (np.sum(mahalanobis ** 2, axis=1) + \
-                    n_features * np.log(2 * np.pi) + log_det)
+                lnf_by_component[:, c] = gaussian_log_proba(
+                    X, self.mu[k, c, :], self.sigma[k, c, :, :])
             
             # TODO: update lnf[:, k] with vectorized elogsum
         return lnf

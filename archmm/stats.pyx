@@ -17,6 +17,34 @@ import scipy.stats
 from archmm.check_data import is_iterable
 
 
+np_data_t = np.double
+
+
+def gaussian_log_proba(X, mu, sigma):
+    n_features = X.shape[1]
+    try:
+        cholesky = scipy.linalg.cholesky(
+            sigma, lower=True, check_finite=True)
+    except scipy.linalg.LinAlgError:
+        mcv = 1.e-7
+        is_not_spd = True
+        while is_not_spd:
+            try:
+                cholesky = scipy.linalg.cholesky(
+                    sigma + mcv * np.eye(n_features),
+                    lower=True, check_finite=True)
+                is_not_spd = False
+            except scipy.linalg.LinAlgError:
+                mcv *= 10
+
+    log_det = 2 * np.sum(np.log(np.diagonal(cholesky)))
+    mahalanobis = scipy.linalg.solve_triangular(
+        cholesky, (np.asarray(X) - np.asarray(mu)).T, lower=True).T
+    lnf = -0.5 * (np.sum(mahalanobis ** 2, axis=1) + \
+        n_features * np.log(2 * np.pi) + log_det)
+    return lnf.astype(np_data_t)
+
+
 class MCMC:
 
     def __init__ (self, pdf, start, proposal=None, dtype=np.double):

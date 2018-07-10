@@ -63,11 +63,11 @@ def pyLogsum(x):
 
 
 def create_buffer_list(X, shape, dtype):
-    l = list()
+    buffer_list = list()
     for sequence in X:
         buffer_shape = tuple([len(sequence)] + list(shape))
-        l.append(np.empty(buffer_shape, dtype=dtype))
-    return l
+        buffer_list.append(np.empty(buffer_shape, dtype=dtype))
+    return buffer_list
 
 
 cdef class IOHMM(HMM):
