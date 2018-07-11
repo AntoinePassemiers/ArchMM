@@ -15,6 +15,7 @@ cnp.import_array()
 cimport libc.math
 from cython.parallel import parallel, prange
 
+import copy
 from abc import abstractmethod
 import scipy.linalg
 import scipy.cluster
@@ -73,6 +74,15 @@ cdef inline void eexp2d(data_t[:, :] dest, data_t[:, :] src) nogil:
                 if src[i, j] != LOG_ZERO else 0.0
 
 
+cdef inline void eexp3d(data_t[:, :, :] dest, data_t[:, :, :] src) nogil:
+    cdef int i, j, k
+    for i in range(src.shape[0]):
+        for j in range(src.shape[1]):
+            for k in range(src.shape[2]):
+                dest[i, j, k] = libc.math.exp(src[i, j, k]) \
+                    if src[i, j, k] != LOG_ZERO else 0.0
+
+
 cdef inline void elog1d(data_t[:] dest, data_t[:] src) nogil:
     cdef int i
     for i in range(src.shape[0]):
@@ -86,6 +96,14 @@ cdef inline void elog2d(data_t[:, :] dest, data_t[:, :] src) nogil:
         for j in range(src.shape[1]):
             dest[i, j] = libc.math.log(
                 src[i, j]) if src[i, j] != 0 else LOG_ZERO
+
+
+def create_buffer_list(X, shape, dtype):
+    buffer_list = list()
+    for sequence in X:
+        buffer_shape = tuple([len(sequence)] + list(shape))
+        buffer_list.append(np.empty(buffer_shape, dtype=dtype))
+    return buffer_list
 
 
 cdef class HMM:
@@ -120,7 +138,7 @@ cdef class HMM:
     def emission_log_proba(self, X):
         pass # TODO: ABSTRACT METHOD
     
-    def update_emission_params(self, X, gamma):
+    def update_emission_params(self, X, gamma_s):
         pass # TODO: ABSTRACT METHOD
     
     cdef data_t[::1] sample_one_from_state(self, int state_id) nogil:
@@ -161,7 +179,8 @@ cdef class HMM:
                     ln_beta[t, i] = elogsum(tmp)
         return elogsum(np.asarray(ln_beta[0, :]) + np.asarray(lnf[0, :]) + np.asarray(self.ln_initial_probs))
 
-    cdef e_step(self, data_t[:, ::1] lnf,
+    cdef e_step(self,
+                data_t[:, ::1] lnf,
                 data_t[:, ::1] ln_alpha,
                 data_t[:, ::1] ln_beta,
                 data_t[:, ::1] ln_gamma,
@@ -188,54 +207,78 @@ cdef class HMM:
                     ln_gamma[t, i] = ln_alpha[t, i] + ln_beta[t, i] - lnP_f
         return lnP_f
 
-    def baum_welch(self, X, max_n_iter=100, eps=1e-04):  
-        n_samples = X.shape[0]
-        cpdef data_t[:, ::1] ln_alpha = np.zeros((n_samples, self.n_states))
-        cpdef data_t[:, ::1] ln_beta = np.zeros((n_samples, self.n_states))
-        cpdef data_t[:, ::1] ln_gamma = np.zeros((n_samples, self.n_states))
-        cpdef data_t[:, :, ::1] ln_xi = np.zeros((n_samples, self.n_states, self.n_states))
-        cpdef data_t[:, ::1] lnf
-        cdef int k, l
+    def baum_welch(self, X_s, max_n_iter=100, eps=1e-04):
+        n_sequences = len(X_s)
+        ln_alpha_s = create_buffer_list(X_s, (self.n_states,), np_data_t)
+        ln_beta_s = create_buffer_list(X_s, (self.n_states,), np_data_t)
+        ln_gamma_s = create_buffer_list(X_s, (self.n_states,), np_data_t)
+        ln_xi_s = create_buffer_list(X_s, (self.n_states, self.n_states), np_data_t)
+        lnf_s = [None for i in range(n_sequences)]
+        lnP_s = np.empty(n_sequences) # Log-likelihood of each sequence
+
+        cdef data_t[:] den, num
 
         old_F = 1.0e20
         for i in range(max_n_iter):
             print("\tIteration %i" % i)
 
-            lnf = self.emission_log_proba(X)
-            lnP = self.e_step(lnf, ln_alpha, ln_beta, ln_gamma, ln_xi)
+            # Apply E-step on each sequence individually
+            for j in range(n_sequences):
+                lnf_s[j] = self.emission_log_proba(X_s[j])
+                lnP_s[j] = self.e_step(
+                    lnf_s[j], ln_alpha_s[j], ln_beta_s[j], ln_gamma_s[j], ln_xi_s[j])
+            
+            # Check log-likelihood of the data
+            lnP = np.sum(lnP_s)
             F = -lnP
             dF = F - old_F
             if(np.abs(dF) < <long>eps):
                 break
             old_F = F
-            gamma = np.empty_like(ln_gamma)
-            eexp2d(gamma, ln_gamma)
 
-            self.initial_probs = gamma[0, :]
+            # Compute posteriors
+            gamma_s = copy.deepcopy(ln_gamma_s)
+            for j in range(n_sequences):
+                eexp2d(gamma_s[j], ln_gamma_s[j])
+
+            # Compute state start probabilities            
+            self.initial_probs[:] = 0
+            for p in range(n_sequences):
+                self.initial_probs += gamma_s[p][0, :]
             self.initial_probs /= np.sum(self.initial_probs)
             elog1d(self.ln_initial_probs, self.initial_probs)
 
-            with nogil:
-                for k in range(self.n_states):
-                    for l in range(self.n_states): 
-                        self.ln_transition_probs[k, l] = \
-                            elogsum(ln_xi[1:, k, l]) - elogsum(ln_gamma[:-1, k])
+            # Compute state transition probabilities
+            for k in range(self.n_states):
+                for l in range(self.n_states):
+                    num = np.concatenate([
+                        ln_xi_s[p][1:, k, l] for p in range(n_sequences)]).astype(np_data_t)
+                    den = np.concatenate([
+                        ln_gamma_s[p][:-1, k] for p in range(n_sequences)]).astype(np_data_t)
+                    self.ln_transition_probs[k, l] = elogsum(num) - elogsum(den)
             self.ln_transition_probs = np.nan_to_num(self.ln_transition_probs)
             eexp2d(self.transition_probs, self.ln_transition_probs)
             np.asarray(self.transition_probs)[np.isnan(self.transition_probs)] = ZERO
             self.transition_probs /= np.sum(self.transition_probs, axis=1)[:, None]
 
             # Update emission parameters (for example, Gaussian parameters)
-            self.update_emission_params(X, gamma)
+            self.update_emission_params(X_s, gamma_s)
 
-    def fit(self, X, **kwargs):
-        # TODO: CHECK X
-        if len(X.shape) == 1:
+    def fit(self, X_s, **kwargs):
+        if isinstance(X_s, np.ndarray):
+            X_s = [X_s]
+        elif not isinstance(X_s, list):
+            # TODO: raise exception
+            pass
+        # TODO: if empty list, raise exception
+        first_seq = X_s[0]
+        if len(first_seq.shape) == 1:
             self.n_features = 1
         else:
-            self.n_features = X.shape[1]
-        self.estimate_params(X)
-        self.baum_welch(X, **kwargs)
+            self.n_features = first_seq.shape[1]
+        # TODO: if parameters set by hand, do not pre-estimate parameters
+        self.estimate_params(X_s)
+        self.baum_welch(X_s, **kwargs)
     
     def log_likelihood(self, X):
         # TODO: CHECK X
@@ -250,7 +293,6 @@ cdef class HMM:
 
         gamma = np.empty_like(ln_gamma)
         eexp2d(gamma, ln_gamma)
-    
         return lnP, gamma
 
     def decode(self, X):
@@ -340,16 +382,16 @@ cdef class GHMM(HMM):
     def __init__(self, n_states, arch='ergodic'):
         HMM.__init__(self, n_states, arch=arch)
 
-    def estimate_params(self, X):
-        n_samples = X.shape[0]
-        self.n_features = X.shape[1]
+    def estimate_params(self, X_s):
+        first_seq = X_s[0]
+        self.n_features = first_seq.shape[1]
 
         self.mu = np.empty(
             (self.n_states, self.n_features), dtype=np_data_t)
         self.sigma = np.empty(
             (self.n_states, self.n_features, self.n_features), dtype=np_data_t)
 
-        if self.arch == 'linear':
+        if self.arch == 'linear' and False: # TODO
             # Make Change Point Detection
             """
             cpdetector  = GraphTheoreticDetector(
@@ -381,13 +423,13 @@ cdef class GHMM(HMM):
                 self.sigma[i] = np.cov(segment.T)
         elif self.arch == 'ergodic':
             # Apply clustering algorithm, and estimate Gaussian parameters
-            self.mu, indices = k_means(X, self.n_states, n_runs=5)
+            X_concatenated = np.concatenate(X_s, axis=0)
+            self.mu, indices = k_means(X_concatenated, self.n_states, n_runs=5)
 
             self.sigma = np.empty(
-                (n_samples, self.n_features, self.n_features), dtype=np_data_t)
-            n_features = X.shape[1]
+                (self.n_states, self.n_features, self.n_features), dtype=np_data_t)
             for i in range(self.n_states):
-                tmp = np.cov(X[indices == i].T)
+                tmp = np.cov(X_concatenated[indices == i].T)
                 for j in range(self.n_features):
                     for k in range(self.n_features):
                         self.sigma[i, j, k] = tmp[j, k]
@@ -395,10 +437,8 @@ cdef class GHMM(HMM):
             # Estimate start and transition probabilities
             self.initial_probs = np.tile(1.0 / self.n_states, self.n_states)
             self.transition_probs = np.random.dirichlet([1.0] * self.n_states, self.n_states)
-        
         else:
             pass # TODO: Exception: unknown arch
-
 
         self.ln_initial_probs = np.log(np.asarray(self.initial_probs))
         self.ln_transition_probs = np.log(np.asarray(self.transition_probs))
@@ -415,34 +455,65 @@ cdef class GHMM(HMM):
         np.asarray(self.mu)[np.isnan(self.mu)] = ZERO
         np.asarray(self.sigma)[np.isnan(self.sigma)] = ZERO
 
-    def update_emission_params(self, X, gamma):
+    def update_emission_params(self, X_s, gamma_s):
+        n_sequences = len(X_s)
         self.nan_to_zeros()
-        n_samples, n_features = X.shape[0], X.shape[1]
         for k in range(self.n_states):
-            # Compute denominator for means and covariances
+
+            X = X_s[0]
+            gamma = gamma_s[0]
+            n_samples, n_features = X.shape[0], X.shape[1]
+
             posteriors = gamma[:, k]
             post_sum = posteriors.sum()
             norm = 1.0 / post_sum if post_sum != 0.0 else 1. # TODO
 
-            # Update covariance matrix of state k
-            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
             covs = list()
             for t in range(n_samples):
                 diff = X[t, :] - self.mu[k, :]
                 covs.append(np.outer(diff, diff))
             covs = np.transpose(np.asarray(covs), (1, 2, 0))
             temp = np.sum(covs * posteriors, axis=2)
-
-            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
+            
             for j in range(n_features):
                 for l in range(n_features):
                     self.sigma[k, j, l] = temp[j, l]
-
-            # Update mean of state k
-            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
             temp = np.dot(posteriors, X) * norm
             for j in range(n_features):
                 self.mu[k, j] = temp[j]
+
+            """
+            # Posterior probabilities for state k
+            posteriors = [gamma[:, k] for gamma in gamma_s]
+
+            # Update covariance matrix
+            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
+            self.sigma[:, :, :] = 0
+            for i in range(n_sequences):
+                covs = list()
+                n_samples = X_s[i].shape[0]
+                for t in range(n_samples):
+                    diff = X_s[i][t, :] - self.mu[k, :]
+                    covs.append(np.outer(diff, diff))
+                covs = np.transpose(np.asarray(covs), (1, 2, 0))
+                temp = np.sum(covs * posteriors, axis=2)
+                for j in range(self.n_features):
+                    for l in range(self.n_features):
+                        self.sigma[k, j, l] += temp[j, l]
+            for j in range(self.n_features):
+                for l in range(self.n_features):
+                    self.sigma[k, j, l] = self.sigma[k, j, l] / np.sum(self.sigma[k, j, :])
+            
+            # Update mean vector
+            self.mu[k, :] = 0
+            for i in range(n_sequences):
+                tmp = np.dot(posteriors[i], X_s[i])
+                for l in range(self.n_features):
+                    self.mu[k, l] += tmp[l]
+            norm = np.sum(tmp)
+            for l in range(self.n_features): 
+                self.mu[k, l] /= norm
+            """
 
         self.nan_to_zeros()
     
@@ -483,7 +554,7 @@ cdef class GMMHMM(HMM):
         HMM.__init__(self, n_states, arch=arch)
         self.n_components = n_components
 
-    def estimate_params(self, X):
+    def estimate_params(self, X_s):
         self.n_features = X.shape[1]
         self.weights = np.empty((self.n_states, self.n_components), dtype=np_data_t)
         self.mu = np.empty(
@@ -494,9 +565,10 @@ cdef class GMMHMM(HMM):
         # TODO: random initialization
         # TODO: make distinction between ergodic and linear
 
-        self.mu, indices = k_means(X, self.n_states, n_runs=5)
+        X_concatenated = np.concatenate(X_s, axis=0)
+        self.mu, indices = k_means(X_concatenated, self.n_states, n_runs=5)
         for i in range(self.n_states):
-            cluster = X[indices == i]
+            cluster = X_concatenated[indices == i]
             sub_mu, sub_indices = k_means(cluster, self.n_components, n_runs=5)
             self.mu[i, :, :] = sub_mu
             for c in range(self.n_components):
@@ -530,8 +602,8 @@ cdef class GMMHMM(HMM):
         np.asarray(self.mu)[np.isnan(self.mu)] = ZERO
         np.asarray(self.sigma)[np.isnan(self.sigma)] = ZERO
     
-    def update_emission_params(self, X, gamma):
-        n_samples = len(X)
+    def update_emission_params(self, X_s, gamma_s):
+        n_sequences = len(X_s)
         _gamma = np.empty((n_samples, self.n_states, self.n_components), dtype=np_data_t)
         _gamma[:, :, :] = gamma
     
@@ -572,9 +644,10 @@ cdef class MHMM(HMM):
     def __init__(self, n_states, arch='ergodic'):
         HMM.__init__(self, n_states, arch=arch)
 
-    def estimate_params(self, X):
+    def estimate_params(self, X_s):
         # TODO: CHECK X
-        self.n_unique = len(np.unique(np.squeeze(X)))
+        X_concatenated = np.concatenate(X_s, axis=0)
+        self.n_unique = len(np.unique(np.squeeze(X_concatenated)))
         self.proba = np.random.rand(self.n_states, self.n_unique).astype(np_data_t)
         self.proba /= np.sum(self.proba, axis=1)[:, None]
         # TODO: estimation algorithms
@@ -599,8 +672,9 @@ cdef class MHMM(HMM):
     def nan_to_zeros(self):
         np.asarray(self.proba)[np.isnan(self.proba)] = ZERO
     
-    def update_emission_params(self, X, gamma):
+    def update_emission_params(self, X_s, gamma_s):
         self.nan_to_zeros()
+        n_sequences = len(X_s)
 
         # TODO: OPTIMIZATION WITH A NOGIL BLOCK
         for k in range(self.n_states):

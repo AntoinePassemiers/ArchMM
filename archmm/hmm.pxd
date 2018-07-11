@@ -33,7 +33,8 @@ cdef class HMM:
                          data_t[:, ::1] lnf,
                          data_t[:, ::1] ln_beta,
                          data_t[::1] tmp)
-    cdef e_step(self, data_t[:, ::1] lnf,
+    cdef e_step(self,
+                data_t[:, ::1] lnf,
                 data_t[:, ::1] ln_alpha,
                 data_t[:, ::1] ln_beta,
                 data_t[:, ::1] ln_gamma,

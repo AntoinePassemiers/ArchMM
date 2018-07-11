@@ -12,10 +12,12 @@ if __name__ == '__main__':
     X[:50, 2] += 78
     X[50:100, 7] -= 98
 
-    hmm.fit(X, max_n_iter=20)
+    hmm.fit(X, max_n_iter=3)
 
     print(hmm)
 
+    print(hmm.pi)
+    print(hmm.a)
     print(hmm.mu)
     print(hmm.decode(X))
     print(hmm.score(X))
