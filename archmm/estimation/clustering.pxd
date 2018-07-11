@@ -5,7 +5,7 @@ cimport numpy as cnp
 
 cdef class ClusterSet:
     cdef cnp.double_t[:, :] data
-    cdef int[:, :] clusters
+    cdef cnp.int_t[:, :] clusters
     cdef size_t* cluster_sizes
     cdef size_t n_clusters, n_points, point_dim
 

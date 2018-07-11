@@ -30,7 +30,7 @@ cdef class ClusterSet:
         self.n_clusters = n_clusters
         self.n_points = n_points
         self.point_dim = point_dim
-        self.clusters = np.empty((n_clusters, n_points), dtype=int)
+        self.clusters = np.empty((n_clusters, n_points), dtype=np.int)
         self.cluster_sizes = <size_t*>calloc(n_clusters, sizeof(size_t))
             
     def __dealloc__(self):
