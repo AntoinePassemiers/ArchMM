@@ -2,7 +2,7 @@ language: python
 python:
   - "3.6"
 before_install:
-  - pip install -q cython numpy
+  - pip install -q cython numpy scipy
 install: make
 script: pytest test/test.py
 notifications:
