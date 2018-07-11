@@ -2,9 +2,7 @@
 !*_.c
 *.pyc
 *.pyd
-*.arctree
+
 build/
 .idea/
-_site/
-articles/
-plots/
+.cache/
