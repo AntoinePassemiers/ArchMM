@@ -28,11 +28,11 @@ if __name__ == '__main__':
     X2[:50, 7] -= 98
     X = [X1, X2]
 
-    # Display summary
-    print(hmm)
-
     # Fit the 2 sequences
     hmm.fit(X, max_n_iter=3)
+
+    # Display summary
+    print(hmm)
 
     # The two sequences started in different states
     # We expect the start probabilities to be a permutation

@@ -262,7 +262,9 @@ cdef class HMM:
             self.transition_probs /= np.sum(self.transition_probs, axis=1)[:, None]
 
             # Update emission parameters (for example, Gaussian parameters)
-            self.update_emission_params(X_s, gamma_s)
+            X = np.concatenate(X_s, axis=0)
+            gamma = np.concatenate(gamma_s, axis=0)
+            self.update_emission_params(X, gamma)
 
     def fit(self, X_s, **kwargs):
         if isinstance(X_s, np.ndarray):
@@ -300,6 +302,7 @@ cdef class HMM:
         return gamma.argmax(axis=1)
 
     def get_num_params(self):
+        # TODO: what to do if self.fit has not yet been called ?
         n_emission_params = self.get_num_params_per_state() * self.n_states
         n_start_params = self.n_states - 1
         n_transition_params = self.n_states * (self.n_states - 1)
@@ -455,66 +458,34 @@ cdef class GHMM(HMM):
         np.asarray(self.mu)[np.isnan(self.mu)] = ZERO
         np.asarray(self.sigma)[np.isnan(self.sigma)] = ZERO
 
-    def update_emission_params(self, X_s, gamma_s):
-        n_sequences = len(X_s)
+    def update_emission_params(self, X, gamma):
         self.nan_to_zeros()
+        n_samples, n_features = X.shape[0], X.shape[1]
         for k in range(self.n_states):
-
-            X = X_s[0]
-            gamma = gamma_s[0]
-            n_samples, n_features = X.shape[0], X.shape[1]
-
+            # Compute denominator for means and covariances
             posteriors = gamma[:, k]
             post_sum = posteriors.sum()
             norm = 1.0 / post_sum if post_sum != 0.0 else 1. # TODO
 
+            # Update covariance matrix of state k
+            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
             covs = list()
             for t in range(n_samples):
                 diff = X[t, :] - self.mu[k, :]
                 covs.append(np.outer(diff, diff))
             covs = np.transpose(np.asarray(covs), (1, 2, 0))
             temp = np.sum(covs * posteriors, axis=2)
-            
+
+            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
             for j in range(n_features):
                 for l in range(n_features):
                     self.sigma[k, j, l] = temp[j, l]
+
+            # Update mean of state k
+            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
             temp = np.dot(posteriors, X) * norm
             for j in range(n_features):
                 self.mu[k, j] = temp[j]
-
-            """
-            # Posterior probabilities for state k
-            posteriors = [gamma[:, k] for gamma in gamma_s]
-
-            # Update covariance matrix
-            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
-            self.sigma[:, :, :] = 0
-            for i in range(n_sequences):
-                covs = list()
-                n_samples = X_s[i].shape[0]
-                for t in range(n_samples):
-                    diff = X_s[i][t, :] - self.mu[k, :]
-                    covs.append(np.outer(diff, diff))
-                covs = np.transpose(np.asarray(covs), (1, 2, 0))
-                temp = np.sum(covs * posteriors, axis=2)
-                for j in range(self.n_features):
-                    for l in range(self.n_features):
-                        self.sigma[k, j, l] += temp[j, l]
-            for j in range(self.n_features):
-                for l in range(self.n_features):
-                    self.sigma[k, j, l] = self.sigma[k, j, l] / np.sum(self.sigma[k, j, :])
-            
-            # Update mean vector
-            self.mu[k, :] = 0
-            for i in range(n_sequences):
-                tmp = np.dot(posteriors[i], X_s[i])
-                for l in range(self.n_features):
-                    self.mu[k, l] += tmp[l]
-            norm = np.sum(tmp)
-            for l in range(self.n_features): 
-                self.mu[k, l] /= norm
-            """
-
         self.nan_to_zeros()
     
     cdef data_t[::1] sample_one_from_state(self, int state_id) nogil:
@@ -602,7 +573,7 @@ cdef class GMMHMM(HMM):
         np.asarray(self.mu)[np.isnan(self.mu)] = ZERO
         np.asarray(self.sigma)[np.isnan(self.sigma)] = ZERO
     
-    def update_emission_params(self, X_s, gamma_s):
+    def update_emission_params(self, X, gamma):
         n_sequences = len(X_s)
         _gamma = np.empty((n_samples, self.n_states, self.n_components), dtype=np_data_t)
         _gamma[:, :, :] = gamma
@@ -672,9 +643,8 @@ cdef class MHMM(HMM):
     def nan_to_zeros(self):
         np.asarray(self.proba)[np.isnan(self.proba)] = ZERO
     
-    def update_emission_params(self, X_s, gamma_s):
+    def update_emission_params(self, X, gamma):
         self.nan_to_zeros()
-        n_sequences = len(X_s)
 
         # TODO: OPTIMIZATION WITH A NOGIL BLOCK
         for k in range(self.n_states):

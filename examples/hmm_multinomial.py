@@ -5,6 +5,9 @@ from archmm.hmm import MHMM
 
 if __name__ == '__main__':
 
+    # Only ergodic topology is supported for the moment
+    # Performance will be much higher on this example
+    # once left-to-right topologies will be fully implemented
     hmm = MHMM(3, arch='ergodic')
 
     X = np.empty(150)
@@ -16,6 +19,14 @@ if __name__ == '__main__':
     hmm.fit(X, max_n_iter=20)
 
     print(hmm)
+
+    print("\nState start probabilities:")
+    print(hmm.pi)
+    print("\nState transition probabilities:")
+    print(hmm.a)
+
+    print("\nEmission probabilities:")
+    print(hmm.proba)
 
     print(hmm.decode(X))
 

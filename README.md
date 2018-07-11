@@ -110,7 +110,7 @@ python setup.py install
 
 - [ ] Docstrings and automatic doc generation
 - [ ] IO-HMM: Get rid of theano backend and implement mlp from scratch
-- [ ] Multi-sequence support for HMMs
+- [x] Multi-sequence support for HMMs
 - [ ] Working with missing values
 - [ ] Finish implementing GMM-HMM
 - [ ] Use nogil blocks where necessary (GHMM and MHMM)
