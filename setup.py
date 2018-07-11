@@ -27,6 +27,7 @@ source_files = [
     "utils.pyx",
     "estimation/clustering.pyx",
     "estimation/cpd.pyx",
+    "estimation/queue.pyx"
 ]
 
 def configuration(parent_package=str(), top_path=None):

@@ -18,7 +18,7 @@ from libc.string cimport memset
 
 from archmm.math import *
 from archmm.math cimport *
-from archmm.queue cimport *
+from archmm.estimation.queue cimport *
 
 
 def epolyfit(arr, degree, **kwargs):

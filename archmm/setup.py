@@ -28,6 +28,7 @@ source_files = [
     (["ann/optimizers.py"], "ann.optimizers"),
     (["estimation/clustering.c"], "estimation.clustering"),
     (["estimation/cpd.c", "estimation/kernel_.c"], "estimation.cpd"),
+    (["estimation/queue.c"], "estimation.queue")
 ]
 
 """
