@@ -4,4 +4,8 @@ archmm:
 build:
 	python setup.py build_ext --inplace
 
-.PHONY: archmm build
+doc:
+	SPHINX_APIDOC_OPTIONS='members,private-members,show-inheritance' sphinx-apidoc -f -M -e -o docs/src/ archmm/ setup.py
+	make -C docs/ html
+
+.PHONY: archmm build doc

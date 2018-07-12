@@ -19,6 +19,7 @@ from libc.string cimport memset
 FIRST_ORDER_CLIQUE = [[0, 1, 0], [1, 1, 1], [0, 1, 0]]
 SECOND_ORDER_CLIQUE = [[1, 1, 1], [1, 1, 1], [1, 1, 1]]
 
+
 cdef double CNP_INF = <double>np.inf
 
 

@@ -4,5 +4,6 @@
 *.pyd
 
 build/
+_build/
 .idea/
 .cache/

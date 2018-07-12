@@ -77,7 +77,10 @@ if USE_CYTHON and GOT_BUILD_CMD:
         os.remove(init_path)
         print("__init__.py file removed")
     # Generates the C files, but does not compile them
-    extensions = cythonize(extensions, language="c")
+    extensions = cythonize(
+        extensions,
+        language="c",
+        compiler_directives={'embedsignature': True})
 
 if GOT_BUILD_CMD:
     np_setup(**setup_args)
