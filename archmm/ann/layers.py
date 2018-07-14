@@ -44,6 +44,7 @@ class FullyConnected(Layer):
     def backward(self, signal):
         gradient_weights = np.dot(self.current_input.T, signal)
         gradient_biases = np.sum(signal, axis=0, keepdims=True)
+        # TODO
 
 
 class Activation(Layer):

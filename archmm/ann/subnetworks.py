@@ -59,6 +59,7 @@ class EmissionSubnetwork(Subnetwork):
 class StartMLP(StartSubnetwork, MultiLayerPerceptron):
 
     def __init__(self, *args, **kwargs):
+        kwargs['is_classifier'] = True
         MultiLayerPerceptron.__init__(self, *args, **kwargs)
     
     def eval(self, X):
@@ -68,10 +69,14 @@ class StartMLP(StartSubnetwork, MultiLayerPerceptron):
 class TransitionMLP(TransitionSubnetwork, MultiLayerPerceptron):
 
     def __init__(self, *args, **kwargs):
+        kwargs['is_classifier'] = True
         MultiLayerPerceptron.__init__(self, *args, **kwargs)
 
     def eval(self, X):
         return MultiLayerPerceptron.eval(self, X)
+    
+    def train(self, xi_s):
+        pass
 
 
 class EmissionMLP(EmissionSubnetwork, MultiLayerPerceptron):
@@ -81,3 +86,6 @@ class EmissionMLP(EmissionSubnetwork, MultiLayerPerceptron):
 
     def eval(self, X):
         return MultiLayerPerceptron.eval(self, X)
+    
+    def train(self, memory_s):
+        pass

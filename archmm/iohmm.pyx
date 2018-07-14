@@ -183,7 +183,7 @@ cdef class IOHMM(HMM):
                 lnP_s[p] = self.e_step(B_s[p], ln_alpha_s[p], ln_beta_s[p],
                     ln_gamma_s[p], ln_xi_s[p], p)
             lnP = np.sum(lnP_s)
-            print(lnP)
+            print("Log-likelihood: %s" % str(lnP))
 
             # TODO: CHECK CONVERGENCE THRESHOLD
 
@@ -210,7 +210,7 @@ cdef class IOHMM(HMM):
                                     )
                                 )
 
-            print("\tEnd of expectation step")
+            print("\tEnd of Expectation step")
             """ M-Step """
             """
             pistate_cost[iteration] = piN.train(U, ln_gamma, n_epochs=parameters.pi_nepochs, 
@@ -221,3 +221,4 @@ cdef class IOHMM(HMM):
                 output_cost[iteration, j] = O[j].train(U, targets_buf, memory,
                             n_epochs=parameters.o_nepochs, learning_rate=parameters.o_learning_rate)
             """
+            print("\tEnd of Maximization step")
