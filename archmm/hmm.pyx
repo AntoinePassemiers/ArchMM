@@ -50,22 +50,6 @@ cdef inline data_t elogsum(data_t[:] vec) nogil:
     return libc.math.log(s) + offset
 
 
-cdef inline data_t elogadd(data_t val1, data_t val2) nogil:
-    if val1 == -INF:
-        return val2
-    elif val2 == -INF:
-        return val1
-    else:
-        return libc.math.fmax(val1, val2) + libc.math.log1p(
-            libc.math.exp(-libc.math.fabs(val1 - val2)))
-
-
-def normalize_matrix(matrix):
-    matrix = np.asarray(matrix)
-    matrix += np.finfo(float).eps
-    return matrix / matrix.sum()
-
-
 cdef inline void eexp2d(data_t[:, :] dest, data_t[:, :] src) nogil:
     cdef int i, j
     for i in range(src.shape[0]):

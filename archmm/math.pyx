@@ -20,8 +20,6 @@ cdef cnp.ndarray sample_gaussian(cnp.ndarray mu, cnp.ndarray inv_sigma, int n_sa
     return np.dot(r, inv_sigma) + mu
 
 
-cdef cnp.float_t c_PI = np.pi
-
 cdef cnp.double_t[:] inplace_add(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
     for i in range(A.shape[0]):
         A[i] = A[i] + B[i]
@@ -33,56 +31,3 @@ cdef cnp.double_t euclidean_distance(cnp.double_t[:] A, cnp.double_t[:] B) nogil
     for i in range(A.shape[0]):
         result += (A[i] - B[i]) ** 2
     return libc.math.sqrt(result)
-
-cdef double dabs(double value) nogil:
-    return -value if value < 0 else value
-
-cdef cnp.float_t univariateBoxMullerMethod() nogil:
-    cdef cnp.float_t U = cRand()
-    cdef cnp.float_t V = cRand()
-    return libc.math.sqrt(-2.0 * libc.math.log(U)) * libc.math.cos(2.0 * c_PI * V)
-
-cdef gaussianSample2d* bivariateBoxMullerMethod() nogil:
-    cdef cnp.float_t U = cRand()
-    cdef cnp.float_t V = cRand()
-    cdef gaussianSample2d* sample = <gaussianSample2d*>malloc(sizeof(gaussianSample2d))
-    sample.X = libc.math.sqrt(-2.0 * libc.math.log(U)) * libc.math.cos(2.0 * c_PI * V)
-    sample.Y = libc.math.sqrt(-2.0 * libc.math.log(V)) * libc.math.cos(2.0 * c_PI * U)
-    return sample
-
-cdef cnp.float_t univariateMarsagliaPolarMethod() nogil:
-    cdef cnp.float_t U = cRand()
-    cdef cnp.float_t V = cRand()
-    cdef cnp.float_t S = U * U + V * V
-    return U * libc.math.sqrt(-2.0 * libc.math.log(S) / S)
-
-cdef gaussianSample2d* bivariateMarsagliaPolarMethod() nogil:
-    cdef cnp.float_t U = cRand()
-    cdef cnp.float_t V = cRand()
-    cdef cnp.float_t S = U * U + V * V
-    cdef gaussianSample2d* sample = <gaussianSample2d*>malloc(sizeof(gaussianSample2d))
-    sample.X = U * libc.math.sqrt(-2.0 * libc.math.log(S) / S)
-    sample.Y = V * libc.math.sqrt(-2.0 * libc.math.log(S) / S)
-    return sample
-
-cdef cnp.double_t cMahalanobisDistance(cnp.double_t[:] X, cnp.double_t[:] mu, 
-                                              cnp.double_t[:, :] inv_sigma) nogil:
-    cdef dev_alloc_data_t* diff = <dev_alloc_data_t*>malloc(X.shape[0] * sizeof(dev_alloc_data_t))
-    cdef size_t i, j
-    for i in range(X.shape[0]):
-        diff[i] = X[i] - mu[i]
-    # TODO : quadratic multiplication : diff.T * inv_sigma * diff
-
-
-def stableInvSigma(sigma):
-    sigma = np.nan_to_num(sigma)
-    singular = True
-    mcv = 0.00001
-    while singular:
-        try:
-            inv_sigma = np.array(np.linalg.inv(sigma), dtype = np.double)
-            singular = False
-        except np.linalg.LinAlgError:
-            sigma += np.eye(len(sigma), dtype = np.double) * mcv # TODO
-            mcv *= 10
-    return inv_sigma

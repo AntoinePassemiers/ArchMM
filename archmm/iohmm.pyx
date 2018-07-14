@@ -10,46 +10,24 @@ import numpy as np
 cimport numpy as cnp
 cnp.import_array()
 
-import cython
-from cython.parallel import parallel, prange
-from threading import Thread
-
-cimport libc.math
-from libc.stdio cimport *
-
 from archmm.ann.layers import *
 from archmm.ann.subnetworks import *
 
 from archmm.anomaly import *
 from archmm.anomaly cimport *
 from archmm.hmm cimport HMM, data_t
-from archmm.hmm import np_data_t
+from archmm.hmm import create_buffer_list, np_data_t
 
 
-ctypedef cnp.double_t prob_t
-ctypedef cnp.double_t ln_prob_t
 
-cdef ln_prob_t MINUS_INF = np.nan_to_num(-np.inf)
-
-cdef inline prob_t eexp(ln_prob_t x) nogil:
-    if x == MINUS_INF:
-        return 0.0
-    else:
-        return libc.math.exp(x)
-
-cdef inline ln_prob_t eln(prob_t x) nogil:
-    if x <= 0:
-        return MINUS_INF
-    else:
-        return libc.math.log(x)
-
-cdef inline ln_prob_t elnproduct(ln_prob_t eln_x, ln_prob_t eln_y) nogil:
+cdef inline data_t elnproduct(data_t eln_x, data_t eln_y) nogil:
     if (eln_x == MINUS_INF) or (eln_y == MINUS_INF):
         return MINUS_INF
     else:
         return eln_x + eln_y
 
-cdef inline ln_prob_t elnsum(ln_prob_t eln_x, ln_prob_t eln_y) nogil:
+
+cdef inline data_t elnsum(data_t eln_x, data_t eln_y) nogil:
     if (eln_x == MINUS_INF) or (eln_y == MINUS_INF):
         if eln_x == MINUS_INF:
             return eln_y
@@ -57,10 +35,6 @@ cdef inline ln_prob_t elnsum(ln_prob_t eln_x, ln_prob_t eln_y) nogil:
             return eln_x
     else:
         return libc.math.log(libc.math.exp(eln_x) + libc.math.exp(eln_y))
-
-def pyLogsum(x):
-    return np.log(np.sum(np.exp(x)))
-
 
 
 def create_buffer_list(X, shape, dtype):
@@ -72,16 +46,6 @@ def create_buffer_list(X, shape, dtype):
 
 
 cdef class IOHMM(HMM):
-
-    cdef bint is_classifier
-    cdef int output_dim
-
-    cdef data_t[:, :, :] A_c
-    cdef cnp.int_t[:] T_s
-
-    cdef object start_subnetwork
-    cdef list transition_subnetworks
-    cdef list emission_subnetworks
 
     def __init__(self, n_states, arch='ergodic'):
         HMM.__init__(self, n_states, arch=arch)
@@ -182,6 +146,7 @@ cdef class IOHMM(HMM):
             for p in range(n_sequences):
                 lnP_s[p] = self.e_step(B_s[p], ln_alpha_s[p], ln_beta_s[p],
                     ln_gamma_s[p], ln_xi_s[p], p)
+                loglikelihood[iteration, p] = lnP_s[p]
             lnP = np.sum(lnP_s)
             print("Log-likelihood: %s" % str(lnP))
 
@@ -195,7 +160,6 @@ cdef class IOHMM(HMM):
                 R = np.squeeze(np.log(self.start_subnetwork.eval(X_s[p][0, :]))) # TODO: REMOVE U
                 for i in range(self.n_states):
                     memory[0, i] = R[i]
-                loglikelihood[iteration, p] = pyLogsum(np.asarray(ln_alpha[0, :]))
                 seq_length = X_s[p].shape[0]
                 start = self.T_s[p]
                 with nogil:
@@ -206,9 +170,7 @@ cdef class IOHMM(HMM):
                                     memory[k, l],
                                     elnproduct(
                                         memory[k-1, i],
-                                        self.A_c[start+k, i, l]
-                                    )
-                                )
+                                        self.A_c[start+k, i, l]))
 
             print("\tEnd of Expectation step")
             """ M-Step """
