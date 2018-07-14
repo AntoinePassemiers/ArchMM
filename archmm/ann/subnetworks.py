@@ -22,13 +22,12 @@ class MultiLayerPerceptron:
         self.layers.append(FullyConnected(n_in, n_hidden))
         self.layers.append(Activation(func=self.hidden_activation))
         self.layers.append(FullyConnected(n_hidden, n_out))
-        if not self.is_classifier:
+        if self.is_classifier:
             self.layers.append(Activation(func='softmax'))
     
     def eval(self, X):
         for layer in self.layers:
             X = layer.forward(X)
-        print(X.sum(axis=1))
         return X
 
 

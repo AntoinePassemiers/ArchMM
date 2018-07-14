@@ -166,9 +166,13 @@ cdef class IOHMM(HMM):
                 for i in range(self.n_states):
                     seq_length = X_s[p].shape[0]
                     # TODO: Made computation of B independent of the task (classification or regression)
-                    print(self.emission_subnetworks[i].eval(X_s[p]))
-                    B[:, i] = np.log(self.emission_subnetworks[i].eval(X_s[p]))[y_s[p][k]] # TODO
-                    self.A_c[T[p]:T[p]+seq_length, i, :] = np.log(self.transition_subnetworks[i].eval(X_s[p]))
+                    R = np.log(self.emission_subnetworks[i].eval(X_s[p])[np.arange(seq_length), y_s[p]])
+                    for k in range(seq_length):
+                        B[k, i] = R[i]
+                    R = np.log(self.transition_subnetworks[i].eval(X_s[p]))
+                    for k in range(seq_length):
+                        for j in range(self.n_states):
+                            self.A_c[self.T_s[p]:self.T_s[p]+k, i, j] = R[k, j]
             
             # TODO: U and targets (y) must not be used after this line of code
 
@@ -185,13 +189,15 @@ cdef class IOHMM(HMM):
 
 
             for p in range(n_sequences):
-                B = self.B_s[p]
+                B = B_s[p]
                 ln_alpha = ln_alpha_s[p]
                 memory = memory_s[p]
-                memory[0, :] = np.log(piN.computeOutput(X_s[p][0, :])) # TODO: REMOVE U
+                R = np.squeeze(np.log(self.start_subnetwork.eval(X_s[p][0, :]))) # TODO: REMOVE U
+                for i in range(self.n_states):
+                    memory[0, i] = R[i]
                 loglikelihood[iteration, p] = pyLogsum(np.asarray(ln_alpha[0, :]))
                 seq_length = X_s[p].shape[0]
-                start = self.T[p]
+                start = self.T_s[p]
                 with nogil:
                     for k in range(1, seq_length):
                         for i in range(self.n_states):
