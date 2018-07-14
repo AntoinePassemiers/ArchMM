@@ -11,6 +11,7 @@ from numpy.distutils.core import setup as np_setup
 
 source_folder = "archmm"
 sub_packages = [
+    "ann",
     "estimation",
 ]
 source_files = [
@@ -22,10 +23,8 @@ source_files = [
     (["math.c"], "math"),
     (["stats.c"], "stats"),
     (["utils.c"], "utils"),
-    (["ann/cnn.py"], "ann.cnn"),
     (["ann/layers.py"], "ann.layers"),
-    (["ann/mlp.py"], "ann.mlp"),
-    (["ann/optimizers.py"], "ann.optimizers"),
+    (["ann/subnetworks.py"], "ann.subnetworks"),
     (["estimation/clustering.c"], "estimation.clustering"),
     (["estimation/cpd.c", "estimation/kernel_.c"], "estimation.cpd"),
     (["estimation/queue.c"], "estimation.queue")

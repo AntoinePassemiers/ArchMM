@@ -1,4 +1,4 @@
-REMOTE_ORIGIN=git@github.com:AntoinePassemiers/ArchMM.git
+REMOTE_ORIGIN=https://github.com/AntoinePassemiers/ArchMM.git
 
 archmm:
 	python setup.py install
@@ -11,12 +11,10 @@ doc:
 	make -C docs/ html
 
 pushdoc:
-	cd ../ArchMM-docs/html
-	if [ ! -d ".git" ]; then git init; git remote add origin ${REMOTE_ORIGIN}; fi
-	git config --global user.email "apassemi@ulb.ac.be"
-	git config --global user.name "AntoinePassemiers"
-	git add .
-	git commit -m "Build the docs"
+	cd ../ArchMM-docs/html && \
+	if [ ! -d ".git" ]; then git init; git remote add origin ${REMOTE_ORIGIN}; fi && \
+	git add . && \
+	git commit -m "Build the docs" && \
 	git push -f origin HEAD:gh-pages
 
 .PHONY: archmm build doc pushdoc

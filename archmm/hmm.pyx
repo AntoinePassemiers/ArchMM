@@ -147,35 +147,44 @@ cdef class HMM:
     def init_topology(self):
         self.transition_mask = np.zeros(
             (self.n_states, self.n_states), dtype=np.int)
+    
+    cdef data_t[:, :] compute_ln_phi(self, int sequence_id, int t) nogil:
+        return self.ln_transition_probs
 
     cdef data_t forward(self,
                         data_t[:, ::1] lnf,
                         data_t[:, ::1] ln_alpha,
-                        data_t[::1] tmp) nogil:
+                        data_t[::1] tmp,
+                        int sequence_id) nogil:
         cdef int i, j, t
         cdef int n_samples = lnf.shape[0]
+        cdef data_t[:, :] ln_phi
         for i in range(self.n_states):
             ln_alpha[0, i] = self.ln_initial_probs[i] + lnf[0, i]
         for t in range(1, n_samples):
+            ln_phi = self.compute_ln_phi(sequence_id, t)
             for j in range(self.n_states):
                 for i in range(self.n_states):
-                    tmp[i] = ln_alpha[t-1, i] + self.ln_transition_probs[i, j]
+                    tmp[i] = ln_alpha[t-1, i] + ln_phi[i, j]
                 ln_alpha[t, j] = elogsum(tmp) + lnf[t, j]
         return elogsum(ln_alpha[n_samples-1, :])
 
     cdef data_t backward(self,
                          data_t[:, ::1] lnf,
                          data_t[:, ::1] ln_beta,
-                         data_t[::1] tmp):
+                         data_t[::1] tmp,
+                         int sequence_id):
         cdef Py_ssize_t i, j, t
         cdef int n_samples = lnf.shape[0]
+        cdef data_t[:, :] ln_phi
         with nogil:
             for i in range(self.n_states):
                 ln_beta[n_samples-1, i] = 0.0
             for t in range(n_samples-2, -1, -1):
+                ln_phi = self.compute_ln_phi(sequence_id, t)
                 for i in range(self.n_states):
                     for j in range(self.n_states):
-                        tmp[j] = self.ln_transition_probs[i, j] + ln_beta[t+1, j] + lnf[t+1, j]
+                        tmp[j] = ln_phi[i, j] + ln_beta[t+1, j] + lnf[t+1, j]
                     ln_beta[t, i] = elogsum(tmp)
         return elogsum(np.asarray(ln_beta[0, :]) + np.asarray(lnf[0, :]) + np.asarray(self.ln_initial_probs))
 
@@ -184,22 +193,27 @@ cdef class HMM:
                 data_t[:, ::1] ln_alpha,
                 data_t[:, ::1] ln_beta,
                 data_t[:, ::1] ln_gamma,
-                data_t[:, :, ::1] ln_xi):
+                data_t[:, :, ::1] ln_xi,
+                int sequence_id):
         cdef Py_ssize_t i, j, t, k, l
         cdef int n_samples = ln_alpha.shape[0]
+        cdef data_t[:, :] ln_phi
 
         cdef data_t[::1] tmp = np.empty((self.n_states), dtype=np_data_t)
-        cdef double lnP_f = self.forward(lnf, ln_alpha, tmp)
-        cdef double lnP_b = self.backward(lnf, ln_beta, tmp)
+        cdef double lnP_f = self.forward(lnf, ln_alpha, tmp, sequence_id)
+        cdef double lnP_b = self.backward(lnf, ln_beta, tmp, sequence_id)
         # TODO: CHECK THAT lnP_f AND lnP_b ARE ALMOST EQUAL
 
         with nogil:
             for i in range(self.n_states):
                 for j in range(self.n_states):
-                    ln_xi[0, i, j] = self.ln_transition_probs[i, j] + \
+                    ln_xi[0, i, j] = self.ln_initial_probs[i] + \
                         lnf[0, j] + ln_beta[0, j] - lnP_f # Can be replaced by any value
-                    for t in range(1, n_samples):
-                        ln_xi[t, i, j] = ln_alpha[t-1, i] + self.ln_transition_probs[i, j] + \
+            for t in range(1, n_samples):
+                ln_phi = self.compute_ln_phi(sequence_id, t)
+                for i in range(self.n_states):
+                    for j in range(self.n_states):
+                        ln_xi[t, i, j] = ln_alpha[t-1, i] + ln_phi[i, j] + \
                             lnf[t, j] + ln_beta[t, j] - lnP_f
         
             for t in range(n_samples):
@@ -223,10 +237,10 @@ cdef class HMM:
             print("\tIteration %i" % i)
 
             # Apply E-step on each sequence individually
-            for j in range(n_sequences):
-                lnf_s[j] = self.emission_log_proba(X_s[j])
-                lnP_s[j] = self.e_step(
-                    lnf_s[j], ln_alpha_s[j], ln_beta_s[j], ln_gamma_s[j], ln_xi_s[j])
+            for p in range(n_sequences):
+                lnf_s[p] = self.emission_log_proba(X_s[p])
+                lnP_s[p] = self.e_step(lnf_s[p], ln_alpha_s[p], ln_beta_s[p],
+                    ln_gamma_s[p], ln_xi_s[p], p)
             
             # Check log-likelihood of the data
             lnP = np.sum(lnP_s)
@@ -291,7 +305,7 @@ cdef class HMM:
         cpdef data_t[:, ::1] ln_gamma = np.zeros((n_samples, self.n_states))
         cpdef data_t[:, :, ::1] ln_xi = np.zeros(
             (n_samples, self.n_states, self.n_states))
-        lnP = self.e_step(lnf, ln_alpha, ln_beta, ln_gamma, ln_xi)
+        lnP = self.e_step(lnf, ln_alpha, ln_beta, ln_gamma, ln_xi, 0)
 
         gamma = np.empty_like(ln_gamma)
         eexp2d(gamma, ln_gamma)

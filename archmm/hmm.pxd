@@ -24,18 +24,22 @@ cdef class HMM:
     cdef data_t[::1] ln_initial_probs
     cdef data_t[:, ::1] ln_transition_probs
 
+    cdef data_t[:, :] compute_ln_phi(self, int sequence_id, int t) nogil
     cdef data_t[::1] sample_one_from_state(self, int state_id) nogil
     cdef data_t forward(self,
                         data_t[:, ::1] lnf,
                         data_t[:, ::1] ln_alpha,
-                        data_t[::1] tmp) nogil
+                        data_t[::1] tmp,
+                        int sequence_id) nogil
     cdef data_t backward(self,
                          data_t[:, ::1] lnf,
                          data_t[:, ::1] ln_beta,
-                         data_t[::1] tmp)
+                         data_t[::1] tmp,
+                         int sequence_id)
     cdef e_step(self,
                 data_t[:, ::1] lnf,
                 data_t[:, ::1] ln_alpha,
                 data_t[:, ::1] ln_beta,
                 data_t[:, ::1] ln_gamma,
-                data_t[:, :, ::1] ln_xi)
+                data_t[:, :, ::1] ln_xi,
+                int sequence_id)

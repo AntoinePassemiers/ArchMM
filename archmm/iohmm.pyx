@@ -17,8 +17,9 @@ from threading import Thread
 cimport libc.math
 from libc.stdio cimport *
 
-from archmm.ann.mlp import *
-from archmm.ann.optimizers import *
+from archmm.ann.layers import *
+from archmm.ann.subnetworks import *
+
 from archmm.anomaly import *
 from archmm.anomaly cimport *
 from archmm.hmm cimport HMM, data_t
@@ -75,11 +76,22 @@ cdef class IOHMM(HMM):
     cdef bint is_classifier
     cdef int output_dim
 
-    def __init__(self, n_states, arch='ergodic', is_classifier=True):
-        HMM.__init__(self, n_states, arch=arch)
-        self.is_classifier = is_classifier
+    cdef data_t[:, :, :] A_c
+    cdef cnp.int_t[:] T_s
 
-    def fit(self, inputs, targets):
+    cdef object start_subnetwork
+    cdef list transition_subnetworks
+    cdef list emission_subnetworks
+
+    def __init__(self, n_states, arch='ergodic'):
+        HMM.__init__(self, n_states, arch=arch)
+        self.A_c = None
+        self.T_s = None
+    
+    cdef data_t[:, :] compute_ln_phi(self, int sequence_id, int t) nogil:
+        return self.A_c[self.T_s[sequence_id]+t]
+
+    def fit(self, X_s, y_s, max_n_iter=100):
         """
         Generalized Expectation-Maximization algorithm for training Input-Output Hidden Markov Models (IOHMM)
         The expectation part is implemented the old-fashioned way, like in a regular expectation-maximization
@@ -105,182 +117,101 @@ cdef class IOHMM(HMM):
                 parameters of the model
                 see Core.py for details
         """
-        cdef int i, j, t, k, l, p, iteration
-        cdef int n_sequences = len(inputs)
-        assert(n_sequences == len(targets))
-        cdef cnp.int32_t[:] T = np.empty(n_sequences, dtype=np.int32)
-        for p in range(n_sequences):
-            T[p] = len(inputs[p])
-        cdef cnp.ndarray U = typedListToPaddedTensor(inputs, np.asarray(T), is_3D=True, dtype=np_data_t)
-        cdef cnp.int_t[:, :] targets_buf = typedListToPaddedTensor(targets, np.asarray(T), is_3D=False, dtype=np.int)
-        cdef size_t m = U[0].shape[1]
-        cdef size_t output_dim = targets[0].shape[1] if len(targets[0].shape) == 2 else 1
-        cdef size_t r = n_classes if is_classifier else output_dim
-        self.output_dim = r
-        cdef object supervisor = Supervisor(targets, parameters.n_iterations, n_sequences, self.n_states)
-        cdef data_t[:, :] loglikelihood = np.zeros((parameters.n_iterations, n_sequences), dtype=np_data_t)
-        cdef data_t[:] pistate_cost = np.zeros(parameters.n_iterations, dtype=np_data_t)
-        cdef data_t[:, :] state_cost = np.zeros((parameters.n_iterations, n), dtype=np_data_t)
-        cdef data_t[:, :] output_cost = np.zeros((parameters.n_iterations, n), dtype=np_data_t)
-        cdef ln_prob_t logalpha, logbeta, divider
+        cdef int i, j, t, k, l, p, iteration, seq_length, start
+        n_sequences = len(X_s)
+        assert(n_sequences == len(y_s))
 
-        ln_alpha_s = create_buffer_list(inputs, (self.n_states,), np_data_t)
-        ln_beta_s = create_buffer_list(inputs, (self.n_states,), np_data_t)
-        ln_gamma_s = create_buffer_list(inputs, (self.n_states,), np_data_t)
-        ln_xi_s = create_buffer_list(inputs, (self.n_states, self.n_states), np_data_t)
+        n_features = X_s[0].shape[1]
+        n_classes = len(np.unique(np.concatenate(y_s, axis=0)))
+
+        loglikelihood = np.zeros((max_n_iter, n_sequences))
+        start_cost = np.zeros(max_n_iter)
+        transition_cost = np.zeros((max_n_iter, self.n_states))
+        emission_cost = np.zeros((max_n_iter, self.n_states))
+
+        ln_alpha_s = create_buffer_list(X_s, (self.n_states,), np_data_t)
+        ln_beta_s = create_buffer_list(X_s, (self.n_states,), np_data_t)
+        ln_gamma_s = create_buffer_list(X_s, (self.n_states,), np_data_t)
+        ln_xi_s = create_buffer_list(X_s, (self.n_states, self.n_states), np_data_t)
         cdef data_t[:, :] ln_alpha, ln_beta, ln_gamma
         cdef data_t[:, :, :] ln_xi
 
-        A_s = create_buffer_list(inputs, (self.n_states, self.n_states), np_data_t)
-        B_s = create_buffer_list(inputs, (self.n_states, self.output_dim), np_data_t)
-        cdef data_t[:, :, :] A, B
+        total_n_samples = np.concatenate(X_s, axis=0).shape[0]
+        self.A_c = np.empty((total_n_samples, self.n_states, self.n_states), dtype=np_data_t)
+        self.T_s = np.empty((n_sequences,), dtype=np.int)
+        i = 0
+        for p, X in enumerate(X_s):
+            self.T_s[p] = i
+            i += X_s[p].shape[0]
 
-        memory_s = create_buffer_list(inputs, (self.n_states,), np_data_t)
+        B_s = create_buffer_list(X_s, (self.n_states,), np_data_t)
+        cdef data_t[:, :] B
+
+        memory_s = create_buffer_list(X_s, (self.n_states,), np_data_t)
         cdef data_t[:, :] memory
 
-        cdef data_t[:] ln_initial_probs
-        cdef data_t[:] new_internal_state = np.empty(self.n_states, dtype=np_data_t)
-        cdef cnp.float32_t[:] e_weights = np.ones(n_sequences, dtype=np.float32)
-        cdef cnp.float32_t[:] t_weights = np.ones(2, dtype=np.float32)
-        cdef cnp.float32_t[:] o_weights = np.ones(self.n_states, dtype=np.float32)
+        # TODO: IF NOT SET BY USER
+        n_hidden = n_features
+        n_out = n_classes
+        self.start_subnetwork = StartMLP(n_features, n_hidden, n_classes)
+        self.transition_subnetworks = [
+            TransitionMLP(n_features, n_hidden, n_classes) for i in range(self.n_states)]
+        self.emission_subnetworks = [
+            EmissionMLP(n_features, n_hidden, n_classes) for i in range(self.n_states)]
 
-        cdef object N = list()
-        cdef object O = list()
-        for i in range(n):
-            N.append(StateSubnetwork(i, m, parameters.s_nhidden, self.n_states, learning_rate = parameters.s_learning_rate,
-                                     hidden_activation_function = parameters.s_activation, architecture = parameters.architecture))
-        for i in range(n):
-            O.append(OutputSubnetwork(i, m, parameters.o_nhidden, r, learning_rate = parameters.o_learning_rate,
-                                      hidden_activation_function = parameters.o_activation))
-        piN = PiStateSubnetwork(m, parameters.pi_nhidden, self.n_states, learning_rate = parameters.pi_learning_rate,
-                                hidden_activation_function = parameters.pi_activation, architecture = parameters.architecture)
-
-
-        
-
-
-        for iteration in range(parameters.n_iterations):
+        for iteration in range(max_n_iter):
             print("Iteration number %i..." % iteration)
-            for j in range(n_sequences):
-                A, B = A_s[j, :, :, :], B_s[j, :, :, :]
-                for k in range(T[j]):
-                    for i in range(self.n_states):
-                        B[k, i, :] = np.log(O[i].computeOutput(U[j][k, :])[0])
-                        A[k, i, :] = np.log(N[i].computeOutput(U[j][k, :])[0])
-            """ Forward procedure """
-            for j in range(n_sequences):
-                A, B = A_s[j, :, :, :], B_s[j, :, :, :]
-                ln_alpha = ln_alpha_s[j, :, :]
-                memory = memory_s[j, :, :]
-                memory[0, :] = np.log(piN.computeOutput(U[j][0, :]))
+            for p in range(n_sequences):
+                B = B_s[p]
+                for i in range(self.n_states):
+                    seq_length = X_s[p].shape[0]
+                    # TODO: Made computation of B independent of the task (classification or regression)
+                    print(self.emission_subnetworks[i].eval(X_s[p]))
+                    B[:, i] = np.log(self.emission_subnetworks[i].eval(X_s[p]))[y_s[p][k]] # TODO
+                    self.A_c[T[p]:T[p]+seq_length, i, :] = np.log(self.transition_subnetworks[i].eval(X_s[p]))
+            
+            # TODO: U and targets (y) must not be used after this line of code
+
+
+            """ E-step"""
+            lnP_s = np.empty(n_sequences)
+            for p in range(n_sequences):
+                lnP_s[p] = self.e_step(B_s[p], ln_alpha_s[p], ln_beta_s[p],
+                    ln_gamma_s[p], ln_xi_s[p], p)
+            lnP = np.sum(lnP_s)
+            print(lnP)
+
+            # TODO: CHECK CONVERGENCE THRESHOLD
+
+
+            for p in range(n_sequences):
+                B = self.B_s[p]
+                ln_alpha = ln_alpha_s[p]
+                memory = memory_s[p]
+                memory[0, :] = np.log(piN.computeOutput(X_s[p][0, :])) # TODO: REMOVE U
+                loglikelihood[iteration, p] = pyLogsum(np.asarray(ln_alpha[0, :]))
+                seq_length = X_s[p].shape[0]
+                start = self.T[p]
                 with nogil:
-                    for l in range(self.n_states):
-                        ln_alpha[0, l] = elnproduct(B[0, l, <size_t>targets_buf[j][0]], memory[0, l])
-                loglikelihood[iteration, j] = pyLogsum(np.asarray(ln_alpha[0, :]))
-                for k in range(1, T[j]):
-                    with nogil:
+                    for k in range(1, seq_length):
                         for i in range(self.n_states):
                             for l in range(self.n_states):
                                 memory[k, l] = elnsum(
                                     memory[k, l],
                                     elnproduct(
                                         memory[k-1, i],
-                                        A[k, i, l]
+                                        self.A_c[start+k, i, l]
                                     )
                                 )
-                    loglikelihood[iteration, j] += pyLogsum(np.asarray(ln_alpha[k, :]))
-                    with nogil:
-                        for i in range(self.n_states):
-                            logalpha = MINUS_INF
-                            for l in range(self.n_states):
-                                logalpha = elnsum(
-                                    logalpha,
-                                    elnproduct(ln_alpha[k-1, l], A[k, l, i])
-                                )
-                            ln_alpha[k, i] = elnproduct(logalpha, B[k, i, <size_t>targets_buf[j][k]])
-                    loglikelihood[iteration, j] += pyLogsum(np.asarray(ln_alpha[k, :]))
-            """ Backward procedure """
-            for j in range(n_sequences):
-                A, B = A_s[j, :, :, :], B_s[j, :, :, :]
-                ln_beta = ln_beta_s[j, :, :]
-
-                ln_beta[:, -1] = 0.0
-                for k in range(T[j]-2, -1, -1):
-                    for i in range(self.n_states):
-                        logbeta = MINUS_INF
-                        for l in range(self.n_states):
-                            logbeta = elnsum(
-                                logbeta,
-                                elnproduct(
-                                    A[k+1, i, l],
-                                    elnproduct(
-                                        B[k+1, l, <size_t>targets_buf[j][k + 1]],
-                                        ln_beta[k+1, l]
-                                    )
-                                )
-                            )
-                        ln_beta[k, i] = logbeta
-            """ Computation of state log-probabilities """
-            for j in range(n_sequences):
-                ln_alpha = ln_alpha_s[j, :, :]
-                ln_beta = ln_beta_s[j, :, :]
-                ln_gamma = ln_gamma_s[j, :, :]
-
-                for k in range(T[j] - 1):
-                    divider = MINUS_INF
-                    for i in range(self.n_states):
-                        ln_gamma[k, i] = elnproduct(ln_alpha[k, i], ln_beta[k, i])
-                        divider = elnsum(divider, ln_gamma[k, i])
-                    for i in range(self.n_states):
-                        ln_gamma[k, i] = elnproduct(ln_gamma[k, i], -divider)
-            """ Update model parameters """
-            for j in range(n_sequences):
-                ln_alpha = ln_alpha_s[j, :, :]
-                ln_beta = ln_beta_s[j, :, :]
-                ln_xi = ln_gamma_s[j, :, :, :]
-                A, B = A_s[j, :, :, :], B_s[j, :, :, :]
-
-                for k in range(T[j]-1):
-                    divider = MINUS_INF
-                    for i in range(self.n_states):
-                        for l in range(self.n_states):
-                            ln_xi[k, i, l] = elnproduct(
-                                ln_alpha[k+1, l],
-                                elnproduct(
-                                    A[k+1, i, l],
-                                    elnproduct(
-                                        ln_beta[k+1, i],
-                                        B[k+1, l, <size_t>targets_buf[j][k + 1]]
-                                    )
-                                )
-                            )
-                            divider = elnsum(divider, ln_xi[k, i, l])
-                    for i in range(self.n_states):
-                        for l in range(self.n_states):
-                            ln_xi[k, i, l] = elnproduct(ln_xi[k, i, l], -divider)
 
             print("\tEnd of expectation step")
             """ M-Step """
-            try:                    
-                pistate_cost[iteration] = piN.train(U, ln_gamma, e_weights, n_epochs=parameters.pi_nepochs, 
-                                               learning_rate=parameters.pi_learning_rate)
-                for j in range(self.n_states):
-                    state_cost[iteration, j]  = N[j].train(U, ln_xi, np.multiply(t_weights[0], e_weights),
-                                n_epochs=parameters.s_nepochs, learning_rate=parameters.s_learning_rate)
-                    output_cost[iteration, j] = O[j].train(U, targets_buf, memory, np.multiply(np.multiply(t_weights[1], e_weights), o_weights[j]),
-                                n_epochs=parameters.o_nepochs, learning_rate=parameters.o_learning_rate)
-                e_weights, t_weights, o_weights = supervisor.next(
-                    np.asarray(loglikelihood[iteration]),
-                    np.asarray(pistate_cost[iteration]), 
-                    np.asarray(state_cost[iteration]), 
-                    np.asarray(output_cost[iteration])
-                )
-                print("\tEnd of maximization step")
-                print("\t\t-> Cost of the initial state subnetwork   : %f" % pistate_cost[iteration])
-                print("\t\t-> Average cost of the state subnetworks  : %f" % np.asarray(state_cost[iteration]).mean())
-                print("\t\t-> Average cost of the output subnetworks : %f" % np.asarray(output_cost[iteration]).mean())
-                print("\t\t-> Average log-likelihood                 : %f" % np.asarray(loglikelihood[iteration]).mean())
-            except MemoryError:
-                print("\tMemory error : the maximization step had to be skipped")
-                return loglikelihood[:iteration], pistate_cost[:iteration], state_cost[:iteration], output_cost[:iteration]
-        return piN, N, O, loglikelihood, pistate_cost, state_cost, output_cost
+            """
+            pistate_cost[iteration] = piN.train(U, ln_gamma, n_epochs=parameters.pi_nepochs, 
+                                           learning_rate=parameters.pi_learning_rate)
+            for j in range(self.n_states):
+                state_cost[iteration, j]  = N[j].train(U, ln_xi,
+                            n_epochs=parameters.s_nepochs, learning_rate=parameters.s_learning_rate)
+                output_cost[iteration, j] = O[j].train(U, targets_buf, memory,
+                            n_epochs=parameters.o_nepochs, learning_rate=parameters.o_learning_rate)
+            """
