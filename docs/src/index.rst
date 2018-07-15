@@ -10,6 +10,7 @@ Welcome to archmm's documentation!
    :maxdepth: 2
    :caption: Contents:
 
+   hmm
    modules
 
 
