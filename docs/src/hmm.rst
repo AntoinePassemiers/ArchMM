@@ -45,7 +45,7 @@ Plus, it has interesting statistical and computational properties.
 It can be formalized as follows:
 
 .. math::
-    log(P(X | \theta)) = log \big[ TODO
+    log \ \mathcal{L} = log(P(X | \theta)) = log \Big[ \prod_{p=1}^P \pi_i TODO \Big]
 
 
 Forward procedure
@@ -56,7 +56,7 @@ Forward procedure
 
 .. math::
     \alpha_i(1, p)     &= \pi_i b_i(y_{1, p}) \\
-    \alpha_i(t + 1, p) &= b_i(y_{t+1, p}) \sum\limits_{j=1}^{N} \alpha_j(t, p) a_{ji}
+    \alpha_i(t + 1, p) &= b_i(y_{t+1, p}) \sum\limits_{j=1}^{n} \alpha_j(t, p) a_{ji}
 
 Backward procedure
 ##################
@@ -66,4 +66,26 @@ Backward procedure
 
 .. math::
     \beta_i(T_p, p) &= 1 \\
-    \beta_i(t, p)   &= \sum\limits_{j=1}^N \beta_j(t+1, p) a_{ij} b_j(y_{t+1, p})
+    \beta_i(t, p)   &= \sum\limits_{j=1}^n \beta_j(t+1, p) a_{ij} b_j(y_{t+1, p})
+
+Parameters update
+#################
+
+.. math::
+    \gamma_i(t, p) = P(X_{t, p} = i | Y_p, \theta) = \frac{P(X_{t, p} = i, Y_p | \theta)}{P(Y_p, \theta)} 
+    = \frac{\alpha_i(t, p) \beta_i(t, p)}{\sum\limits_{j=1}^{n} \alpha_j(t, p) \beta_j(t, p)}
+
+.. math::
+    \xi_{ij}(t, p) = P(X_{t, p} = i, X_{t+1, p} = j | Y_p, \theta)
+    &= \frac{P(X_{t, p} = i, X_{t+1, p} = j, Y_p | \theta)}{P(Y_p, \theta)} \\
+    &= \frac{\alpha_i(t, p) a_{ij} \beta_j(t+1, p) b_j(y_{t+1, p})}{\sum\limits_{i=1}^n
+    \sum\limits_{j=1}^n \alpha_i(t, p) a_{ij} \beta_j(t+1, p) b_j(y_{t+1, p})}
+
+.. math::
+    \tilde{\pi}_i = \gamma_i(1, p)
+
+.. math::
+    \tilde{a}_{ij} = \frac{\sum\limits_{p=1}^P \sum\limits_{t=1}^{T_p} \xi_{ij}(t, p)}
+    {\sum\limits_{p=1}^P \sum\limits_{t=1}^{T_p} \gamma_i(t, p)}
+
+TODO: update of B
