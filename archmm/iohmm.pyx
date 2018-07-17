@@ -56,30 +56,22 @@ cdef class IOHMM(HMM):
         return self.A_c[self.T_s[sequence_id]+t]
 
     def fit(self, X_s, y_s, max_n_iter=100):
-        """
-        Generalized Expectation-Maximization algorithm for training Input-Output Hidden Markov Models (IOHMM)
-        The expectation part is implemented the old-fashioned way, like in a regular expectation-maximization
-        algorithm. The maximization part is based on the MLP stochastic gradient descent.
+        """ Generalized Expectation-Maximization (GEM) algorithm for training
+        Input-Output Hidden Markov Models (IO-HMMs).
+        The expectation step is implemented the old-fashioned way, while maximization
+        step relies on stochastic gradient ascent.
 
         Args:
-            inputs (list):
-                list of input sequences, where each sequence is a 3D buffer
+            X_s (list):
+                List of input sequences, where each sequence is a 3D buffer
                 Shape of each sequence : (n_samples, n_features),
                 where n_samples is the length of the sequence
                 ans n_features is the dimensionality of the input
                 n_samples can vary from one sequence to another
-            targets (np.ndarray):
-                array of labels for classification (length = number of sequences)
-            n_states (int):
-                number of hidden states
-            is_classifier (bool):
-                if true, the model will be a classifier
-                if false, the model will be a regressor
-            n_classes (int):
-                number of distinct labels to consider for classification tasks
-            parameters (IOConfig):
-                parameters of the model
-                see Core.py for details
+            y_s (list):
+                Array of labels for classification (length = number of sequences)
+            max_n_iter (int):
+                Maximum number of iterations of GEM algorithm
         """
         cdef int i, j, t, k, l, p, iteration, seq_length, start
         n_sequences = len(X_s)
@@ -106,7 +98,7 @@ cdef class IOHMM(HMM):
         i = 0
         for p, X in enumerate(X_s):
             self.T_s[p] = i
-            i += X_s[p].shape[0]
+            i += X.shape[0]
 
         B_s = create_buffer_list(X_s, (self.n_states,), np_data_t)
         cdef data_t[:, :] B
@@ -157,7 +149,7 @@ cdef class IOHMM(HMM):
                 B = B_s[p]
                 ln_alpha = ln_alpha_s[p]
                 memory = memory_s[p]
-                R = np.squeeze(np.log(self.start_subnetwork.eval(X_s[p][0, :]))) # TODO: REMOVE U
+                R = np.squeeze(np.log(self.start_subnetwork.eval(X_s[p][0, :]))) # TODO: REMOVE X_s
                 for i in range(self.n_states):
                     memory[0, i] = R[i]
                 seq_length = X_s[p].shape[0]
@@ -173,14 +165,16 @@ cdef class IOHMM(HMM):
                                         self.A_c[start+k, i, l]))
 
             print("\tEnd of Expectation step")
+
             """ M-Step """
-            """
-            pistate_cost[iteration] = piN.train(U, ln_gamma, n_epochs=parameters.pi_nepochs, 
-                                           learning_rate=parameters.pi_learning_rate)
-            for j in range(self.n_states):
-                state_cost[iteration, j]  = N[j].train(U, ln_xi,
-                            n_epochs=parameters.s_nepochs, learning_rate=parameters.s_learning_rate)
-                output_cost[iteration, j] = O[j].train(U, targets_buf, memory,
-                            n_epochs=parameters.o_nepochs, learning_rate=parameters.o_learning_rate)
-            """
+
+            #start_cost[iteration] = self.start_subnetwork.train(gamma_s)
+            for i in range(self.n_states):
+                transition_cost[iteration, j] = self.transition_subnetworks[j].train(
+                     np.concatenate(X_s, axis=0), np.exp(np.concatenate(ln_xi_s, axis=0)[:, :, i]))
+                """
+                emission_cost[iteration, j] = self.emission_subnetworks[j].train(
+                    np.concatenate(X_s, axis=0), np.exp(np.concatenate(memory_s, axis=0)[:, i]))
+                """
+
             print("\tEnd of Maximization step")

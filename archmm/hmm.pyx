@@ -91,12 +91,34 @@ def create_buffer_list(X, shape, dtype):
 
 
 cdef class HMM:
-    """
+    """ Base class for Hidden Markov Models
+
+    Args:
+        n_states (int):
+            Number of hidden states
+        arch (str):
+            Topology name: can be either 'ergodic', 'linear' or 'cyclic'
+    
+    Attributes:
+        n_features (int):
+            Dimensionality of the observed samples
+        ln_initial_probs (:obj:`np.ndarray`):
+            Logarithm of state start probabilities, where ln_initial_probs[i]
+            is the probability that the model starts in state i when generating
+            a new sequence
+        ln_transition_probs (:obj:`np.ndarray`):
+            Logarithm of state transition probabilities, where ln_transition_probs[i, j]
+            is the probability that the model switches from state i to state j
+        initial_probs (:obj:`np.ndarray`):
+            State start probabilities
+        transition_probs (:obj:`np.ndarray`):
+            State transition probabilities
+
     References:
         HMM by Dr Philip Jackson
         Centre for Vision Speech & Signal Processing,
         University of Surrey, Guildford GU2 7XH.
-        http://homepages.inf.ed.ac.uk/rbf/IAPR/researchers/D2PAGES/TUTORIALS/hmm_isspr.pdf
+        .. http://homepages.inf.ed.ac.uk/rbf/IAPR/researchers/D2PAGES/TUTORIALS/hmm_isspr.pdf
     """
 
     def __init__(self, n_states, arch='ergodic'):
@@ -133,6 +155,21 @@ cdef class HMM:
             (self.n_states, self.n_states), dtype=np.int)
     
     cdef data_t[:, :] compute_ln_phi(self, int sequence_id, int t) nogil:
+        """ Compute the logarithm of state transition probabilities.
+        Because of the independence and stationary assumptions,
+        transition probabilities are constant. Therefore, this method always
+        returns the same memory view.
+
+        Args:
+            sequence_id (int):
+                Sequence index
+            t (int):
+                Current time (0 < t < T[p], where T[p] is the sequence length)
+        
+        Returns:
+            :obj:`np.ndarray`:
+                Logarithm of state transition probabilities
+        """
         return self.ln_transition_probs
 
     cdef data_t forward(self,
@@ -140,6 +177,24 @@ cdef class HMM:
                         data_t[:, ::1] ln_alpha,
                         data_t[::1] tmp,
                         int sequence_id) nogil:
+        """ Computes forward probabilities.
+
+        Args:   
+            lnf (:obj:`np.ndarray`):
+                Memory view of shape (n_samples, n_states) representing 
+                the logarithm of emission probabilities for a given sequence
+            ln_alpha (:obj:`np.ndarray`):
+                Memory view of shape (n_samples, n_states) representing
+                the logarithm of forward probabilities for a given sequence
+            tmp (:obj:`np.ndarray`):
+                Memory view for storing temporary values
+            sequence_id (int):
+                Sequence index
+
+        Returns:
+            float:
+                Log-likelihood of the data, computed forward
+        """
         cdef int i, j, t
         cdef int n_samples = lnf.shape[0]
         cdef data_t[:, :] ln_phi
@@ -158,6 +213,24 @@ cdef class HMM:
                          data_t[:, ::1] ln_beta,
                          data_t[::1] tmp,
                          int sequence_id):
+        """ Computes backward probabilities.
+
+        Args:   
+            lnf (:obj:`np.ndarray`):
+                Memory view of shape (n_samples, n_states) representing 
+                the logarithm of emission probabilities for a given sequence
+            ln_beta (:obj:`np.ndarray`):
+                Memory view of shape (n_samples, n_states) representing
+                the logarithm of backward probabilities for a given sequence
+            tmp (:obj:`np.ndarray`):
+                Memory view for storing temporary values
+            sequence_id (int):
+                Sequence index
+        
+        Returns:
+            float:
+                Log-likelihood of the data, computed backward
+        """
         cdef Py_ssize_t i, j, t
         cdef int n_samples = lnf.shape[0]
         cdef data_t[:, :] ln_phi
@@ -170,7 +243,9 @@ cdef class HMM:
                     for j in range(self.n_states):
                         tmp[j] = ln_phi[i, j] + ln_beta[t+1, j] + lnf[t+1, j]
                     ln_beta[t, i] = elogsum(tmp)
-        return elogsum(np.asarray(ln_beta[0, :]) + np.asarray(lnf[0, :]) + np.asarray(self.ln_initial_probs))
+        lnP_b = elogsum(np.asarray(ln_beta[0, :]) + np.asarray(lnf[0, :]) \
+            + np.asarray(self.ln_initial_probs))
+        return lnP_b
 
     cdef e_step(self,
                 data_t[:, ::1] lnf,
@@ -179,6 +254,33 @@ cdef class HMM:
                 data_t[:, ::1] ln_gamma,
                 data_t[:, :, ::1] ln_xi,
                 int sequence_id):
+        """ Expectation step of the Expectation-Maximization step
+
+        Args:   
+            lnf (:obj:`np.ndarray`):
+                Memory view of shape (n_samples, n_states) representing 
+                the logarithm of emission probabilities for a given sequence
+            ln_alpha (:obj:`np.ndarray`):
+                Memory view of shape (n_samples, n_states) representing
+                the logarithm of forward probabilities for a given sequence
+            ln_beta (:obj:`np.ndarray`):
+                Memory view of shape (n_samples, n_states) representing
+                the logarithm of backward probabilities for a given sequence
+            ln_gamma (:obj:`np.ndarray`):
+                Memory view of shape (n_samples, n_states) representing
+                the logarithm of gamma probabilities for a given sequence
+            ln_xi (:obj:`np.ndarray`):
+                Memory view of shape (n_samples, n_states, n_states) representing
+                the logarithm of xi probabilities for a given sequence
+            tmp (:obj:`np.ndarray`):
+                Memory view for storing temporary values
+            sequence_id (int):
+                Sequence index
+        
+        Returns:
+            float:
+                Log-likelihood of the data, computed forward
+        """
         cdef Py_ssize_t i, j, t, k, l
         cdef int n_samples = ln_alpha.shape[0]
         cdef data_t[:, :] ln_phi
@@ -606,6 +708,16 @@ cdef class GMMHMM(HMM):
 
 
 cdef class MHMM(HMM):
+    """ Multinomial Hidden Markov Model
+
+    Attributes:
+        n_unique (int):
+            Number of unique values that can be observed
+        proba (:obj:`np.ndarray`):
+            Array of shape (n_states, n_unique) where proba[i, j]
+            is the probability of observing value j when being
+            in hidden state i.
+    """
 
     cdef int n_unique
     cdef data_t[:, ::1] proba
@@ -614,6 +726,13 @@ cdef class MHMM(HMM):
         HMM.__init__(self, n_states, arch=arch)
 
     def estimate_params(self, X_s):
+        """ Pre-estimates model parameters
+
+        Args:
+            X_s (list):
+                List of sequences, where sequence i is a NumPy array
+                of shape (n_samples_i, n_features)
+        """
         # TODO: CHECK X
         X_concatenated = np.concatenate(X_s, axis=0)
         self.n_unique = len(np.unique(np.squeeze(X_concatenated)))
@@ -630,6 +749,17 @@ cdef class MHMM(HMM):
         self.ln_transition_probs = np.log(self.transition_probs)
 
     def emission_log_proba(self, data_t[:] X):
+        """ Computes emission log-probabilities of a given sequence according to the
+        parameters of the multinomial distributions of each state.
+
+        Args:
+            X (:obj:`np.ndarray`):
+                Sequence of observed samples
+        
+        Returns:
+            :obj:`np.ndarray`:
+                Emission log-probabilities of given sequence
+        """
         cdef int n_samples = X.shape[0]
         cdef data_t[:, ::1] lnf = np.empty((n_samples, self.n_states), dtype=np_data_t)
         with nogil:
@@ -655,13 +785,36 @@ cdef class MHMM(HMM):
         self.nan_to_zeros()
     
     cdef data_t[::1] sample_one_from_state(self, int state_id) nogil:
+        """ Sample a multinomial distribution, where the distribution
+        is associated to current hidden state.
+
+        Args:
+            state_id (int):
+                Hidden state associated to the distribution to sample
+
+        Returns:
+            data_t:
+                Random sample
+        """
+
         with gil: # TODO: REMOVE GIL BLOCK
             weights = self.proba[state_id]
             return np.random.choice(np.arange(self.n_unique), p=weights)
 
     def get_num_params_per_state(self):
+        """ Returns an upper bound on the number of free parameters
+        for a single hidden state.
+
+        The number of required parameters is equal to n_unique - 1 since
+        any emission probability vector sums to one.
+
+        Returns:
+            int:
+                Upper bound on the number of free parameters per state
+        """
         # Number of free parameters in proba vector
-        return self.n_unique - 1
+        n_params = self.n_unique - 1
+        return n_params
 
     property proba:
         def __get__(self):
