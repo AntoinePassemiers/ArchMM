@@ -17,7 +17,7 @@ from libc.math cimport sqrt
 from cpython.buffer cimport PyBuffer_IsContiguous
 from cython cimport view
 
-from archmm.math cimport sample_gaussian, euclidean_distance
+from archmm.math cimport sample_gaussian, squared_euclidean_distance
 
 
 cdef cnp.double_t NP_INF_VALUE = <cnp.double_t>np.inf
@@ -94,7 +94,7 @@ cdef ClusterSet perform_step(cnp.double_t[:, :] data,
         for k in range(data.shape[0]):
             min_distance = NP_INF_VALUE
             for i in range(centroids.shape[0]):
-                current_distance = euclidean_distance(data[k, :], centroids[i, :])
+                current_distance = squared_euclidean_distance(data[k, :], centroids[i, :])
                 if current_distance < min_distance:
                     min_distance = current_distance
                     mu_index = i

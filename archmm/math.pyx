@@ -26,8 +26,12 @@ cdef cnp.double_t[:] inplace_add(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
     return A
 
 cdef cnp.double_t euclidean_distance(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
+    return libc.math.sqrt(squared_euclidean_distance(A, B))
+
+
+cdef cnp.double_t squared_euclidean_distance(cnp.double_t[:] A, cnp.double_t[:] B) nogil:
     cdef size_t i
     cdef cnp.double_t result = 0.0
     for i in range(A.shape[0]):
         result += (A[i] - B[i]) ** 2
-    return libc.math.sqrt(result)
+    return result
