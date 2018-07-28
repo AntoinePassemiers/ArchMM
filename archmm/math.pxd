@@ -4,12 +4,6 @@
 import numpy as np
 cimport numpy as cnp
 
-import cython
-
-cimport libc.math
-from libc.stdlib cimport *
-from libc.stdio cimport *
-
 
 cdef cnp.ndarray sample_gaussian(cnp.ndarray mu, cnp.ndarray inv_sigma, int n_samples)
 

@@ -11,8 +11,6 @@ from libc.stdlib cimport *
 from libc.stdio cimport *
 cimport libc.math
 
-from archmm.utils cimport *
-
 
 cdef cnp.ndarray sample_gaussian(cnp.ndarray mu, cnp.ndarray inv_sigma, int n_samples):
     n_features = mu.shape[0]

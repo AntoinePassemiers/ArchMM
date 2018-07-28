@@ -406,6 +406,9 @@ cdef class HMM:
             self.n_features = first_seq.shape[1]
         # TODO: if parameters set by hand, do not pre-estimate parameters
         self.estimate_params(X_s)
+
+        # TODO: Make sure that pre-estimated transition probabilities
+        #       are in accordance with current topology
         self.baum_welch(X_s, **kwargs)
     
     def log_likelihood(self, X):
