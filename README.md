@@ -97,7 +97,6 @@ To get ArchMM to work on your computer, you will need:
 - Numpy (>= 1.6.1)
 - Scipy
 - Cython
-- Theano (optional, but required for IO-HMM)
 
 ### User installation
 
@@ -108,9 +107,10 @@ python setup.py install
 
 ## Todo
 
-- [ ] Docstrings and automatic doc generation
-- [ ] IO-HMM: Get rid of theano backend and implement mlp from scratch
+- [x] Automatic doc generation
+- [ ] IO-HMM: Implement MLP
 - [x] Multi-sequence support for HMMs
+- [x] Custom HMM topology
 - [ ] Working with missing values
 - [ ] Finish implementing GMM-HMM
 - [ ] Use nogil blocks where necessary (GHMM and MHMM)
