@@ -23,15 +23,15 @@ class DependencyError(Exception): pass
 class NotImplementedError(Exception): pass
 class NotImplementedAbstractMethodError(Exception): pass
 
-""" Decorators """
 
-def abstractmethod(func):
+def abstractpythonmethod(func):
     def func_wrapper(*args):
         raise NotImplementedError(
             "%s abstract method must be implemented" % func.__name__
         )
     func_wrapper.__name__ = func.__name__
     return func_wrapper
+
 
 def todo(func):
     def func_wrapper(*args):
@@ -40,20 +40,21 @@ def todo(func):
     return func_wrapper
 
 
-""" Cython utils """
-
 cdef float cRand() nogil:
     return <float>rand() / <float>RAND_MAX
+
 
 cdef int cRandint(Py_ssize_t start, Py_ssize_t end) nogil:
     cdef Py_ssize_t rang = end - start
     return <int>(cRand() * rang + start)
+
 
 cdef void ensure_PyObject_Buffer(object data):
     if not PyObject_CheckBuffer(data):
         printf("Error : the sequence must implement the buffer interface\n")
         exit(EXIT_FAILURE)
 
+
 def seed(value):
     srand(value)
-    np.random.seed(seed = value)
+    np.random.seed(seed=value)

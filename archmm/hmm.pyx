@@ -24,6 +24,7 @@ from archmm.estimation.cpd import *
 from archmm.estimation.cpd cimport *
 from archmm.estimation.clustering import k_means
 from archmm.stats import np_data_t, gaussian_log_proba
+from archmm.utils import abstractpythonmethod
 
 cdef data_t INF = <data_t>np.inf
 cdef data_t LOG_ZERO = -INF
@@ -135,20 +136,24 @@ cdef class HMM:
         self.arch = arch.lower().strip()
         self.init_topology()
     
+    @abstractpythonmethod
     def get_num_params_per_state(self):
-        pass # TODO: ABSTRACT METHOD
-        
+        pass
+    
+    @abstractpythonmethod
     def estimate_params(self, X):
-        pass # TODO: ABSTRACT METHOD
+        pass
     
+    @abstractpythonmethod
     def emission_log_proba(self, X):
-        pass # TODO: ABSTRACT METHOD
+        pass
     
+    @abstractpythonmethod
     def update_emission_params(self, X, gamma_s):
-        pass # TODO: ABSTRACT METHOD
+        pass
     
     cdef data_t[:] sample_one_from_state(self, int state_id) nogil:
-        pass # TODO: ABSTRACT METHOD
+        pass
     
     def init_topology(self):
         self.transition_mask = np.zeros(

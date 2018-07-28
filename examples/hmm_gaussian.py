@@ -31,9 +31,6 @@ if __name__ == '__main__':
     # Fit the 2 sequences
     hmm.fit(X, max_n_iter=3)
 
-    import pickle
-    hmm = pickle.loads(pickle.dumps(hmm, -1))
-
     # Display summary
     print(hmm)
 
