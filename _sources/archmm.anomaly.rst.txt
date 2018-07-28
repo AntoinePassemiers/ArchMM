@@ -1,0 +1,7 @@
+archmm\.anomaly module
+======================
+
+.. automodule:: archmm.anomaly
+    :members:
+    :private-members:
+    :show-inheritance:

@@ -1,0 +1,7 @@
+archmm\.stats module
+====================
+
+.. automodule:: archmm.stats
+    :members:
+    :private-members:
+    :show-inheritance:

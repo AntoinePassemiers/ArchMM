@@ -1,0 +1,7 @@
+archmm\.math module
+===================
+
+.. automodule:: archmm.math
+    :members:
+    :private-members:
+    :show-inheritance:

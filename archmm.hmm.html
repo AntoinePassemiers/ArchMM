@@ -1,0 +1,504 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>archmm.hmm module &mdash; archmm  documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="archmm.iohmm module" href="archmm.iohmm.html" />
+    <link rel="prev" title="archmm.check_data module" href="archmm.check_data.html" /> 
+
+  
+  <script src="_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="index.html" class="icon icon-home"> archmm
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">archmm</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="archmm.html">archmm package</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="archmm.html#subpackages">Subpackages</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="archmm.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="archmm.anomaly.html">archmm.anomaly module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="archmm.chains.html">archmm.chains module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="archmm.check_data.html">archmm.check_data module</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">archmm.hmm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="archmm.iohmm.html">archmm.iohmm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="archmm.math.html">archmm.math module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="archmm.mrf.html">archmm.mrf module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="archmm.setup.html">archmm.setup module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="archmm.stats.html">archmm.stats module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="archmm.utils.html">archmm.utils module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">archmm</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="modules.html">archmm</a> &raquo;</li>
+        
+          <li><a href="archmm.html">archmm package</a> &raquo;</li>
+        
+      <li>archmm.hmm module</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="_sources/archmm.hmm.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="module-archmm.hmm">
+<span id="archmm-hmm-module"></span><h1>archmm.hmm module<a class="headerlink" href="#module-archmm.hmm" title="Permalink to this headline">¶</a></h1>
+<dl class="class">
+<dt id="archmm.hmm.GHMM">
+<em class="property">class </em><code class="descclassname">archmm.hmm.</code><code class="descname">GHMM</code><span class="sig-paren">(</span><em>n_states</em>, <em>arch='ergodic'</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.GHMM" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#archmm.hmm.HMM" title="archmm.hmm.HMM"><code class="xref py py-class docutils literal"><span class="pre">archmm.hmm.HMM</span></code></a></p>
+<dl class="method">
+<dt id="archmm.hmm.GHMM.emission_log_proba">
+<code class="descname">emission_log_proba</code><span class="sig-paren">(</span><em>self</em>, <em>X</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.GHMM.emission_log_proba" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.GHMM.estimate_params">
+<code class="descname">estimate_params</code><span class="sig-paren">(</span><em>self</em>, <em>X_s</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.GHMM.estimate_params" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.GHMM.get_num_params_per_state">
+<code class="descname">get_num_params_per_state</code><span class="sig-paren">(</span><em>self</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.GHMM.get_num_params_per_state" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.GHMM.nan_to_zeros">
+<code class="descname">nan_to_zeros</code><span class="sig-paren">(</span><em>self</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.GHMM.nan_to_zeros" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.GHMM.update_emission_params">
+<code class="descname">update_emission_params</code><span class="sig-paren">(</span><em>self</em>, <em>X</em>, <em>gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.GHMM.update_emission_params" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="archmm.hmm.GMMHMM">
+<em class="property">class </em><code class="descclassname">archmm.hmm.</code><code class="descname">GMMHMM</code><span class="sig-paren">(</span><em>n_states</em>, <em>arch='ergodic'</em>, <em>n_components=3</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.GMMHMM" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#archmm.hmm.HMM" title="archmm.hmm.HMM"><code class="xref py py-class docutils literal"><span class="pre">archmm.hmm.HMM</span></code></a></p>
+<dl class="method">
+<dt id="archmm.hmm.GMMHMM.emission_log_proba">
+<code class="descname">emission_log_proba</code><span class="sig-paren">(</span><em>self</em>, <em>X</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.GMMHMM.emission_log_proba" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.GMMHMM.estimate_params">
+<code class="descname">estimate_params</code><span class="sig-paren">(</span><em>self</em>, <em>X_s</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.GMMHMM.estimate_params" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.GMMHMM.get_num_params_per_state">
+<code class="descname">get_num_params_per_state</code><span class="sig-paren">(</span><em>self</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.GMMHMM.get_num_params_per_state" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.GMMHMM.nan_to_zeros">
+<code class="descname">nan_to_zeros</code><span class="sig-paren">(</span><em>self</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.GMMHMM.nan_to_zeros" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.GMMHMM.update_emission_params">
+<code class="descname">update_emission_params</code><span class="sig-paren">(</span><em>self</em>, <em>X</em>, <em>gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.GMMHMM.update_emission_params" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="archmm.hmm.HMM">
+<em class="property">class </em><code class="descclassname">archmm.hmm.</code><code class="descname">HMM</code><span class="sig-paren">(</span><em>n_states</em>, <em>arch='ergodic'</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.HMM" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">object</span></code></p>
+<p>Base class for Hidden Markov Models</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>n_states</strong> (<em>int</em>) &#8211; Number of hidden states</li>
+<li><strong>arch</strong> (<em>str</em>) &#8211; Topology name: can be either &#8216;ergodic&#8217;, &#8216;linear&#8217; or &#8216;cyclic&#8217;</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="attribute">
+<dt id="archmm.hmm.HMM.n_features">
+<code class="descname">n_features</code><a class="headerlink" href="#archmm.hmm.HMM.n_features" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>int</em> &#8211; Dimensionality of the observed samples</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="archmm.hmm.HMM.ln_initial_probs">
+<code class="descname">ln_initial_probs</code><a class="headerlink" href="#archmm.hmm.HMM.ln_initial_probs" title="Permalink to this definition">¶</a></dt>
+<dd><p><code class="xref py py-obj docutils literal"><span class="pre">np.ndarray</span></code> &#8211; Logarithm of state start probabilities, where ln_initial_probs[i]
+is the probability that the model starts in state i when generating
+a new sequence</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="archmm.hmm.HMM.ln_transition_probs">
+<code class="descname">ln_transition_probs</code><a class="headerlink" href="#archmm.hmm.HMM.ln_transition_probs" title="Permalink to this definition">¶</a></dt>
+<dd><p><code class="xref py py-obj docutils literal"><span class="pre">np.ndarray</span></code> &#8211; Logarithm of state transition probabilities, where ln_transition_probs[i, j]
+is the probability that the model switches from state i to state j</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="archmm.hmm.HMM.initial_probs">
+<code class="descname">initial_probs</code><a class="headerlink" href="#archmm.hmm.HMM.initial_probs" title="Permalink to this definition">¶</a></dt>
+<dd><p><code class="xref py py-obj docutils literal"><span class="pre">np.ndarray</span></code> &#8211; State start probabilities</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="archmm.hmm.HMM.transition_probs">
+<code class="descname">transition_probs</code><a class="headerlink" href="#archmm.hmm.HMM.transition_probs" title="Permalink to this definition">¶</a></dt>
+<dd><p><code class="xref py py-obj docutils literal"><span class="pre">np.ndarray</span></code> &#8211; State transition probabilities</p>
+</dd></dl>
+
+<p class="rubric">References</p>
+<p>HMM by Dr Philip Jackson
+Centre for Vision Speech &amp; Signal Processing,
+University of Surrey, Guildford GU2 7XH.
+.. <a class="reference external" href="http://homepages.inf.ed.ac.uk/rbf/IAPR/researchers/D2PAGES/TUTORIALS/hmm_isspr.pdf">http://homepages.inf.ed.ac.uk/rbf/IAPR/researchers/D2PAGES/TUTORIALS/hmm_isspr.pdf</a></p>
+<dl class="method">
+<dt id="archmm.hmm.HMM.baum_welch">
+<code class="descname">baum_welch</code><span class="sig-paren">(</span><em>self</em>, <em>X_s</em>, <em>max_n_iter=100</em>, <em>eps=0.0001</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.HMM.baum_welch" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.HMM.decode">
+<code class="descname">decode</code><span class="sig-paren">(</span><em>self</em>, <em>X</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.HMM.decode" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.HMM.emission_log_proba">
+<code class="descname">emission_log_proba</code><span class="sig-paren">(</span><em>self</em>, <em>X</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.HMM.emission_log_proba" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.HMM.estimate_params">
+<code class="descname">estimate_params</code><span class="sig-paren">(</span><em>self</em>, <em>X</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.HMM.estimate_params" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.HMM.fit">
+<code class="descname">fit</code><span class="sig-paren">(</span><em>self</em>, <em>X_s</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.HMM.fit" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.HMM.get_num_params">
+<code class="descname">get_num_params</code><span class="sig-paren">(</span><em>self</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.HMM.get_num_params" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.HMM.init_topology">
+<code class="descname">init_topology</code><span class="sig-paren">(</span><em>self</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.HMM.init_topology" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.HMM.log_likelihood">
+<code class="descname">log_likelihood</code><span class="sig-paren">(</span><em>self</em>, <em>X</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.HMM.log_likelihood" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.HMM.sample">
+<code class="descname">sample</code><span class="sig-paren">(</span><em>self</em>, <em>n_samples</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.HMM.sample" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.HMM.score">
+<code class="descname">score</code><span class="sig-paren">(</span><em>self</em>, <em>X</em>, <em>criterion='aic'</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.HMM.score" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.HMM.update_emission_params">
+<code class="descname">update_emission_params</code><span class="sig-paren">(</span><em>self</em>, <em>X</em>, <em>gamma_s</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.HMM.update_emission_params" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="archmm.hmm.MHMM">
+<em class="property">class </em><code class="descclassname">archmm.hmm.</code><code class="descname">MHMM</code><span class="sig-paren">(</span><em>n_states</em>, <em>arch='ergodic'</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.MHMM" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#archmm.hmm.HMM" title="archmm.hmm.HMM"><code class="xref py py-class docutils literal"><span class="pre">archmm.hmm.HMM</span></code></a></p>
+<p>Multinomial Hidden Markov Model</p>
+<dl class="attribute">
+<dt id="archmm.hmm.MHMM.n_unique">
+<code class="descname">n_unique</code><a class="headerlink" href="#archmm.hmm.MHMM.n_unique" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>int</em> &#8211; Number of unique values that can be observed</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="archmm.hmm.MHMM.proba">
+<code class="descname">proba</code><a class="headerlink" href="#archmm.hmm.MHMM.proba" title="Permalink to this definition">¶</a></dt>
+<dd><p><code class="xref py py-obj docutils literal"><span class="pre">np.ndarray</span></code> &#8211; Array of shape (n_states, n_unique) where proba[i, j]
+is the probability of observing value j when being
+in hidden state i.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.MHMM.emission_log_proba">
+<code class="descname">emission_log_proba</code><span class="sig-paren">(</span><em>self</em>, <em>X</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.MHMM.emission_log_proba" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes emission log-probabilities of a given sequence according to the
+parameters of the multinomial distributions of each state.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>X</strong> (<code class="xref py py-obj docutils literal"><span class="pre">np.ndarray</span></code>) &#8211; Sequence of observed samples</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">Emission log-probabilities of given sequence</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><code class="xref py py-obj docutils literal"><span class="pre">np.ndarray</span></code></td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.MHMM.estimate_params">
+<code class="descname">estimate_params</code><span class="sig-paren">(</span><em>self</em>, <em>X_s</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.MHMM.estimate_params" title="Permalink to this definition">¶</a></dt>
+<dd><p>Pre-estimates model parameters</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>X_s</strong> (<em>list</em>) &#8211; List of sequences, where sequence i is a NumPy array
+of shape (n_samples_i, n_features)</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.MHMM.get_num_params_per_state">
+<code class="descname">get_num_params_per_state</code><span class="sig-paren">(</span><em>self</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.MHMM.get_num_params_per_state" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns an upper bound on the number of free parameters
+for a single hidden state.</p>
+<p>The number of required parameters is equal to n_unique - 1 since
+any emission probability vector sums to one.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">Upper bound on the number of free parameters per state</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Return type:</th><td class="field-body">int</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.MHMM.nan_to_zeros">
+<code class="descname">nan_to_zeros</code><span class="sig-paren">(</span><em>self</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.MHMM.nan_to_zeros" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="archmm.hmm.MHMM.update_emission_params">
+<code class="descname">update_emission_params</code><span class="sig-paren">(</span><em>self</em>, <em>X</em>, <em>gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.MHMM.update_emission_params" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="archmm.hmm.create_buffer_list">
+<code class="descclassname">archmm.hmm.</code><code class="descname">create_buffer_list</code><span class="sig-paren">(</span><em>X</em>, <em>shape</em>, <em>dtype</em><span class="sig-paren">)</span><a class="headerlink" href="#archmm.hmm.create_buffer_list" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="archmm.iohmm.html" class="btn btn-neutral float-right" title="archmm.iohmm module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="archmm.check_data.html" class="btn btn-neutral" title="archmm.check_data module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2018, Antoine Passemiers.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    <script type="text/javascript">
+        var DOCUMENTATION_OPTIONS = {
+            URL_ROOT:'./',
+            VERSION:'',
+            LANGUAGE:'None',
+            COLLAPSE_INDEX:false,
+            FILE_SUFFIX:'.html',
+            HAS_SOURCE:  true,
+            SOURCELINK_SUFFIX: '.txt'
+        };
+    </script>
+      <script type="text/javascript" src="_static/jquery.js"></script>
+      <script type="text/javascript" src="_static/underscore.js"></script>
+      <script type="text/javascript" src="_static/doctools.js"></script>
+      <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+  
+
+  <script type="text/javascript" src="_static/js/theme.js"></script>
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

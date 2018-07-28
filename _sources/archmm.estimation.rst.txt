@@ -1,0 +1,17 @@
+archmm\.estimation package
+==========================
+
+.. automodule:: archmm.estimation
+    :members:
+    :private-members:
+    :show-inheritance:
+
+Submodules
+----------
+
+.. toctree::
+
+   archmm.estimation.clustering
+   archmm.estimation.cpd
+   archmm.estimation.queue
+

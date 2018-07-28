@@ -1,0 +1,16 @@
+archmm\.ann package
+===================
+
+.. automodule:: archmm.ann
+    :members:
+    :private-members:
+    :show-inheritance:
+
+Submodules
+----------
+
+.. toctree::
+
+   archmm.ann.layers
+   archmm.ann.subnetworks
+

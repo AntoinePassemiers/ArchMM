@@ -1,0 +1,7 @@
+archmm\.check\_data module
+==========================
+
+.. automodule:: archmm.check_data
+    :members:
+    :private-members:
+    :show-inheritance:

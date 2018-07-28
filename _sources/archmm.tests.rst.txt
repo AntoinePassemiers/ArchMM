@@ -1,0 +1,15 @@
+archmm\.tests package
+=====================
+
+.. automodule:: archmm.tests
+    :members:
+    :private-members:
+    :show-inheritance:
+
+Submodules
+----------
+
+.. toctree::
+
+   archmm.tests.utils
+

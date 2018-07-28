@@ -1,0 +1,7 @@
+archmm\.mrf module
+==================
+
+.. automodule:: archmm.mrf
+    :members:
+    :private-members:
+    :show-inheritance:

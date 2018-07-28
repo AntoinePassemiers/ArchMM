@@ -1,0 +1,7 @@
+archmm\.ann\.subnetworks module
+===============================
+
+.. automodule:: archmm.ann.subnetworks
+    :members:
+    :private-members:
+    :show-inheritance:

@@ -1,0 +1,33 @@
+archmm package
+==============
+
+.. automodule:: archmm
+    :members:
+    :private-members:
+    :show-inheritance:
+
+Subpackages
+-----------
+
+.. toctree::
+
+    archmm.ann
+    archmm.estimation
+    archmm.tests
+
+Submodules
+----------
+
+.. toctree::
+
+   archmm.anomaly
+   archmm.chains
+   archmm.check_data
+   archmm.hmm
+   archmm.iohmm
+   archmm.math
+   archmm.mrf
+   archmm.setup
+   archmm.stats
+   archmm.utils
+

@@ -1,0 +1,7 @@
+archmm\.estimation\.queue module
+================================
+
+.. automodule:: archmm.estimation.queue
+    :members:
+    :private-members:
+    :show-inheritance:

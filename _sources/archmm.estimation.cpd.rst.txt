@@ -1,0 +1,7 @@
+archmm\.estimation\.cpd module
+==============================
+
+.. automodule:: archmm.estimation.cpd
+    :members:
+    :private-members:
+    :show-inheritance:

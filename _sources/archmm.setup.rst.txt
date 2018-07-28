@@ -1,0 +1,7 @@
+archmm\.setup module
+====================
+
+.. automodule:: archmm.setup
+    :members:
+    :private-members:
+    :show-inheritance:

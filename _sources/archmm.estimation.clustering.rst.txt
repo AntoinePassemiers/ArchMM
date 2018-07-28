@@ -1,0 +1,7 @@
+archmm\.estimation\.clustering module
+=====================================
+
+.. automodule:: archmm.estimation.clustering
+    :members:
+    :private-members:
+    :show-inheritance:

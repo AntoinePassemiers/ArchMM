@@ -1,0 +1,7 @@
+archmm\.hmm module
+==================
+
+.. automodule:: archmm.hmm
+    :members:
+    :private-members:
+    :show-inheritance:

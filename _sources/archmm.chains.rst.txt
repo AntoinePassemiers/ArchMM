@@ -1,0 +1,7 @@
+archmm\.chains module
+=====================
+
+.. automodule:: archmm.chains
+    :members:
+    :private-members:
+    :show-inheritance:
