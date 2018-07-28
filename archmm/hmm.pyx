@@ -735,7 +735,8 @@ cdef class MHMM(HMM):
         """
         # TODO: CHECK X
         X_concatenated = np.concatenate(X_s, axis=0)
-        self.n_unique = len(np.unique(np.squeeze(X_concatenated)))
+        # self.n_unique = len(np.unique(np.squeeze(X_concatenated)))
+        self.n_unique = np.max(X_concatenated) + 1
         self.proba = np.random.rand(self.n_states, self.n_unique).astype(np_data_t)
         self.proba /= np.sum(self.proba, axis=1)[:, None]
         # TODO: estimation algorithms
@@ -748,7 +749,7 @@ cdef class MHMM(HMM):
         self.transition_probs /= np.sum(self.transition_probs, axis=1)[:, None]
         self.ln_transition_probs = np.log(self.transition_probs)
 
-    def emission_log_proba(self, data_t[:] X):
+    def emission_log_proba(self, X):
         """ Computes emission log-probabilities of a given sequence according to the
         parameters of the multinomial distributions of each state.
 
@@ -762,10 +763,11 @@ cdef class MHMM(HMM):
         """
         cdef int n_samples = X.shape[0]
         cdef data_t[:, ::1] lnf = np.empty((n_samples, self.n_states), dtype=np_data_t)
+        cdef cnp.int_t[:] _X = X.astype(np.int)
         with nogil:
             for k in range(self.n_states):
                 for t in range(n_samples):
-                    lnf[t, k] = libc.math.log(self.proba[k, <int>X[t]])
+                    lnf[t, k] = libc.math.log(self.proba[k, <int>_X[t]])
         return np.asarray(lnf)
 
     def nan_to_zeros(self):
