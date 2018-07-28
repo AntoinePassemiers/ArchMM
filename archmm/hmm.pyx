@@ -24,7 +24,7 @@ from archmm.estimation.cpd import *
 from archmm.estimation.cpd cimport *
 from archmm.estimation.clustering import k_means
 from archmm.stats import np_data_t, gaussian_log_proba
-from archmm.utils import abstractpythonmethod
+from archmm.utils import abstractpythonmethod, Architecture
 
 cdef data_t INF = <data_t>np.inf
 cdef data_t LOG_ZERO = -INF
@@ -133,9 +133,30 @@ cdef class HMM:
         self.initial_probs = np.copy(self.ln_initial_probs)
         self.transition_probs = np.copy(self.ln_transition_probs)
 
-        self.arch = arch.lower().strip()
-        self.init_topology()
+        arch = arch.lower().strip()
+        if isinstance(arch, Architecture):
+            self.transition_mask = arch.to_mask()
+            self.arch = 'custom'
+        else:
+            self.transition_mask = np.asarray(
+                self.init_topology(self.n_states, arch), dtype=np.int)
+            self.arch = arch
     
+    def init_topology(self, n_states, arch):
+        topology = Architecture(n_states)
+        if arch == 'ergodic':
+            topology.add_edges_everywhere()
+        elif arch == 'linear':
+            topology.add_self_loops()
+            topology.add_edges(lambda i: i+1)
+        elif archmm == 'cyclic':
+            topology.add_self_loops()
+            topology.add_edges(lambda i: i+1)
+            topology.add_edge(-1, 0)
+        else:
+            pass # TODO: raise exception
+        return topology.to_mask()
+
     @abstractpythonmethod
     def get_num_params_per_state(self):
         pass
@@ -154,10 +175,6 @@ cdef class HMM:
     
     cdef data_t[:] sample_one_from_state(self, int state_id) nogil:
         pass
-    
-    def init_topology(self):
-        self.transition_mask = np.zeros(
-            (self.n_states, self.n_states), dtype=np.int)
     
     cdef data_t[:, :] compute_ln_phi(self, int sequence_id, int t) nogil:
         """ Compute the logarithm of state transition probabilities.
@@ -355,12 +372,16 @@ cdef class HMM:
 
             # Compute state transition probabilities
             for k in range(self.n_states):
-                for l in range(self.n_states):
-                    num = np.concatenate([
-                        ln_xi_s[p][1:, k, l] for p in range(n_sequences)]).astype(np_data_t)
-                    den = np.concatenate([
-                        ln_gamma_s[p][:-1, k] for p in range(n_sequences)]).astype(np_data_t)
-                    self.ln_transition_probs[k, l] = elogsum(num) - elogsum(den)
+                for l in range(self.n_states):                    
+                    if self.transition_mask[k, l]:
+                        num = np.concatenate([ln_xi_s[p][1:, k, l] \
+                            for p in range(n_sequences)]).astype(np_data_t)
+                        den = np.concatenate([ln_gamma_s[p][:-1, k] \
+                            for p in range(n_sequences)]).astype(np_data_t)
+                        self.ln_transition_probs[k, l] = elogsum(num) - elogsum(den)
+                    else: # If transition is impossible, due to model topology
+                        self.ln_transition_probs[k, l] = LOG_ZERO
+
             self.ln_transition_probs = np.nan_to_num(self.ln_transition_probs)
             eexp2d(self.transition_probs, self.ln_transition_probs)
             np.asarray(self.transition_probs)[np.isnan(self.transition_probs)] = ZERO

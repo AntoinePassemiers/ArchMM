@@ -22,7 +22,7 @@ source_files = [
     (["mrf.c"], "mrf"),
     (["math.c"], "math"),
     (["stats.c"], "stats"),
-    (["utils.c"], "utils"),
+    (["utils.py"], "utils"),
     (["ann/layers.py"], "ann.layers"),
     (["ann/subnetworks.py"], "ann.subnetworks"),
     (["estimation/clustering.c"], "estimation.clustering"),

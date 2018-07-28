@@ -24,7 +24,6 @@ source_files = [
     "mrf.pyx",
     "math.pyx",
     "stats.pyx",
-    "utils.pyx",
     "estimation/clustering.pyx",
     "estimation/cpd.pyx",
     "estimation/queue.pyx"

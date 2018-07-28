@@ -8,7 +8,7 @@ if __name__ == '__main__':
     # Only ergodic topology is supported for the moment
     # Performance will be much higher on this example
     # once left-to-right topologies will be fully implemented
-    hmm = MHMM(3, arch='ergodic')
+    hmm = MHMM(3, arch='linear')
 
     X = np.empty(150)
 
