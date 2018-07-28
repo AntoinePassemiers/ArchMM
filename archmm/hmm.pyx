@@ -147,7 +147,7 @@ cdef class HMM:
     def update_emission_params(self, X, gamma_s):
         pass # TODO: ABSTRACT METHOD
     
-    cdef data_t[::1] sample_one_from_state(self, int state_id) nogil:
+    cdef data_t[:] sample_one_from_state(self, int state_id) nogil:
         pass # TODO: ABSTRACT METHOD
     
     def init_topology(self):
@@ -173,9 +173,9 @@ cdef class HMM:
         return self.ln_transition_probs
 
     cdef data_t forward(self,
-                        data_t[:, ::1] lnf,
-                        data_t[:, ::1] ln_alpha,
-                        data_t[::1] tmp,
+                        data_t[:, :] lnf,
+                        data_t[:, :] ln_alpha,
+                        data_t[:] tmp,
                         int sequence_id) nogil:
         """ Computes forward probabilities.
 
@@ -209,9 +209,9 @@ cdef class HMM:
         return elogsum(ln_alpha[n_samples-1, :])
 
     cdef data_t backward(self,
-                         data_t[:, ::1] lnf,
-                         data_t[:, ::1] ln_beta,
-                         data_t[::1] tmp,
+                         data_t[:, :] lnf,
+                         data_t[:, :] ln_beta,
+                         data_t[:] tmp,
                          int sequence_id):
         """ Computes backward probabilities.
 
@@ -248,11 +248,11 @@ cdef class HMM:
         return lnP_b
 
     cdef e_step(self,
-                data_t[:, ::1] lnf,
-                data_t[:, ::1] ln_alpha,
-                data_t[:, ::1] ln_beta,
-                data_t[:, ::1] ln_gamma,
-                data_t[:, :, ::1] ln_xi,
+                data_t[:, :] lnf,
+                data_t[:, :] ln_alpha,
+                data_t[:, :] ln_beta,
+                data_t[:, :] ln_gamma,
+                data_t[:, :, :] ln_xi,
                 int sequence_id):
         """ Expectation step of the Expectation-Maximization step
 
@@ -285,7 +285,7 @@ cdef class HMM:
         cdef int n_samples = ln_alpha.shape[0]
         cdef data_t[:, :] ln_phi
 
-        cdef data_t[::1] tmp = np.empty((self.n_states), dtype=np_data_t)
+        cdef data_t[:] tmp = np.empty((self.n_states), dtype=np_data_t)
         cdef double lnP_f = self.forward(lnf, ln_alpha, tmp, sequence_id)
         cdef double lnP_b = self.backward(lnf, ln_beta, tmp, sequence_id)
         # TODO: CHECK THAT lnP_f AND lnP_b ARE ALMOST EQUAL
@@ -386,10 +386,10 @@ cdef class HMM:
         # TODO: CHECK X
         n_samples = len(X)
         lnf = self.emission_log_proba(X)
-        cpdef data_t[:, ::1] ln_alpha = np.zeros((n_samples, self.n_states))
-        cpdef data_t[:, ::1] ln_beta = np.zeros((n_samples, self.n_states))
-        cpdef data_t[:, ::1] ln_gamma = np.zeros((n_samples, self.n_states))
-        cpdef data_t[:, :, ::1] ln_xi = np.zeros(
+        cdef data_t[:, :] ln_alpha = np.zeros((n_samples, self.n_states))
+        cdef data_t[:, :] ln_beta = np.zeros((n_samples, self.n_states))
+        cdef data_t[:, :] ln_gamma = np.zeros((n_samples, self.n_states))
+        cdef data_t[:, :, :] ln_xi = np.zeros(
             (n_samples, self.n_states, self.n_states))
         lnP = self.e_step(lnf, ln_alpha, ln_beta, ln_gamma, ln_xi, 0)
 
@@ -460,6 +460,15 @@ cdef class HMM:
     def __repr__(self):
         return self.__str__()
     
+    def __getstate__(self):
+        return self.arch, self.n_features, \
+            np.asarray(self.transition_mask), self.pi, self.a
+    
+    def __setstate__(self, state):
+        self.arch, self.n_features, \
+            self.transition_mask, self.pi, self.a = state
+        self.n_states = self.pi.shape[0]
+    
     property pi:
         def __get__(self):
             return np.asarray(self.initial_probs)
@@ -478,9 +487,6 @@ cdef class HMM:
 
 
 cdef class GHMM(HMM):
-
-    cdef data_t[:, ::1] mu
-    cdef data_t[:, :, ::1] sigma
 
     def __init__(self, n_states, arch='ergodic'):
         HMM.__init__(self, n_states, arch=arch)
@@ -588,7 +594,7 @@ cdef class GHMM(HMM):
                 self.mu[k, j] = temp[j]
         self.nan_to_zeros()
     
-    cdef data_t[::1] sample_one_from_state(self, int state_id) nogil:
+    cdef data_t[:] sample_one_from_state(self, int state_id) nogil:
         with gil: # TODO: GET RID OF PYTHON CALLS
             cholesky_sigma = np.linalg.cholesky(self.sigma[state_id, :, :])
             r = np.random.randn(self.n_features)
@@ -600,6 +606,13 @@ cdef class GHMM(HMM):
         # Number of parameters in half-vectorized covariance matrix
         n_sigma = self.n_features * (self.n_features + 1.) / 2.
         return n_mu + n_sigma
+    
+    def __getstate__(self):
+        return HMM.__getstate__(self), np.asarray(self.mu), np.asarray(self.sigma)
+    
+    def __setstate__(self, state):
+        base_state, self.mu, self.sigma = state
+        HMM.__setstate__(self, base_state)
 
     property mu:
         def __get__(self):
@@ -615,11 +628,6 @@ cdef class GHMM(HMM):
 
 
 cdef class GMMHMM(HMM):
-
-    cdef int n_components
-    cdef data_t[:, ::1] weights
-    cdef data_t[:, :, ::1] mu
-    cdef data_t[:, :, :, ::1] sigma
 
     def __init__(self, n_states, arch='ergodic', n_components=3):
         HMM.__init__(self, n_states, arch=arch)
@@ -678,7 +686,7 @@ cdef class GMMHMM(HMM):
         _gamma = np.empty((n_samples, self.n_states, self.n_components), dtype=np_data_t)
         _gamma[:, :, :] = gamma
     
-    cdef data_t[::1] sample_one_from_state(self, int state_id) nogil:
+    cdef data_t[:] sample_one_from_state(self, int state_id) nogil:
         with gil: # TODO: GET RID OF PYTHON CALLS
             component = np.random.choice(
                 np.arange(self.n_components), p=self.weights[state_id, :])
@@ -694,6 +702,15 @@ cdef class GMMHMM(HMM):
         n_sigma = self.n_features * (self.n_features + 1.) / 2.
         return (n_mu + n_sigma) * self.n_components
 
+    def __getstate__(self):
+        return HMM.__getstate__(self), np.asarray(self.mu), \
+            np.asarray(self.sigma), np.asarray(weights)
+    
+    def __setstate__(self, state):
+        base_state, self.mu, self.sigma, self.weights = state
+        self.n_components = self.weights.shape[1]
+        HMM.__setstate__(self, base_state)
+
     property mu:
         def __get__(self):
             return np.asarray(self.mu)
@@ -705,6 +722,12 @@ cdef class GMMHMM(HMM):
             return np.asarray(self.sigma)
         def __set__(self, arr):
             self.sigma = np.asarray(arr)
+    
+    property weights:
+        def __get__(self):
+            return np.asarray(self.weights)
+        def __set__(self, arr):
+            self.weights = np.asarray(arr)
 
 
 cdef class MHMM(HMM):
@@ -718,9 +741,6 @@ cdef class MHMM(HMM):
             is the probability of observing value j when being
             in hidden state i.
     """
-
-    cdef int n_unique
-    cdef data_t[:, ::1] proba
 
     def __init__(self, n_states, arch='ergodic'):
         HMM.__init__(self, n_states, arch=arch)
@@ -762,7 +782,7 @@ cdef class MHMM(HMM):
                 Emission log-probabilities of given sequence
         """
         cdef int n_samples = X.shape[0]
-        cdef data_t[:, ::1] lnf = np.empty((n_samples, self.n_states), dtype=np_data_t)
+        cdef data_t[:, :] lnf = np.empty((n_samples, self.n_states), dtype=np_data_t)
         cdef cnp.int_t[:] _X = X.astype(np.int)
         with nogil:
             for k in range(self.n_states):
@@ -786,7 +806,7 @@ cdef class MHMM(HMM):
 
         self.nan_to_zeros()
     
-    cdef data_t[::1] sample_one_from_state(self, int state_id) nogil:
+    cdef data_t[:] sample_one_from_state(self, int state_id) nogil:
         """ Sample a multinomial distribution, where the distribution
         is associated to current hidden state.
 
@@ -817,6 +837,14 @@ cdef class MHMM(HMM):
         # Number of free parameters in proba vector
         n_params = self.n_unique - 1
         return n_params
+
+    def __getstate__(self):
+        return HMM.__getstate__(self), np.asarray(self.proba)
+    
+    def __setstate__(self, state):
+        base_state, self.proba = state
+        self.n_unique = self.proba.shape[1]
+        HMM.__setstate__(self, base_state)
 
     property proba:
         def __get__(self):
