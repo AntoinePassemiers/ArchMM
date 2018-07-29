@@ -1,0 +1,294 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>Hidden Markov Models &mdash; archmm  documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="archmm" href="modules.html" />
+    <link rel="prev" title="Welcome to archmm’s documentation!" href="index.html" /> 
+
+  
+  <script src="_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="index.html" class="icon icon-home"> archmm
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Hidden Markov Models</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#forward-procedure">Forward procedure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#backward-procedure">Backward procedure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#parameters-update">Parameters update</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">archmm</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">archmm</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html">Docs</a> &raquo;</li>
+        
+      <li>Hidden Markov Models</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="_sources/hmm.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="hidden-markov-models">
+<h1>Hidden Markov Models<a class="headerlink" href="#hidden-markov-models" title="Permalink to this headline">¶</a></h1>
+<p>Because ArchMM offers multi-sequence support, an additional level of formalism has been
+added to take the sequence indexing into account.</p>
+<p>Let <span class="math">\(a_{ij}\)</span> be the probability that the model switches from state <span class="math">\(i\)</span> to
+state <span class="math">\(j\)</span> at any time. This allows us to define a matrix <span class="math">\(A \in \mathbb{R}^{n \times n}\)</span>
+with rows summing to one and <span class="math">\(n\)</span> being the number of hidden states. Depending on the model
+topology, some elements of <span class="math">\(A\)</span> may be equal to zero. For example, a left-to-right topology
+constrains all elements that don&#8217;t have a multi-index of the form <span class="math">\((i, i)\)</span> or <span class="math">\((i, i+1)\)</span>
+to be equal to zero: the model can either stay in the same state or move to the next one.</p>
+<div class="math">
+\[a_{ij} = P(X_{t, p} = j | X_{t-1, p} = i)\]</div>
+<p>The model can make transitions between states but still must be able to start in one of them.
+Let <span class="math">\(\pi_i\)</span> be the probability that the model starts in state <span class="math">\(i\)</span> when
+generating a new sequence.</p>
+<div class="math">
+\[\pi_i = P(X_{1, p} = i)\]</div>
+<p>More importantly, a Hidden Markov Model should be capable of emitting an observation using the distribution
+associated to current hidden state. Let&#8217;s define <span class="math">\(b_j(y_i)\)</span> as the probability of emitting
+the observed sample <span class="math">\(y_i\)</span> when being in state <span class="math">\(j\)</span>. Each hidden state has a dedicated
+distribution with different parameter values.</p>
+<div class="math">
+\[b_j(y_i) = P(Y_{t, p} = y_i | X_{t, p} = j)\]</div>
+<p>Before to jump to the learning part, let&#8217;s introduce the 3 assumptions made by HMMs in order to make
+the optimization algorithms computationally efficient:</p>
+<ul class="simple">
+<li>The implementation relies on the first-order Markov assumption, which implies that the probability
+of being in any state at current time only depends on what the previous state was.</li>
+<li>The transition probabilites between states are stationarity, meaning that they are time-independent.</li>
+<li>The observed samples are independent, meaning that they are not correlated over time.</li>
+</ul>
+<p>The first assumption is the strongest one since it drastically simplifies the way the log-likelihood
+of the data is computed. The log-likelihood is the logarithm of the probability of obtaining the given
+sequences using the current parameters of the model. Because the probability of a long sequence is
+not numerically stable (such a function approaches zero very quickly), its logarithm is used instead.
+Plus, it has interesting statistical and computational properties.
+It can be formalized as follows:</p>
+<div class="math">
+\[log \ \mathcal{L} = log(P(X | \theta)) = log \Big[ \prod_{p=1}^P \pi_i TODO \Big]\]</div>
+<div class="section" id="forward-procedure">
+<h2>Forward procedure<a class="headerlink" href="#forward-procedure" title="Permalink to this headline">¶</a></h2>
+<div class="math">
+\[\alpha_i(t, p) = P(Y_{1, p} = y_1, \ldots, Y_{t, p} = y_{t, p}, X_{t, p} = i | \theta)\]</div>
+<div class="math">
+\[\begin{split}\alpha_i(1, p)     &amp;= \pi_i b_i(y_{1, p}) \\
+\alpha_i(t + 1, p) &amp;= b_i(y_{t+1, p}) \sum\limits_{j=1}^{n} \alpha_j(t, p) a_{ji}\end{split}\]</div>
+</div>
+<div class="section" id="backward-procedure">
+<h2>Backward procedure<a class="headerlink" href="#backward-procedure" title="Permalink to this headline">¶</a></h2>
+<div class="math">
+\[\beta_i(t, p) = P(Y_{t+1, p} = y_{t+1, p}, \ldots, Y_{T_p, p} = y_{T_p, p} | X_{t, p} = i, \theta)\]</div>
+<div class="math">
+\[\begin{split}\beta_i(T_p, p) &amp;= 1 \\
+\beta_i(t, p)   &amp;= \sum\limits_{j=1}^n \beta_j(t+1, p) a_{ij} b_j(y_{t+1, p})\end{split}\]</div>
+</div>
+<div class="section" id="parameters-update">
+<h2>Parameters update<a class="headerlink" href="#parameters-update" title="Permalink to this headline">¶</a></h2>
+<div class="math">
+\[\gamma_i(t, p) = P(X_{t, p} = i | Y_p, \theta) = \frac{P(X_{t, p} = i, Y_p | \theta)}{P(Y_p, \theta)}
+= \frac{\alpha_i(t, p) \beta_i(t, p)}{\sum\limits_{j=1}^{n} \alpha_j(t, p) \beta_j(t, p)}\]</div>
+<div class="math">
+\[\begin{split}\xi_{ij}(t, p) = P(X_{t, p} = i, X_{t+1, p} = j | Y_p, \theta)
+&amp;= \frac{P(X_{t, p} = i, X_{t+1, p} = j, Y_p | \theta)}{P(Y_p, \theta)} \\
+&amp;= \frac{\alpha_i(t, p) a_{ij} \beta_j(t+1, p) b_j(y_{t+1, p})}{\sum\limits_{i=1}^n
+\sum\limits_{j=1}^n \alpha_i(t, p) a_{ij} \beta_j(t+1, p) b_j(y_{t+1, p})}\end{split}\]</div>
+<div class="math">
+\[\tilde{\pi}_i = \gamma_i(1, p)\]</div>
+<div class="math">
+\[\tilde{a}_{ij} = \frac{\sum\limits_{p=1}^P \sum\limits_{t=1}^{T_p} \xi_{ij}(t, p)}
+{\sum\limits_{p=1}^P \sum\limits_{t=1}^{T_p} \gamma_i(t, p)}\]</div>
+<p>TODO: update of B</p>
+</div>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="modules.html" class="btn btn-neutral float-right" title="archmm" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="index.html" class="btn btn-neutral" title="Welcome to archmm’s documentation!" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2018, Antoine Passemiers.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    <script type="text/javascript">
+        var DOCUMENTATION_OPTIONS = {
+            URL_ROOT:'./',
+            VERSION:'',
+            LANGUAGE:'None',
+            COLLAPSE_INDEX:false,
+            FILE_SUFFIX:'.html',
+            HAS_SOURCE:  true,
+            SOURCELINK_SUFFIX: '.txt'
+        };
+    </script>
+      <script type="text/javascript" src="_static/jquery.js"></script>
+      <script type="text/javascript" src="_static/underscore.js"></script>
+      <script type="text/javascript" src="_static/doctools.js"></script>
+      <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+  
+
+  <script type="text/javascript" src="_static/js/theme.js"></script>
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
