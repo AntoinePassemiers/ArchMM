@@ -122,9 +122,10 @@ cdef class HMM:
         .. http://homepages.inf.ed.ac.uk/rbf/IAPR/researchers/D2PAGES/TUTORIALS/hmm_isspr.pdf
     """
 
-    def __init__(self, n_states, arch='ergodic'):
+    def __init__(self, n_states, arch='ergodic', missing_values=False):
         self.n_states = n_states
         self.n_features = -1
+        self.missing_values = missing_values
 
         self.ln_initial_probs = np.empty(
             self.n_states, dtype=np_data_t)
@@ -166,12 +167,23 @@ cdef class HMM:
         pass
     
     @abstractpythonmethod
+    def update_emission_params(self, X, gamma_s):
+        pass
+
+    @abstractpythonmethod
     def emission_log_proba(self, X):
         pass
     
-    @abstractpythonmethod
-    def update_emission_params(self, X, gamma_s):
-        pass
+    def emission_log_proba_with_nan_support(self, X):
+        if not self.missing_values:
+            lnf = self.emission_log_proba(X)
+        else:
+            n_samples = X.shape[0]
+            lnf = np.empty((n_samples, self.n_states), dtype=np_data_t)
+            observed = ~np.any(np.isnan(X), axis=1)
+            lnf[observed] = self.emission_log_proba(X[observed])
+            lnf[~observed] = 0.0
+        return lnf
     
     cdef data_t[:] sample_one_from_state(self, int state_id) nogil:
         pass
@@ -346,7 +358,7 @@ cdef class HMM:
 
             # Apply E-step on each sequence individually
             for p in range(n_sequences):
-                lnf_s[p] = self.emission_log_proba(X_s[p])
+                lnf_s[p] = self.emission_log_proba_with_nan_support(X_s[p])
                 lnP_s[p] = self.e_step(lnf_s[p], ln_alpha_s[p], ln_beta_s[p],
                     ln_gamma_s[p], ln_xi_s[p], p)
             
@@ -405,7 +417,10 @@ cdef class HMM:
         else:
             self.n_features = first_seq.shape[1]
         # TODO: if parameters set by hand, do not pre-estimate parameters
-        self.estimate_params(X_s)
+        if not self.missing_values:
+            self.estimate_params(X_s)
+        else:
+            self.estimate_params([X[~np.any(np.isnan(X), axis=1)] for X in X_s])
 
         # TODO: Make sure that pre-estimated transition probabilities
         #       are in accordance with current topology
@@ -414,7 +429,7 @@ cdef class HMM:
     def log_likelihood(self, X):
         # TODO: CHECK X
         n_samples = len(X)
-        lnf = self.emission_log_proba(X)
+        lnf = self.emission_log_proba_with_nan_support(X)
         cdef data_t[:, :] ln_alpha = np.zeros((n_samples, self.n_states))
         cdef data_t[:, :] ln_beta = np.zeros((n_samples, self.n_states))
         cdef data_t[:, :] ln_gamma = np.zeros((n_samples, self.n_states))
@@ -490,11 +505,11 @@ cdef class HMM:
         return self.__str__()
     
     def __getstate__(self):
-        return self.arch, self.n_features, \
+        return self.arch, self.n_features, self.missing_values, \
             np.asarray(self.transition_mask), self.pi, self.a
     
     def __setstate__(self, state):
-        self.arch, self.n_features, \
+        self.arch, self.n_features, self.missing_values, \
             self.transition_mask, self.pi, self.a = state
         self.n_states = self.pi.shape[0]
     
@@ -517,8 +532,8 @@ cdef class HMM:
 
 cdef class GHMM(HMM):
 
-    def __init__(self, n_states, arch='ergodic'):
-        HMM.__init__(self, n_states, arch=arch)
+    def __init__(self, n_states, arch='ergodic', missing_values=False):
+        HMM.__init__(self, n_states, arch=arch, missing_values=missing_values)
 
     def estimate_params(self, X_s):
         first_seq = X_s[0]
@@ -658,8 +673,8 @@ cdef class GHMM(HMM):
 
 cdef class GMMHMM(HMM):
 
-    def __init__(self, n_states, arch='ergodic', n_components=3):
-        HMM.__init__(self, n_states, arch=arch)
+    def __init__(self, n_states, arch='ergodic', missing_values=False, n_components=3):
+        HMM.__init__(self, n_states, arch=arch, missing_values=missing_values)
         self.n_components = n_components
 
     def estimate_params(self, X_s):

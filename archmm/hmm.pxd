@@ -18,6 +18,7 @@ cdef class HMM:
     cdef str arch
     cdef int n_states
     cdef int n_features
+    cdef bint missing_values
 
     cdef cnp.int_t[:, :] transition_mask
     cdef data_t[:] initial_probs

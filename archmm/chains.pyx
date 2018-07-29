@@ -18,10 +18,6 @@ from libc.string cimport memset
 from cython cimport view
 
 
-class LabelEncoder:
-    pass # TODO
-
-
 cdef class MarkovChainModel:
     cdef size_t n_symbols
     cdef size_t n_threads
@@ -104,7 +100,7 @@ cdef class MarkovChainClassifier:
             self.models[label].fit(sub_X)
 
     def score(self, X):
-        scores = np.empty((len(X), self.n_classes), dtype = np.double)
+        scores = np.empty((len(X), self.n_classes), dtype=np.double)
         for i in range(self.n_classes):
             scores[:, i] = self.models[i].score(X)
         return np.asarray(scores)

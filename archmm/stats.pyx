@@ -46,7 +46,7 @@ def gaussian_log_proba(X, mu, sigma):
 
 class MCMC:
 
-    def __init__ (self, pdf, start, proposal=None, dtype=np.double):
+    def __init__ (self, pdf, start, proposal=None):
         self.pdf = pdf
 
         if proposal is not None:
@@ -59,7 +59,6 @@ class MCMC:
             self.n_features = len(self.current_point)
         else:
             self.n_features = 1
-        self.dtype = dtype
     
     def acceptance_rule(self, new_point):
         eta = np.random.rand()
@@ -70,7 +69,7 @@ class MCMC:
         
     def sample(self, n_samples):
         shape = (n_samples, self.n_features) if self.n_features > 1 else (n_samples,)
-        samples = np.empty(shape, dtype=self.dtype)
+        samples = np.empty(shape, dtype=self.current_point.dtype)
 
         for k in range(n_samples):
             next_point = self.current_point + self.proposal.rvs()
