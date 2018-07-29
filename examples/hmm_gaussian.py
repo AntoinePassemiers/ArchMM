@@ -11,15 +11,16 @@ if __name__ == '__main__':
 
     # Gaussian HMM with 3 hidden states and
     # ergodic topology
-    hmm = GHMM(3, arch='ergodic')
+    hmm = GHMM(3, arch='ergodic', missing_values=True)
 
     # Sequence X1 (150 samples):
     # 50 samples in state 0 +
     # 50 samples in state 1 +
     # 50 samples in state 2
-    X1 = np.random.rand(150, 10)
+    X1 = np.random.rand(153, 10)
     X1[:50, 2] += 78
-    X1[50:100, 7] -= 98
+    X1[50:53, 4] = np.nan
+    X1[53:103, 7] -= 98
 
     # Sequence X2 (100 samples):
     # 50 samples in state 1 +
