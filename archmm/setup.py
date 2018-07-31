@@ -15,7 +15,6 @@ sub_packages = [
     "estimation",
 ]
 source_files = [
-    (["anomaly.c"], "anomaly"),
     (["check_data.py"], "check_data"),
     (["hmm.c"], "hmm"),
     (["iohmm.c"], "iohmm"),

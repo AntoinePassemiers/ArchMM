@@ -18,7 +18,6 @@ except ImportError:
 
 source_folder = "archmm"
 source_files = [
-    "anomaly.pyx",
     "hmm.pyx",
     "iohmm.pyx",
     "mrf.pyx",

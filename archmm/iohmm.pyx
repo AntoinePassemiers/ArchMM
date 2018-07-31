@@ -13,8 +13,6 @@ cnp.import_array()
 from archmm.ann.layers import *
 from archmm.ann.subnetworks import *
 
-from archmm.anomaly import *
-from archmm.anomaly cimport *
 from archmm.hmm cimport HMM, data_t
 from archmm.hmm import create_buffer_list, np_data_t
 
