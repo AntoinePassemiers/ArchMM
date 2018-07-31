@@ -716,31 +716,30 @@ cdef class GHMM(HMM):
         np.asarray(self.sigma)[np.isnan(self.sigma)] = ZERO
 
     def update_emission_params(self, X, gamma):
+        cdef data_t[:, :] diff
+        cdef data_t[:] posteriors
+        cdef int n_samples = X.shape[0]
+        cdef int n_features = X.shape[1]
+
         self.nan_to_zeros()
-        n_samples, n_features = X.shape[0], X.shape[1]
         for k in range(self.n_states):
             # Compute denominator for means and covariances
             posteriors = gamma[:, k]
-            post_sum = posteriors.sum()
-            norm = 1.0 / post_sum if post_sum != 0.0 else 1. # TODO
 
             # Update covariance matrix of state k
-            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
-            covs = list()
-            for t in range(n_samples):
-                diff = X[t, :] - self.mu[k, :]
-                covs.append(np.outer(diff, diff))
-            covs = np.transpose(np.asarray(covs), (1, 2, 0))
-            temp = np.sum(covs * posteriors, axis=2)
-
-            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
-            for j in range(n_features):
-                for l in range(n_features):
-                    self.sigma[k, j, l] = temp[j, l]
+            diff = X - self.mu[k, :]
+            with nogil:
+                for j in range(n_features):
+                    for l in range(n_features):
+                        self.sigma[k, j, l] = 0
+                        for t in range(n_samples):
+                            self.sigma[k, j, l] += diff[t, j] * diff[t, l] * posteriors[t]
 
             # Update mean of state k
-            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
+            post_sum = np.sum(posteriors)
+            norm = 1.0 / post_sum if post_sum != 0.0 else 1.
             temp = np.dot(posteriors, X) * norm
+            # TODO: OPTIMIZATION WITH A NOGIL BLOCK
             for j in range(n_features):
                 self.mu[k, j] = temp[j]
         self.nan_to_zeros()
@@ -845,8 +844,6 @@ cdef class GMMHMM(HMM):
             for k in range(self.n_states):
                 # Compute denominator for means and covariances
                 posteriors = gamma[:, k] * self.weights[k, c]
-                post_sum = posteriors.sum()
-                norm = 1.0 / post_sum if post_sum != 0.0 else 1.
 
                 # Update covariance matrix of state k
                 # TODO: OPTIMIZATION WITH A NOGIL BLOCK
@@ -864,6 +861,8 @@ cdef class GMMHMM(HMM):
 
                 # Update mean of state k
                 # TODO: OPTIMIZATION WITH A NOGIL BLOCK
+                post_sum = posteriors.sum()
+                norm = 1.0 / post_sum if post_sum != 0.0 else 1.
                 temp = np.dot(posteriors, X) * norm
                 for j in range(n_features):
                     self.mu[k, c, j] = temp[j]

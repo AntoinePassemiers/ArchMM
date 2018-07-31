@@ -30,7 +30,7 @@ if __name__ == '__main__':
     X = [X1, X2]
 
     # Fit the 2 sequences
-    hmm.fit(X, max_n_iter=3)
+    hmm.fit(X, max_n_iter=15)
 
     # Display summary
     print(hmm)
