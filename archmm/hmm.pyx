@@ -13,7 +13,6 @@ cimport numpy as cnp
 cnp.import_array()
 
 cimport libc.math
-from cython.parallel import parallel, prange
 
 import copy
 from abc import abstractmethod
@@ -26,12 +25,23 @@ from archmm.estimation.clustering import k_means
 from archmm.stats import np_data_t, gaussian_log_proba
 from archmm.utils import abstractpythonmethod, Architecture
 
+
 cdef data_t INF = <data_t>np.inf
-cdef data_t LOG_ZERO = -INF
+cdef data_t LOG_ZERO = <data_t>-INF
 cdef data_t ZERO = <data_t>0.0
 
 
 cdef inline data_t _max(data_t[:] vec) nogil:
+    """ Max of an array.
+
+    Args:
+        vec (:obj:`data_t[:]`):
+            Input array
+    
+    Returns:
+        data_t:
+            Max of the input array
+    """
     cdef int i
     cdef data_t best_val = -INF
     for i in range(vec.shape[0]):
@@ -41,6 +51,19 @@ cdef inline data_t _max(data_t[:] vec) nogil:
 
 
 cdef inline data_t elogsum(data_t[:] vec) nogil:
+    r""" Stable logarithmic sum of an array.
+
+    .. math::
+        S = \log(\sum_\limits_i e^{a_i - \epsilon}) + \epsilon
+
+    Args:
+        vec (:obj:`data_t[:]`):
+            Input array
+    
+    Returns:
+        data_t:
+            Logarithmic sum of the array
+    """
     cdef int i
     cdef data_t s = 0.0
     cdef data_t offset = _max(vec)
@@ -52,6 +75,15 @@ cdef inline data_t elogsum(data_t[:] vec) nogil:
 
 
 cdef inline void eexp2d(data_t[:, :] dest, data_t[:, :] src) nogil:
+    """ Exponential of a 2-dimensional array. The input array
+    and output array are both provided as arguments.
+
+    Args:
+        dest (:obj:`data_t[:, :]`):
+            Output array
+        src (:obj:`data_t[:, :]`):
+            Input array
+    """
     cdef int i, j
     for i in range(src.shape[0]):
         for j in range(src.shape[1]):
@@ -60,6 +92,15 @@ cdef inline void eexp2d(data_t[:, :] dest, data_t[:, :] src) nogil:
 
 
 cdef inline void eexp3d(data_t[:, :, :] dest, data_t[:, :, :] src) nogil:
+    """ Exponential of a 3-dimensional array. The input array
+    and output array are both provided as arguments.
+
+    Args:
+        dest (:obj:`data_t[:, :, :]`):
+            Output array
+        src (:obj:`data_t[:, :, :]`):
+            Input array
+    """
     cdef int i, j, k
     for i in range(src.shape[0]):
         for j in range(src.shape[1]):
@@ -69,6 +110,15 @@ cdef inline void eexp3d(data_t[:, :, :] dest, data_t[:, :, :] src) nogil:
 
 
 cdef inline void elog1d(data_t[:] dest, data_t[:] src) nogil:
+    """ Logarithm of a 1-dimensional array. The input array
+    and output array are both provided as arguments.
+
+    Args:
+        dest (:obj:`data_t[:]`):
+            Output array
+        src (:obj:`data_t[:]`):
+            Input array
+    """
     cdef int i
     for i in range(src.shape[0]):
         dest[i] = libc.math.log(src[i]) \
@@ -76,6 +126,15 @@ cdef inline void elog1d(data_t[:] dest, data_t[:] src) nogil:
 
 
 cdef inline void elog2d(data_t[:, :] dest, data_t[:, :] src) nogil:
+    """ Logarithm of a 2-dimensional array. The input array
+    and output array are both provided as arguments.
+
+    Args:
+        dest (:obj:`data_t[:, :]`):
+            Output array
+        src (:obj:`data_t[:, :]`):
+            Input array
+    """
     cdef int i, j
     for i in range(src.shape[0]):
         for j in range(src.shape[1]):
@@ -84,6 +143,25 @@ cdef inline void elog2d(data_t[:, :] dest, data_t[:, :] src) nogil:
 
 
 def create_buffer_list(X, shape, dtype):
+    """ Create list of arrays, where array i is of shape
+    tuple([X[i].shape[0]] + list(shape)). In other words,
+    each sequence in X is associated with a new array
+    of same length and other dimensions determined by shape.
+
+    Args:
+        X (list):
+            List of sequences
+        shape (tuple):
+            Shape of arrays to be created, not including the
+            first dimension, which is determined by sequence
+            length.
+        dtype (type):
+            Data type of newly created arrays
+    
+    Returns:
+        list:
+            List of newly created arrays
+    """
     buffer_list = list()
     for sequence in X:
         buffer_shape = tuple([len(sequence)] + list(shape))
@@ -92,13 +170,18 @@ def create_buffer_list(X, shape, dtype):
 
 
 cdef class HMM:
-    """ Base class for Hidden Markov Models
+    """ Base class for Hidden Markov Models.
 
     Args:
         n_states (int):
             Number of hidden states
-        arch (str):
-            Topology name: can be either 'ergodic', 'linear' or 'cyclic'
+        arch (str, or :obj:`Architecture`):
+            If string, arch is a topology name that is either 
+            'ergodic', 'linear' or 'cyclic'. Otherwise, arch is an Architecture
+            representing a graph.
+        missing_values (bool):
+            Whether the model should look for NaNs when training and scoring.
+            NaNs are treated as unobserved samples.
     
     Attributes:
         n_features (int):
@@ -114,6 +197,9 @@ cdef class HMM:
             State start probabilities
         transition_probs (:obj:`np.ndarray`):
             State transition probabilities
+        transition_mask (:obj:`np.ndarray`):
+            2-dimensional boolean array where where transition_mask[i, j] indicates
+            whether transitions between hidden states i and j are allowed.
 
     References:
         HMM by Dr Philip Jackson
@@ -371,7 +457,7 @@ cdef class HMM:
             old_F = F
 
             # Compute posteriors
-            gamma_s = copy.deepcopy(ln_gamma_s)
+            gamma_s = copy.deepcopy(ln_gamma_s) # TODO
             for j in range(n_sequences):
                 eexp2d(gamma_s[j], ln_gamma_s[j])
 
@@ -678,7 +764,7 @@ cdef class GMMHMM(HMM):
         self.n_components = n_components
 
     def estimate_params(self, X_s):
-        self.n_features = X.shape[1]
+        self.n_features = X_s[0].shape[1]
         self.weights = np.empty((self.n_states, self.n_components), dtype=np_data_t)
         self.mu = np.empty(
             (self.n_states, self.n_components, self.n_features), dtype=np_data_t)
@@ -689,11 +775,15 @@ cdef class GMMHMM(HMM):
         # TODO: make distinction between ergodic and linear
 
         X_concatenated = np.concatenate(X_s, axis=0)
-        self.mu, indices = k_means(X_concatenated, self.n_states, n_runs=5)
+        _, indices = k_means(X_concatenated, self.n_states, n_runs=5)
         for i in range(self.n_states):
             cluster = X_concatenated[indices == i]
             sub_mu, sub_indices = k_means(cluster, self.n_components, n_runs=5)
-            self.mu[i, :, :] = sub_mu
+
+            for c in range(self.n_components):
+                for j in range(self.n_features):
+                    self.mu[i, c, j] = sub_mu[c, j]
+
             for c in range(self.n_components):
                 tmp = np.cov(cluster[sub_indices == c].T)
                 for j in range(self.n_features):
@@ -701,7 +791,8 @@ cdef class GMMHMM(HMM):
                         self.sigma[i, c, j, k] = tmp[j, k]
                 self.weights[i, c] = len(tmp)
             # Normalize weights per cluster
-            self.weights[i, :] = self.weights[i, :] + np.sum(self.weights[i, :])
+            for c in range(self.n_components):
+                self.weights[i, c] = self.weights[i, c] + np.sum(self.weights[i, c])
 
         # Estimate start and transition probabilities
         self.initial_probs = np.tile(1.0 / self.n_states, self.n_states)
@@ -709,15 +800,16 @@ cdef class GMMHMM(HMM):
     
     def emission_log_proba(self, X):
         n_samples, n_features = X.shape[0], X.shape[1] 
-        n_states = mu.shape[0]
-        lnf = np.empty((n_samples, n_states), dtype=np_data_t)
-        for k in range(n_states):
-            lnf_by_component = np.empty(n_samples, self.n_components, dtype=np_data_t)
+        lnf = np.empty((n_samples, self.n_states), dtype=np_data_t)
+        lnf_by_component = np.empty((n_samples, self.n_components), dtype=np_data_t)
+        for k in range(self.n_states):
             for c in range(self.n_components):
                 lnf_by_component[:, c] = gaussian_log_proba(
                     X, self.mu[k, c, :], self.sigma[k, c, :, :])
+            lnf_by_component += np.log(self.weights[k, :])
             
-            # TODO: update lnf[:, k] with vectorized elogsum
+            for t in range(n_samples): # TODO: MAKE IT FASTER (NOGIL BLOCK)
+                lnf[t, k] = elogsum(lnf_by_component[t, :])
         return lnf
 
     def nan_to_zeros(self):
@@ -726,9 +818,39 @@ cdef class GMMHMM(HMM):
         np.asarray(self.sigma)[np.isnan(self.sigma)] = ZERO
     
     def update_emission_params(self, X, gamma):
-        n_sequences = len(X_s)
-        _gamma = np.empty((n_samples, self.n_states, self.n_components), dtype=np_data_t)
-        _gamma[:, :, :] = gamma
+        self.nan_to_zeros()
+        n_samples, n_features = X.shape[0], X.shape[1]
+        for c in range(self.n_components):
+            for k in range(self.n_states):
+                # Compute denominator for means and covariances
+                posteriors = gamma[:, k] * self.weights[k, c]
+                post_sum = posteriors.sum()
+                norm = 1.0 / post_sum if post_sum != 0.0 else 1.
+
+                # Update covariance matrix of state k
+                # TODO: OPTIMIZATION WITH A NOGIL BLOCK
+                covs = list()
+                for t in range(n_samples):
+                    diff = X[t, :] - self.mu[k, c, :]
+                    covs.append(np.outer(diff, diff))
+                covs = np.transpose(np.asarray(covs), (1, 2, 0))
+                temp = np.sum(covs * posteriors, axis=2)
+
+                # TODO: OPTIMIZATION WITH A NOGIL BLOCK
+                for j in range(n_features):
+                    for l in range(n_features):
+                        self.sigma[k, c, j, l] = temp[j, l]
+
+                # Update mean of state k
+                # TODO: OPTIMIZATION WITH A NOGIL BLOCK
+                temp = np.dot(posteriors, X) * norm
+                for j in range(n_features):
+                    self.mu[k, c, j] = temp[j]
+                
+                # Update mixture weights
+                self.weights[k, c] = np.sum(posteriors) / np.sum(gamma[:, k])
+        print(np.asarray(self.weights))
+        self.nan_to_zeros()
     
     cdef data_t[:] sample_one_from_state(self, int state_id) nogil:
         with gil: # TODO: GET RID OF PYTHON CALLS
