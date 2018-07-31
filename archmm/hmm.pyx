@@ -13,6 +13,7 @@ cimport numpy as cnp
 cnp.import_array()
 
 cimport libc.math
+cimport libc.stdlib
 
 import copy
 from abc import abstractmethod
@@ -140,6 +141,20 @@ cdef inline void elog2d(data_t[:, :] dest, data_t[:, :] src) nogil:
         for j in range(src.shape[1]):
             dest[i, j] = libc.math.log(
                 src[i, j]) if src[i, j] != 0 else LOG_ZERO
+
+
+cdef inline int randint_with_weights(data_t[:] weights) nogil:
+    cdef data_t cumsum = 0.0
+    cdef data_t threshold = <data_t>libc.stdlib.rand() / \
+        <data_t>libc.stdlib.RAND_MAX
+    cdef int i
+    for i in range(weights.shape[0]):
+        cumsum += weights[i]
+        if cumsum >= threshold:
+            return i
+    # TODO
+    return -1 
+
 
 
 def create_buffer_list(X, shape, dtype):
@@ -565,25 +580,31 @@ cdef class HMM:
 
     def sample(self, n_samples):
         # Initialize observation history and state history
-        states = np.zeros(n_samples+1, dtype=np.int)
-        observations = np.zeros((n_samples, self.n_features), dtype=np_data_t)
+        cdef int _n_samples = <int>n_samples
+        cdef cnp.int_t[:] states = np.zeros(n_samples+1, dtype=np.int)
+        cdef data_t[:, :] observations = np.zeros(
+            (n_samples, self.n_features), dtype=np_data_t)
 
         # Randomly pick an initial state
         states[0] = np.random.choice(np.arange(self.n_states), p=self.initial_probs)
 
-        # TODO: OPTIMIZATION WITH A NOGIL BLOCK
-        for t in range(1, n_samples+1):
-            state_id = states[t-1]
-            observations[t-1, :] = self.sample_one_from_state(state_id)
+        # Generate observations, starting from initial state
+        cdef int t, j, state_id
+        cdef data_t[:] temp
+        with nogil:
+            for t in range(1, _n_samples+1):
+                state_id = states[t-1]
+                temp = self.sample_one_from_state(state_id)
+                for j in range(temp.shape[0]):
+                    observations[t-1, j] = temp[j]
 
-            # Randomly pick next state w.r.t. transition probabilities
-            states[t] = np.random.choice(
-                np.arange(self.n_states), p=self.transition_probs[state_id])
-        return states[:-1], observations
+                # Randomly pick next state w.r.t. transition probabilities
+                states[t] = randint_with_weights(self.transition_probs[state_id])
+        return np.asarray(states[:-1]), np.asarray(observations)
     
     def __str__(self):
         s = "HMM of type '%s'\n" % self.__class__.__name__
-        s += "Topology '%s' with %i state(s)\n" % (self.arch, self.n_states) # TODO
+        s += "Topology '%s' with %i state(s)\n" % (self.arch, self.n_states)
         s += "Max number of free parameters: %i" % self.get_num_params()
         return s + "\n"
     

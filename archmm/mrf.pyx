@@ -81,7 +81,7 @@ def simulated_annealing(parameters, img, label_weights, clique=FIRST_ORDER_CLIQU
     cdef cnp.double_t[:, :] mus = parameters["mu"]
     cdef cnp.double_t[:, :, :] inv_sigmas = parameters["inv_sigma"]
     cdef cnp.double_t[:] dets = parameters["det"]
-    cdef cnp.double_t[:] buf = np.empty(mus.shape[1], dtype = np.double)
+    cdef cnp.double_t[:] buf = np.empty(mus.shape[1], dtype=np.double)
     cdef Py_ssize_t n_classes = len(mus)
     cdef cnp.int_t[:, :] omega = np.random.randint(0, n_classes, size=img.shape[:2], dtype=np.int)
     cdef cnp.int_t[:, :] previous_omega = np.copy(np.asarray(omega))
