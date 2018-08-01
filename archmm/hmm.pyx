@@ -20,6 +20,7 @@ from abc import abstractmethod
 import scipy.linalg
 import scipy.cluster
 
+from archmm.check_data import *
 from archmm.estimation.cpd import *
 from archmm.estimation.cpd cimport *
 from archmm.estimation.clustering import k_means
@@ -511,17 +512,8 @@ cdef class HMM:
             self.update_emission_params(X, gamma)
 
     def fit(self, X_s, **kwargs):
-        if isinstance(X_s, np.ndarray):
-            X_s = [X_s]
-        elif not isinstance(X_s, list):
-            # TODO: raise exception
-            pass
-        # TODO: if empty list, raise exception
-        first_seq = X_s[0]
-        if len(first_seq.shape) == 1:
-            self.n_features = 1
-        else:
-            self.n_features = first_seq.shape[1]
+        X_s, self.n_features = check_hmm_sequences_list(X_s)
+        
         # TODO: if parameters set by hand, do not pre-estimate parameters
         if not self.missing_values:
             self.estimate_params(X_s)
@@ -533,7 +525,6 @@ cdef class HMM:
         self.baum_welch(X_s, **kwargs)
     
     def log_likelihood(self, X):
-        # TODO: CHECK X
         n_samples = len(X)
         lnf = self.emission_log_proba_with_nan_support(X)
         cdef data_t[:, :] ln_alpha = np.zeros((n_samples, self.n_states))
@@ -548,6 +539,7 @@ cdef class HMM:
         return lnP, gamma
 
     def decode(self, X):
+        X, _ = check_hmm_sequence(X)
         _, gamma = self.log_likelihood(X)
         return gamma.argmax(axis=1)
 
@@ -561,6 +553,7 @@ cdef class HMM:
         return n_emission_params + n_start_params + n_transition_params
 
     def score(self, X, criterion='aic'):
+        X, _ = check_hmm_sequence(X)
         criterion = criterion.strip().lower()
         n = X.shape[0]
 

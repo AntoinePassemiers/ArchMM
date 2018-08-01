@@ -22,3 +22,11 @@ class UntrainedModelError(Exception):
     information available only after training the model.
     """
     pass
+
+
+class BadInputData(Exception):
+    """ Exception raised when a sequence or an input has an
+    incorrect format. For example, a HMM sequence may have
+    a wrong dimensionality.
+    """
+    pass
