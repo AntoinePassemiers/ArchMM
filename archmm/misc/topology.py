@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-# utils.py
+# topology.py
 # author: Antoine Passemiers
 
 import numpy as np
 
 
-class Architecture:
+class Topology:
 
     def __init__(self, n_states):
         self.n_states = n_states
@@ -38,12 +38,3 @@ class Architecture:
     
     def to_mask(self):
         return np.asarray(self.transition_mask, dtype=np.int)
-
-
-def abstractpythonmethod(func):
-    def func_wrapper(*args):
-        raise NotImplementedError(
-            "%s abstract method must be implemented" % func.__name__
-        )
-    func_wrapper.__name__ = func.__name__
-    return func_wrapper

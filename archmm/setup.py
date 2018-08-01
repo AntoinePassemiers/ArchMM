@@ -13,45 +13,26 @@ source_folder = "archmm"
 sub_packages = [
     "ann",
     "estimation",
+    "misc",
 ]
 source_files = [
-    (["check_data.py"], "check_data"),
     (["hmm.c"], "hmm"),
     (["iohmm.c"], "iohmm"),
     (["mrf.c"], "mrf"),
     (["math.c"], "math"),
     (["stats.c"], "stats"),
-    (["utils.py"], "utils"),
     (["ann/layers.py"], "ann.layers"),
     (["ann/subnetworks.py"], "ann.subnetworks"),
     (["estimation/clustering.c"], "estimation.clustering"),
     (["estimation/cpd.c", "estimation/kernel_.c"], "estimation.cpd"),
-    (["estimation/queue.c"], "estimation.queue")
+    (["estimation/queue.c"], "estimation.queue"),
+    (["misc/check_data.py"], "check_data"),
+    (["misc/exceptions.py"], "exceptions"),
+    (["misc/topology.py"], "topology"),
+    (["misc/utils.py"], "utils")
 ]
 
-"""
-extra_compile_args = [
-    "-std=c99", 
-    "-fno-strict-aliasing",
-    "-D_FORTIFY_SOURCE=2",
-    "-DNDEBUG",
-    "-fwrapv",
-    "-g",
-    # "-fstack-protector-strong",
-    "-ldl",
-    "-lm",
-    "-lpthread",
-    "-lutil",
-    "-O3",
-    "-O0",
-    "-Wall",
-    "-Werror=format-security",
-    "-Wstrict-prototypes",
-    "-Wuninitialized"
-]
-"""
 extra_compile_args = list()
-
 
 libraries = ["m"] if os.name == "posix" else list()
 include_dirs = [np.get_include()]

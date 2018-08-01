@@ -23,8 +23,10 @@ import scipy.cluster
 from archmm.estimation.cpd import *
 from archmm.estimation.cpd cimport *
 from archmm.estimation.clustering import k_means
+from archmm.exceptions import *
 from archmm.stats import np_data_t, gaussian_log_proba
-from archmm.utils import abstractpythonmethod, Architecture
+from archmm.topology import Topology
+from archmm.utils import abstractpythonmethod
 
 
 cdef data_t INF = <data_t>np.inf
@@ -190,9 +192,9 @@ cdef class HMM:
     Args:
         n_states (int):
             Number of hidden states
-        arch (str, or :obj:`Architecture`):
+        arch (str, or :obj:`archmm.topology.Topology`):
             If string, arch is a topology name that is either 
-            'ergodic', 'linear' or 'cyclic'. Otherwise, arch is an Architecture
+            'ergodic', 'linear' or 'cyclic'. Otherwise, arch is a Topology
             representing a graph.
         missing_values (bool):
             Whether the model should look for NaNs when training and scoring.
@@ -236,7 +238,7 @@ cdef class HMM:
         self.transition_probs = np.copy(self.ln_transition_probs)
 
         arch = arch.lower().strip()
-        if isinstance(arch, Architecture):
+        if isinstance(arch, Topology):
             self.transition_mask = arch.to_mask()
             self.arch = 'custom'
         else:
@@ -244,19 +246,22 @@ cdef class HMM:
                 self.init_topology(self.n_states, arch), dtype=np.int)
             self.arch = arch
     
+    def is_trained(self):
+        return self.n_features != -1
+    
     def init_topology(self, n_states, arch):
-        topology = Architecture(n_states)
+        topology = Topology(n_states)
         if arch == 'ergodic':
             topology.add_edges_everywhere()
         elif arch == 'linear':
             topology.add_self_loops()
             topology.add_edges(lambda i: i+1)
-        elif archmm == 'cyclic':
+        elif arch == 'cyclic':
             topology.add_self_loops()
             topology.add_edges(lambda i: i+1)
             topology.add_edge(-1, 0)
         else:
-            pass # TODO: raise exception
+            raise UnknownTopology('Topology %s is unknown' % str(arch))
         return topology.to_mask()
 
     @abstractpythonmethod
@@ -547,7 +552,9 @@ cdef class HMM:
         return gamma.argmax(axis=1)
 
     def get_num_params(self):
-        # TODO: what to do if self.fit has not yet been called ?
+        if not self.is_trained():
+            raise UntrainedModelError('Model must be trained in order to ' \
+                + 'determine the required number of parameters')
         n_emission_params = self.get_num_params_per_state() * self.n_states
         n_start_params = self.n_states - 1
         n_transition_params = self.n_states * (self.n_states - 1)
@@ -574,8 +581,7 @@ cdef class HMM:
         elif criterion == 'negloglh': # Negative log-likelihood
             score_val = -lnP
         else:
-            raise NotImplementedError(
-                "Unknown information criterion %s" % str(criterion))
+            raise UnknownCriterion("Unknown information criterion %s" % str(criterion))
         return score_val
 
     def sample(self, n_samples):
@@ -698,7 +704,7 @@ cdef class GHMM(HMM):
             self.initial_probs = np.tile(1.0 / self.n_states, self.n_states)
             self.transition_probs = np.random.dirichlet([1.0] * self.n_states, self.n_states)
         else:
-            pass # TODO: Exception: unknown arch
+            raise UnknownTopology('Topology %s is unknown' % str(self.arch))
 
         self.ln_initial_probs = np.log(np.asarray(self.initial_probs))
         self.ln_transition_probs = np.log(np.asarray(self.transition_probs))

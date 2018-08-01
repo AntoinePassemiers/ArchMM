@@ -111,7 +111,7 @@ python setup.py install
 - [ ] IO-HMM: Implement MLP
 - [x] Multi-sequence support for HMMs
 - [x] Custom HMM topology
-- [ ] Working with missing values
+- [x] Working with missing values
 - [ ] Finish implementing GMM-HMM
 - [ ] Use nogil blocks where necessary (GHMM and MHMM)
 - [ ] Make MRF compatible with different distributions (GMM, multinomial)
@@ -121,4 +121,3 @@ python setup.py install
 - [ ] Markov chains: n-transition probabilities
 - [ ] Implement MSD-HMM (for fun)
 - [ ] Automatic setup.py scripts that recursively look for *.c, *.py and *.pyx files
-- [ ] Visualize models using matplotlib and networkx
