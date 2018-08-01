@@ -2,6 +2,8 @@
 !*_.c
 *.pyc
 *.pyd
+*.py~
+*.py.un~
 
 build/
 _build/
