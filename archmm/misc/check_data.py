@@ -13,10 +13,6 @@ def is_iterable(obj):
 	return isinstance(obj, collections.Iterable)
 
 
-class SequencesList(list):
-	pass
-
-
 def check_hmm_sequence(X):
 	X = np.squeeze(np.asarray(X))
 	if len(X.shape) == 1:

@@ -8,16 +8,18 @@ ArchMM offers off-the-shelf HMMs with different topologies (ergodic, linear, etc
 Input-Output HMMs, and parameter estimation algorithms such as k-means or change point detection algorithms.
 
 
-Implementations
----------------
+Models and algorithms
+---------------------
 
 - Markov Chain Classifier
 - Gaussian Hidden Markov Model (GHMM)
 - Multinomial Hidden Markov Model (MHMM)
 - Gaussian Markov Random Field (GaussianMRF)
+- Maximum-Entropy Markov Model (MEMM)
 
 - K-means
 - Fuzzy C-Means
+- Logistic Regression
 
 Under development
 -----------------
@@ -33,7 +35,6 @@ Design phase:
 
 - CUSUM algorithm
 - Fuzzy Hidden Markov Model
-- Maximum-Entropy Markov Model
 - Multi-Space Distribution Markov Model
 
 
@@ -116,7 +117,7 @@ python setup.py install
 - [ ] Use nogil blocks where necessary (GHMM and MHMM)
 - [ ] Make MRF compatible with different distributions (GMM, multinomial)
 - [ ] Fuzzy HMM
-- [ ] Maximum-Entropy Markov Model
+- [x] Maximum-Entropy Markov Model
 - [ ] Monte Carlo Markov Chain
 - [ ] Markov chains: n-transition probabilities
 - [ ] Implement MSD-HMM (for fun)
