@@ -8,6 +8,7 @@ import numpy as np
 from operator import mul
 from functools import reduce
 
+
 class Optimizer:
 
     def __init__(self, learning_rate=.1, momentum=.2):
@@ -69,7 +70,7 @@ class CrossEntropy:
 
 class NeuralStackClassifier:
 
-    def __init__(self, optimizer=Optimizer()):
+    def __init__(self, optimizer=Optimizer(1)):
         self.layers = list()
         self.optimizer = optimizer
         self.cost = CrossEntropy()
@@ -84,9 +85,13 @@ class NeuralStackClassifier:
         return out
     
     def fit(self, X, y, max_n_iter=100):
+        print()
         for k in range(max_n_iter):
             batch_X, batch_y = X, y # TODO: batching
             y_hat = self.eval(X)
+
+            print(self.cost.eval(batch_y, y_hat))
+
             signal = self.cost.grad(batch_y, y_hat)
 
             for layer in reversed(self.layers):

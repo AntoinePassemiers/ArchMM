@@ -15,16 +15,36 @@ from archmm.utils import binarize_labels
 
 class MaxEntClassifier(metaclass=ABCMeta):
 
+    def __init__(self, n_features, n_states, **kwargs):
+        self.n_features = n_features
+        self.n_states = n_states
+
     @abstractmethod
-    def fit(self, X, y):
+    def _fit(self, X, y):
         pass
+    
+    def fit(self, X, y):
+        n_unique = len(np.unique(y))
+        if n_unique == 1:
+            self.unique = y[0]
+        else:
+            self.unique = None
+            self._fit(X, y)
     
     def predict(self, X):
         return self.predict_proba(X).argmax(axis=1)
     
     @abstractmethod
-    def predict_proba(self, X):
+    def _predict_proba(self, X):
         pass
+
+    def predict_proba(self, X):
+        if self.unique is not None: # TODO
+            proba = np.zeros((len(X), self.n_states))
+            proba[:, self.unique] = 1.
+            return proba
+        else:
+            return self._predict_proba(X)
 
 
 class LogisticRegression(MaxEntClassifier, NeuralStackClassifier):
@@ -36,12 +56,12 @@ class LogisticRegression(MaxEntClassifier, NeuralStackClassifier):
         self.add(FullyConnected(n_features, n_states))
         self.add(Activation(func='softmax'))
 
-    def fit(self, X, y):
+    def _fit(self, X, y):
         if len(y.shape) == 1:
             y = binarize_labels(y, self.n_states)
-        return NeuralStackClassifier.fit(self, X, y, max_n_iter=100)
+        return NeuralStackClassifier.fit(self, X, y, max_n_iter=10)
 
-    def predict_proba(self, X):
+    def _predict_proba(self, X):
         return self.eval(X)
 
 
@@ -82,26 +102,32 @@ class MEMM:
                 y_i.append(Y_s[k][indices+1])
             X_i = np.concatenate(X_i, axis=0)
             y_i = np.concatenate(y_i, axis=0)
-            print(y_i)
 
             self.trans_maxents[i].fit(X_i, y_i)
     
+    def score(self, X, y):
+        log_likelihood = 0
+        proba = self.start_maxent.predict_proba(X[0][np.newaxis, ...])[0]
+        log_likelihood += np.log(proba[y[0]])
+        for t in range(1, len(X)):
+            state = y[t-1]
+            proba = self.trans_maxents[state].predict_proba(X[t-1][np.newaxis, ...])[0]
+            log_likelihood += np.log(proba[y[t]])
+        return log_likelihood
+
     def predict(self, X):
         X, n_features = check_hmm_sequence(X)
         assert(self.n_features == n_features) # TODO: raise exception
         return self.viterbi(X)
 
     def viterbi(self, X):
-        log_likelihood = 0
         y_hat = np.empty(len(X), dtype=np.int)
         proba = self.start_maxent.predict_proba(X[0][np.newaxis, ...])[0]
         y_hat[0] = proba.argmax()
-        log_likelihood += np.log(proba[y_hat[0]])
 
         for t in range(1, len(X)):
             state = y_hat[t-1]
             proba = self.trans_maxents[state].predict_proba(X[t-1][np.newaxis, ...])[0]
             y_hat[t] = proba.argmax()
-            log_likelihood += np.log(proba[y_hat[t]])
 
         return y_hat

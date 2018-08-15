@@ -673,7 +673,7 @@ cdef class GHMM(HMM):
                 a_ij = 1. / (keypoint_indices[i+1] - keypoint_indices[i])
                 self.transition_probs[i, i+1] = a_ij
                 self.transition_probs[i, i] = 1. - a_ij
-            self.initial_probs[0] = 1.0
+            self.initial_probs[0] = 1.
 
             # Estimate Gaussian parameters
             for i in range(self.n_states):
