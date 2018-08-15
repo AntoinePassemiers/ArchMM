@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# setup.py
+# author: Antoine Passemiers
 
 import os
 import sys

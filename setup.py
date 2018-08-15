@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
+# setup.py
+# author: Antoine Passemiers
 
-import os, sys, subprocess
+import os
+import sys
+import subprocess
+import glob
 from distutils.core import setup
 from distutils.extension import Extension
 
@@ -16,17 +21,11 @@ except ImportError:
     USE_CYTHON = False
     
 
-source_folder = "archmm"
-source_files = [
-    "hmm.pyx",
-    "iohmm.pyx",
-    "mrf.pyx",
-    "math.pyx",
-    "stats.pyx",
-    "estimation/clustering.pyx",
-    "estimation/cpd.pyx",
-    "estimation/queue.pyx"
-]
+source_folder = 'archmm'
+
+source_filepaths = [match for filepath in os.walk(source_folder) \
+    for match in glob.glob(os.path.join(filepath[0], '*.pyx'))]
+
 
 def configuration(parent_package=str(), top_path=None):
     config = Configuration(None, parent_package, top_path)
@@ -41,19 +40,18 @@ def configuration(parent_package=str(), top_path=None):
 setup_args = {
     "name" : "ArchMM",
     "version" : "1.0.0",
-    "description" : "Machine Learning library with embedded HMM-based algorithms",
+    "description" : 'A Cython Machine Learning library dedicated' + \
+        'to Hidden Markov Models, Markov Random Fields, etc.',
     "long_description" : str(), # TODO
     "author" : "Antoine Passemiers",
-    "classifiers" : [ # TODO
-    ],
+    "classifiers" : [], # TODO
     "configuration" : configuration
 }
 
 extensions = list()
-for source_file in source_files:
-    source_filepath = os.path.join(source_folder, source_file)
+for source_filepath in source_filepaths:
     sources = [source_filepath]
-    extension_name = ".".join(["archmm", source_file]).replace("/", ".")
+    extension_name = source_filepath.replace("/", ".")
     extension_name = os.path.splitext(extension_name)[0]
     print(extension_name, sources)
     extensions.append(
@@ -70,10 +68,10 @@ if USE_CYTHON and GOT_BUILD_CMD:
     # Setting "archmm" as the root package
     # This is to prevent cython from generating inappropriate variable names
     # (because it is based on a relative path)
-    init_path = os.path.join(os.path.realpath(__file__), "../__init__.py")
+    init_path = os.path.join(os.path.realpath(__file__), '../__init__.py')
     if os.path.isfile(init_path):
         os.remove(init_path)
-        print("__init__.py file removed")
+        print('__init__.py file removed')
     # Generates the C files, but does not compile them
     extensions = cythonize(
         extensions,
