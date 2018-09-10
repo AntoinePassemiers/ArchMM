@@ -26,6 +26,8 @@ def check_hmm_sequence(X):
 
 def check_hmm_sequences_list(X_s):
 	if is_iterable(X_s):
+		if isinstance(X_s, np.ndarray) and len(X_s.shape) < 3:
+			X_s = [X_s]
 		if len(X_s) > 0:
 			if is_iterable(X_s[0]):
 				X_s = copy.copy(X_s) # Shallow copy

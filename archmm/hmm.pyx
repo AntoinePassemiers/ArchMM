@@ -643,8 +643,8 @@ cdef class GHMM(HMM):
 
     def estimate_params(self, X_s):
         first_seq = X_s[0]
+        assert(len(first_seq.shape) > 1)
         self.n_features = first_seq.shape[1]
-
         self.mu = np.empty(
             (self.n_states, self.n_features), dtype=np_data_t)
         self.sigma = np.empty(
@@ -681,9 +681,11 @@ cdef class GHMM(HMM):
                 self.mu[i] = segment.mean(axis=0)
                 self.sigma[i] = np.cov(segment.T)
         elif self.arch == 'ergodic':
+            print('A')
             # Apply clustering algorithm, and estimate Gaussian parameters
             X_concatenated = np.concatenate(X_s, axis=0)
             self.mu, indices = KMeans(self.n_states, n_runs=5).fit(X_concatenated)
+            print('B')
 
             self.sigma = np.empty(
                 (self.n_states, self.n_features, self.n_features), dtype=np_data_t)
@@ -692,6 +694,7 @@ cdef class GHMM(HMM):
                 for j in range(self.n_features):
                     for k in range(self.n_features):
                         self.sigma[i, j, k] = tmp[j, k]
+            print('C')
 
             # Estimate start and transition probabilities
             self.initial_probs = np.tile(1.0 / self.n_states, self.n_states)
@@ -701,6 +704,7 @@ cdef class GHMM(HMM):
 
         self.ln_initial_probs = np.log(np.asarray(self.initial_probs))
         self.ln_transition_probs = np.log(np.asarray(self.transition_probs))
+        print('D')
 
     def emission_log_proba(self, X):
         n_samples, n_features = X.shape[0], X.shape[1] 
