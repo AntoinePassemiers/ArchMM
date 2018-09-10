@@ -143,14 +143,33 @@ cdef k_means_one_run(data, k, n_iter, init):
     return centroids, np.asarray(labels)
 
 
-def k_means(data, k, n_iter=10, init='gaussian', n_runs=5):
-    best_cost = np.inf
-    for i in range(n_runs):
-        centroids, labels = k_means_one_run(data, k, n_iter=n_iter, init=init)
-        # Evaluate k-means cost function
-        cost = sum([np.sqrt(np.sum((data[labels==c]-centroids[c])**2,
-            axis=1)).sum() for c in range(k)])
-        if cost < best_cost:
-            best_cost = cost
-            result = (centroids, labels)
-    return result
+class KMeans:
+
+    def __init__(self, k, n_iter=10, init='gaussian', n_runs=5):
+        self.n_clusters = k
+        self.n_iter = n_iter
+        self.init_method = init
+        self.n_runs = n_runs
+        self.centroids = None
+    
+    def fit(self, X):
+        best_cost = np.inf
+        for i in range(self.n_runs):
+            centroids, labels = k_means_one_run(
+                X, self.n_clusters, n_iter=self.n_iter, init=self.init_method)
+            # Evaluate k-means cost function
+            cost = sum([np.sqrt(np.sum((X[labels==c]-centroids[c])**2,
+                axis=1)).sum() for c in range(self.n_clusters)])
+            if cost < best_cost:
+                best_cost = cost
+                result = (centroids, labels)
+        self.centroids = np.asarray(centroids)
+        assert(len(self.centroids) == self.n_clusters)
+        return result
+
+    def predict(self, X):
+        distances = np.empty((len(X), self.n_clusters), dtype=np.int)
+        for c in range(self.n_clusters):
+            distances[:, c] = np.sum((self.centroids[c] - X) ** 2, axis=1)
+        return np.argmin(distances, axis=1)
+    

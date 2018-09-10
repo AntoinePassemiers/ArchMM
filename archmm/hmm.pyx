@@ -23,7 +23,7 @@ import scipy.cluster
 from archmm.check_data import *
 from archmm.estimation.cpd import *
 from archmm.estimation.cpd cimport *
-from archmm.estimation.clustering import k_means
+from archmm.estimation.clustering import KMeans
 from archmm.exceptions import *
 from archmm.stats import np_data_t, gaussian_log_proba
 from archmm.topology import Topology
@@ -683,7 +683,7 @@ cdef class GHMM(HMM):
         elif self.arch == 'ergodic':
             # Apply clustering algorithm, and estimate Gaussian parameters
             X_concatenated = np.concatenate(X_s, axis=0)
-            self.mu, indices = k_means(X_concatenated, self.n_states, n_runs=5)
+            self.mu, indices = KMeans(self.n_states, n_runs=5).fit(X_concatenated)
 
             self.sigma = np.empty(
                 (self.n_states, self.n_features, self.n_features), dtype=np_data_t)
@@ -794,10 +794,10 @@ cdef class GMMHMM(HMM):
         # TODO: make distinction between ergodic and linear
 
         X_concatenated = np.concatenate(X_s, axis=0)
-        _, indices = k_means(X_concatenated, self.n_states, n_runs=5)
+        _, indices = KMeans(self.n_states, n_runs=5).fit(X_concatenated)
         for i in range(self.n_states):
             cluster = X_concatenated[indices == i]
-            sub_mu, sub_indices = k_means(cluster, self.n_components, n_runs=5)
+            sub_mu, sub_indices = KMeans(self.n_components, n_runs=5).fit(cluster)
 
             for c in range(self.n_components):
                 for j in range(self.n_features):

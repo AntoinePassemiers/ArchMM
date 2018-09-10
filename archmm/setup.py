@@ -10,6 +10,9 @@ import numpy as np
 from numpy.distutils.misc_util import Configuration
 from numpy.distutils.core import setup as np_setup
 
+#print("")
+#print([x[0] for x in os.walk("archmm")])
+#print("")
 
 source_folder = "archmm"
 sub_packages = [
