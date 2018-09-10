@@ -18,6 +18,7 @@ from cpython.buffer cimport PyBuffer_IsContiguous
 from cython cimport view
 
 from archmm.math cimport sample_gaussian, squared_euclidean_distance
+from archmm.stats import mat_stable_inv
 
 
 cdef cnp.double_t NP_INF_VALUE = <cnp.double_t>np.inf
@@ -119,7 +120,7 @@ cdef cnp.ndarray init_centroids(cnp.ndarray data, int k, method='gaussian'):
     else:
         mu = np.mean(data, axis=0)
         sigma = np.cov(data.T)
-        inv_sigma = np.linalg.inv(sigma)
+        inv_sigma, _ = mat_stable_inv(sigma)
         centroids = sample_gaussian(mu, inv_sigma, k)
     return centroids
 

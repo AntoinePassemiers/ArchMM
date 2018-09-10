@@ -20,23 +20,31 @@ from archmm.check_data import is_iterable
 np_data_t = np.double
 
 
-def gaussian_log_proba(X, mu, sigma):
-    n_features = X.shape[1]
+def mat_stable_inv(mat):
     try:
+        mat = np.nan_to_num(mat) # TODO
         cholesky = scipy.linalg.cholesky(
-            sigma, lower=True, check_finite=True)
+            mat, lower=True, check_finite=True)
     except scipy.linalg.LinAlgError:
+        # TODO: warning (singular matrix) 
+        # -> potentially highly correlated features
         mcv = 1.e-7
         is_not_spd = True
         while is_not_spd:
             try:
                 cholesky = scipy.linalg.cholesky(
-                    sigma + mcv * np.eye(n_features),
+                    mat + mcv * np.eye(mat.shape[0]),
                     lower=True, check_finite=True)
                 is_not_spd = False
             except scipy.linalg.LinAlgError:
                 mcv *= 10
     log_det = 2 * np.sum(np.log(np.diagonal(cholesky)))
+    return cholesky, log_det
+
+
+def gaussian_log_proba(X, mu, sigma):
+    n_features = X.shape[1]
+    cholesky, log_det = mat_stable_inv(sigma)
     mahalanobis = scipy.linalg.solve_triangular(
         cholesky, (np.asarray(X) - np.asarray(mu)).T, lower=True).T
     lnf = -0.5 * (np.sum(mahalanobis ** 2, axis=1) + \
