@@ -15,12 +15,10 @@ cimport cython
 from libc.stdlib cimport *
 from libc.stdio cimport *
 from libc.string cimport memset
-
 cimport libc.math
 
 from archmm.math import *
 from archmm.math cimport *
-from archmm.estimation.queue cimport *
 
 
 def epolyfit(arr, degree, **kwargs):

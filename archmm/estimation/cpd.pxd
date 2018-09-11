@@ -19,6 +19,24 @@ cpdef unsigned int KERNEL_RADIAL = 100
 cpdef unsigned int KERNEL_TRICUBIC = 101
 
 
+cdef extern from "estimation/queue_.h":
+    struct Iteration:
+        int begin
+        int end
+        double previous_cost
+    struct QueueNode:
+        void* data
+        QueueNode* next
+    struct Queue:
+        QueueNode* front_node
+        QueueNode* rear_node
+        size_t length
+    Queue* newQueue() nogil
+    void enqueue(Queue* queue, void* data) nogil
+    void* dequeue(Queue* queue) nogil
+    int isQueueEmpty(Queue* queue) nogil
+
+
 cdef extern from "estimation/kernel_.h":
     ctypedef double rbf_distance_t
     ctypedef double data_distance_t

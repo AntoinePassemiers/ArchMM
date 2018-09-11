@@ -31,8 +31,11 @@ source_files = [
     (["ann/model.py"], "ann.model"),
     (["ann/subnetworks.py"], "ann.subnetworks"),
     (["estimation/clustering.c"], "estimation.clustering"),
-    (["estimation/cpd.c", "estimation/kernel_.c"], "estimation.cpd"),
-    (["estimation/queue.c"], "estimation.queue"),
+    ([
+        "estimation/cpd.c",
+        "estimation/kernel_.c",
+        "estimation/queue_.c"
+     ], "estimation.cpd"),
     (["misc/check_data.py"], "check_data"),
     (["misc/exceptions.py"], "exceptions"),
     (["misc/topology.py"], "topology"),
