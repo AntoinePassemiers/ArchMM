@@ -20,3 +20,14 @@ cdef ClusterSet perform_step(cnp.double_t[:, :] data,
                              int n_clusters)
 cdef cnp.ndarray init_centroids(cnp.ndarray data, int k, method=*)
 cdef k_means_one_run(data, k, n_iter, init)
+
+
+cdef extern from "estimation/cmeans_.h":
+    void fuzzyCMeans(double** X,
+                     double** U,
+                     double** centroids,
+                     int n_features,
+                     int n_samples,
+                     int n_clusters,
+                     int max_n_iter,
+                     int fuzzy_coef)

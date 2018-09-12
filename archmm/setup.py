@@ -30,7 +30,10 @@ source_files = [
     (["ann/layers.py"], "ann.layers"),
     (["ann/model.py"], "ann.model"),
     (["ann/subnetworks.py"], "ann.subnetworks"),
-    (["estimation/clustering.c"], "estimation.clustering"),
+    ([
+        "estimation/clustering.c",
+        "estimation/cmeans_.c"
+     ], "estimation.clustering"),
     ([
         "estimation/cpd.c",
         "estimation/kernel_.c",

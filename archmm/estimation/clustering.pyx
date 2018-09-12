@@ -8,8 +8,7 @@ import numpy as np
 cimport numpy as cnp
 cnp.import_array()
 
-import multiprocessing
-from cython.parallel import parallel, prange, threadid
+import ctypes
 
 from libc.stdlib cimport *
 from libc.string cimport memset
@@ -173,4 +172,46 @@ class KMeans:
         for c in range(self.n_clusters):
             distances[:, c] = np.sum((self.centroids[c] - X) ** 2, axis=1)
         return np.argmin(distances, axis=1)
-    
+
+
+cdef double** data_array_to_pointer(double[:, ::1] X):
+    cdef double** tmp = <double**>malloc(X.shape[0] * sizeof(double*))
+    cdef int i
+    with nogil:
+        for i in range(X.shape[0]):
+            tmp[i] = &X[i, 0]
+    return tmp
+
+
+class FuzzyCMeans:
+
+    def __init__(self, k, max_n_iter=10, fuzzy_coef=2.):
+        self.n_clusters = k
+        self.max_n_iter = max_n_iter
+        self.fuzzy_coef = fuzzy_coef
+        self.dom = None
+        self.centroids = None
+
+    def fit(self, X):        
+        n_samples = X.shape[0]
+        n_features = X.shape[1]
+        cdef double[:, ::1] _X = X.astype(ctypes.c_double)
+        cdef double[:, ::1] _C = np.empty(
+            (self.n_clusters, n_features), dtype=ctypes.c_double)
+        U = np.random.rand(
+            n_samples, self.n_clusters).astype(ctypes.c_double)
+        U /= U.sum(axis=1)[..., np.newaxis]
+        cdef double[:, ::1] _U = U
+
+        cdef double** data = data_array_to_pointer(_X)
+        cdef double** dom = data_array_to_pointer(_U)
+        cdef double** cent = data_array_to_pointer(_C)
+        fuzzyCMeans(data, dom, cent, n_features, n_samples,
+            self.n_clusters, self.max_n_iter, self.fuzzy_coef)
+        free(data)
+        free(dom)
+        free(cent)
+        
+        self.dom = np.asrray(_U)
+        self.centroids = np.asarray(_C)
+        return self.dom, self.centroids
