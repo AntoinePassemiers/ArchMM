@@ -12,7 +12,6 @@ from distutils.extension import Extension
 import numpy as np
 from numpy.distutils.misc_util import Configuration
 from numpy.distutils.core import setup as np_setup
-from numpy.distutils.numpy_distribution import NumpyDistribution
 
 try:
     from Cython.Build import cythonize
@@ -33,7 +32,7 @@ def configuration(parent_package=str(), top_path=None):
                        assume_default_configuration=True,
                        delegate_options_to_subpackages=True,
                        quiet=True)
-    config.add_subpackage("archmm")
+    config.add_subpackage(source_folder)
 
     return config
 
@@ -51,7 +50,7 @@ setup_args = {
 extensions = list()
 for source_filepath in source_filepaths:
     sources = [source_filepath]
-    extension_name = source_filepath.replace("/", ".")
+    extension_name = source_filepath.replace('/', '.').replace('\\', '.')
     extension_name = os.path.splitext(extension_name)[0]
     print(extension_name, sources)
     extensions.append(
@@ -75,7 +74,7 @@ if USE_CYTHON and GOT_BUILD_CMD:
     # Generates the C files, but does not compile them
     extensions = cythonize(
         extensions,
-        language="c",
+        language='c',
         compiler_directives={'embedsignature': True})
 
 if GOT_BUILD_CMD:
