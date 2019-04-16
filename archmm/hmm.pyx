@@ -238,11 +238,11 @@ cdef class HMM:
         self.initial_probs = np.copy(self.ln_initial_probs)
         self.transition_probs = np.copy(self.ln_transition_probs)
 
-        arch = arch.lower().strip()
         if isinstance(arch, Topology):
             self.transition_mask = arch.to_mask()
             self.arch = 'custom'
         else:
+            arch = arch.lower().strip()
             self.transition_mask = np.asarray(
                 self.init_topology(self.n_states, arch), dtype=np.int)
             self.arch = arch
