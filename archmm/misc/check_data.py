@@ -13,8 +13,11 @@ def is_iterable(obj):
 	return isinstance(obj, collections.Iterable)
 
 
-def check_hmm_sequence(X):
-	X = np.squeeze(np.asarray(X))
+def check_hmm_sequence(X, dtype=None):
+	if dtype is not None:
+		X = np.squeeze(np.asarray(X, dtype=dtype))
+	else:
+		X = np.squeeze(np.asarray(X))
 	if len(X.shape) == 1:
 		n_features = 1
 	elif len(X.shape) == 2:
@@ -24,16 +27,19 @@ def check_hmm_sequence(X):
 	return X, n_features
 
 
-def check_hmm_sequences_list(X_s):
+def check_hmm_sequences_list(X_s, dtype=None):
 	if is_iterable(X_s):
 		if isinstance(X_s, np.ndarray) and len(X_s.shape) < 3:
-			X_s = [X_s]
+			if dtype is not None:
+				X_s = [X_s.astype(dtype)]
+			else:
+				X_s = [X_s]
 		if len(X_s) > 0:
 			if is_iterable(X_s[0]):
 				X_s = copy.copy(X_s) # Shallow copy
 				tmp = list()
 				for i in range(len(X_s)):
-					X_s[i], n_features = check_hmm_sequence(X_s[i])
+					X_s[i], n_features = check_hmm_sequence(X_s[i], dtype=dtype)
 					tmp.append(n_features)
 				if not all(n_features == tmp[0] for n_features in tmp):
 					raise BadInputData('Number of features must be kept ' + \

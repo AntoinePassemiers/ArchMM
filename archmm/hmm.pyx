@@ -448,7 +448,7 @@ cdef class HMM:
                     ln_gamma[t, i] = ln_alpha[t, i] + ln_beta[t, i] - lnP_f
         return lnP_f
 
-    def baum_welch(self, X_s, max_n_iter=100, eps=1e-04):
+    def baum_welch(self, X_s, Y_s=None, max_n_iter=100, eps=1e-04):
         n_sequences = len(X_s)
         ln_alpha_s = create_buffer_list(X_s, (self.n_states,), np_data_t)
         ln_beta_s = create_buffer_list(X_s, (self.n_states,), np_data_t)
@@ -457,11 +457,14 @@ cdef class HMM:
         lnf_s = [None for i in range(n_sequences)]
         lnP_s = np.empty(n_sequences) # Log-likelihood of each sequence
 
+        if Y_s is not None:
+            for p in range(n_sequences):
+                Y_s[p] = np.asarray(Y_s[p], dtype=np.int)
+
         cdef data_t[:] den, num
 
         old_F = 1.0e20
         for i in range(max_n_iter):
-            print("\tIteration %i" % i)
 
             # Apply E-step on each sequence individually
             for p in range(n_sequences):
@@ -476,11 +479,18 @@ cdef class HMM:
             if(np.abs(dF) < <long>eps):
                 break
             old_F = F
+            print("\tIteration %i - Log-likelihood: %f" % (i, lnP))
 
             # Compute posteriors
             gamma_s = copy.deepcopy(ln_gamma_s) # TODO
-            for j in range(n_sequences):
-                eexp2d(gamma_s[j], ln_gamma_s[j])
+            for p in range(n_sequences):
+                eexp2d(gamma_s[p], ln_gamma_s[p])
+
+            if Y_s is not None:
+                for p in range(n_sequences):
+                    indices = np.where(Y_s[p] >= 0)[0]
+                    gamma_s[p][indices, :] = 0.
+                    gamma_s[p][indices, Y_s[p][indices]] = 1.
 
             # Compute state start probabilities            
             self.initial_probs[:] = 0
@@ -511,8 +521,11 @@ cdef class HMM:
             gamma = np.concatenate(gamma_s, axis=0)
             self.update_emission_params(X, gamma)
 
-    def fit(self, X_s, **kwargs):
+    def fit(self, X_s, y=None, **kwargs):
         X_s, self.n_features = check_hmm_sequences_list(X_s)
+        Y_s = y
+        if Y_s is not None:
+            Y_s, _ = check_hmm_sequences_list(Y_s, dtype=np.int)
         
         # TODO: if parameters set by hand, do not pre-estimate parameters
         if not self.missing_values:
@@ -522,7 +535,7 @@ cdef class HMM:
 
         # TODO: Make sure that pre-estimated transition probabilities
         #       are in accordance with current topology
-        self.baum_welch(X_s, **kwargs)
+        self.baum_welch(X_s, Y_s=Y_s, **kwargs)
     
     def log_likelihood(self, X):
         n_samples = len(X)
