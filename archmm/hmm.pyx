@@ -537,7 +537,7 @@ cdef class HMM:
         #       are in accordance with current topology
         self.baum_welch(X_s, Y_s=Y_s, **kwargs)
     
-    def log_likelihood(self, X):
+    def log_likelihood(self, X, y=None):
         n_samples = len(X)
         lnf = self.emission_log_proba_with_nan_support(X)
         cdef data_t[:, :] ln_alpha = np.zeros((n_samples, self.n_states))
@@ -549,12 +549,27 @@ cdef class HMM:
 
         gamma = np.empty_like(ln_gamma)
         eexp2d(gamma, ln_gamma)
+
+        if y is not None:
+            indices = np.where(y >= 0)[0]
+            gamma[indices, :] = 0.
+            gamma[indices, y[indices]] = 1.
+
         return lnP, gamma
 
     def decode(self, X):
-        X, _ = check_hmm_sequence(X)
-        _, gamma = self.log_likelihood(X)
-        return gamma.argmax(axis=1)
+        if isinstance(X, list):
+            X_s, _ = check_hmm_sequences_list(X)
+        else:
+            X, _ = check_hmm_sequence(X)
+            X_s = [X]
+        decoded = list()
+        for X in X_s:
+            _, gamma = self.log_likelihood(X)
+            decoded.append(gamma.argmax(axis=1))
+        if len(decoded) == 1:
+            decoded = decoded[0]
+        return decoded
 
     def get_num_params(self):
         if not self.is_trained():
@@ -565,14 +580,27 @@ cdef class HMM:
         n_transition_params = self.n_states * (self.n_states - 1)
         return n_emission_params + n_start_params + n_transition_params
 
-    def score(self, X, criterion='aic'):
-        X, _ = check_hmm_sequence(X)
+    def score(self, X, y=None, criterion='aic'):
+        if isinstance(X, list):
+            X_s, _ = check_hmm_sequences_list(X)
+        else:
+            X, _ = check_hmm_sequence(X)
+            X_s = [X]
+        if y is not None:
+            if isinstance(y, list):
+                Y_s, _ = check_hmm_sequences_list(y)
+            else:
+                y, _ = check_hmm_sequence(y)
+                Y_s = [y]
         criterion = criterion.strip().lower()
-        n = X.shape[0]
+        n = X_s[0].shape[0]
 
-        # Compute "best" log-likelihood of sequence X
+        # Compute log-likelihood of all sequences
         # given the parameters of the model
-        lnP, _ = self.log_likelihood(X)
+        if y is not None:
+            lnP = sum([self.log_likelihood(X, y=Y)[0] for X, Y in zip(X_s, Y_s)])
+        else:
+            lnP = sum([self.log_likelihood(X)[0] for X in X_s])
 
         # Compute the model complexity
         k = self.get_num_params()
@@ -637,7 +665,7 @@ cdef class HMM:
             return np.asarray(self.initial_probs)
         def __set__(self, arr):
             self.initial_probs = np.asarray(arr, dtype=np_data_t)
-            self.ln_initial_probs = np.empty_like(arr)
+            self.ln_initial_probs = np.empty_like(arr, dtype=np_data_t)
             elog1d(self.ln_initial_probs, self.initial_probs)
 
     property a:
@@ -645,7 +673,7 @@ cdef class HMM:
             return np.asarray(self.transition_probs)
         def __set__(self, arr):
             self.transition_probs = np.asarray(arr, dtype=np_data_t)
-            self.ln_transition_probs = np.empty_like(arr)
+            self.ln_transition_probs = np.empty_like(arr, dtype=np_data_t)
             elog2d(self.ln_transition_probs, self.transition_probs)
 
 
@@ -780,13 +808,13 @@ cdef class GHMM(HMM):
         def __get__(self):
             return np.asarray(self.mu)
         def __set__(self, arr):
-            self.mu = np.asarray(arr)
+            self.mu = np.asarray(arr, dtype=np_data_t)
     
     property sigma:
         def __get__(self):
             return np.asarray(self.sigma)
         def __set__(self, arr):
-            self.sigma = np.asarray(arr)
+            self.sigma = np.asarray(arr, dtype=np_data_t)
 
 
 cdef class GMMHMM(HMM):
@@ -913,19 +941,19 @@ cdef class GMMHMM(HMM):
         def __get__(self):
             return np.asarray(self.mu)
         def __set__(self, arr):
-            self.mu = np.asarray(arr)
+            self.mu = np.asarray(arr, dtype=np_data_t)
     
     property sigma:
         def __get__(self):
             return np.asarray(self.sigma)
         def __set__(self, arr):
-            self.sigma = np.asarray(arr)
+            self.sigma = np.asarray(arr, dtype=np_data_t)
     
     property weights:
         def __get__(self):
             return np.asarray(self.weights)
         def __set__(self, arr):
-            self.weights = np.asarray(arr)
+            self.weights = np.asarray(arr, dtype=np_data_t)
 
 
 cdef class MHMM(HMM):
@@ -1048,4 +1076,4 @@ cdef class MHMM(HMM):
         def __get__(self):
             return np.asarray(self.proba)
         def __set__(self, arr):
-            self.proba = np.asarray(arr)
+            self.proba = np.asarray(arr, dtype=np_data_t)
