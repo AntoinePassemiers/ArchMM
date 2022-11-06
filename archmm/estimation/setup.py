@@ -17,19 +17,21 @@ def configuration(parent_package='', top_path=None):
     if os.name == 'posix':
         libraries.append('m')
 
-    config = Configuration('archmm', parent_package, top_path)
+    config = Configuration('estimation', parent_package, top_path)
 
-    config.add_subpackage('ann')
-    config.add_subpackage('estimation')
-    config.add_subpackage('misc')
+    config.add_extension(
+        'clustering',
+        sources=['clustering.pyx'],
+        include_dirs=[numpy.get_include()],
+        libraries=libraries,
+    )
 
-    for filename in ['chains', 'hmm', 'iohmm', 'math', 'mrf', 'stats']:
-        config.add_extension(
-            filename,
-            sources=[f'{filename}.pyx'],
-            include_dirs=[numpy.get_include()],
-            libraries=libraries,
-        )
+    config.add_extension(
+        'cpd',
+        sources=['cpd.pyx'],
+        include_dirs=[numpy.get_include()],
+        libraries=libraries,
+    )
 
     if 'sdist' not in sys.argv:
         cythonize_extensions(top_path, config)

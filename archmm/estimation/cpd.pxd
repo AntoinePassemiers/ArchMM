@@ -8,15 +8,15 @@ cnp.import_array()
 
 cdef double NUMPY_INF_VALUE = np.nan_to_num(np.inf)
 
-cpdef unsigned int POLYNOMIAL_APRX = 1
-cpdef unsigned int WAVELET_APRX = 2
-cpdef unsigned int FOURIER_APRX = 3
+cdef unsigned int POLYNOMIAL_APRX = 1
+cdef unsigned int WAVELET_APRX = 2
+cdef unsigned int FOURIER_APRX = 3
 
-cpdef unsigned int SUM_OF_SQUARES_COST = 4
-cpdef unsigned int MAHALANOBIS_DISTANCE_COST = 5
+cdef unsigned int SUM_OF_SQUARES_COST = 4
+cdef unsigned int MAHALANOBIS_DISTANCE_COST = 5
 
-cpdef unsigned int KERNEL_RADIAL = 100
-cpdef unsigned int KERNEL_TRICUBIC = 101
+cdef unsigned int KERNEL_RADIAL = 100
+cdef unsigned int KERNEL_TRICUBIC = 101
 
 
 cdef extern from "estimation/queue_.h":

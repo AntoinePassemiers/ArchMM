@@ -134,9 +134,10 @@ cdef class GraphTheoreticDetector(MB):
     cpdef detectPoints(self, sequence):
         cdef Py_ssize_t n_threads = multiprocessing.cpu_count()
         cdef Py_ssize_t i, j, k, t, T = len(sequence)
+        cdef size_t idx
         cdef Py_ssize_t best_i, best_j
         cdef Py_ssize_t N = self.window_size
-        self.n_steps = (T - N) / self.window_size
+        self.n_steps = <Py_ssize_t>((T - N) / self.window_size)
         cdef cnp.double_t[::1] beta = np.ascontiguousarray(np.empty(N), dtype=np.double)
         cdef cnp.double_t[:] C = np.empty(n_threads, dtype=np.double)
         cdef double fog, C_prime
@@ -157,9 +158,10 @@ cdef class GraphTheoreticDetector(MB):
                         if C_prime > fog:
                             fog = C_prime
                             best_i, best_j = i + t, j + t
-                self.fogs[t / N].begin = best_i
-                self.fogs[t / N].end   = best_j
-                self.fogs[t / N].value = fog
+                idx = <size_t>(t / N)
+                self.fogs[idx].begin = best_i
+                self.fogs[idx].end   = best_j
+                self.fogs[idx].value = fog
 
 cdef inline cnp.double_t computeTStat(cnp.double_t s_tot, cnp.double_t s_r, cnp.double_t s_l,
                                       Py_ssize_t N, Py_ssize_t i, Py_ssize_t j) nogil:
@@ -369,7 +371,7 @@ cdef class BatchCPD:
             free(current_iter)
             assert(begin < end)
             slice_size = end - begin
-            best_mid = begin + slice_size / 2
+            best_mid = begin + slice_size // 2
             lowest_cost = NUMPY_INF_VALUE
             # assert(slice_size > 2 * self.window_padding)
             for mid in range(begin + self.window_padding, end - self.window_padding):

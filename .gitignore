@@ -7,5 +7,7 @@
 
 build/
 _build/
+dist/
+*.egg-info/
 .idea/
 .cache/
