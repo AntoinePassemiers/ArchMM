@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
-# hmm.pxd
-# distutils: language=c++
-# cython: boundscheck=False
-# cython: wraparound=False
-# cython: initializedcheck=False
-# cython: nonecheck=False
+#
+# base.py
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -23,25 +19,24 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA 02110-1301, USA.
 
+from abc import ABCMeta, abstractmethod
+
 import numpy as np
-cimport numpy as cnp
-cnp.import_array()
-
-from libcpp.vector cimport vector
 
 
-ctypedef cnp.float_t data_t
+class HiddenState(metaclass=ABCMeta):
 
+    def __init__(self, n_features: int):
+        self.n_features: int = n_features
 
-cdef class HMM:
+    @abstractmethod
+    def param_update(self, data: np.ndarray, gamma: np.ndarray) -> np.ndarray:
+        pass
 
-    cdef int n_states
-    cdef int n_features
-    cdef bint missing_values
+    @abstractmethod
+    def log_pdf(self, data: np.ndarray) -> np.ndarray:
+        pass
 
-    cdef list states
-
-    cdef data_t[:] pi
-    cdef data_t[:, :] a
-    cdef data_t[:] log_pi
-    cdef data_t[:, :] log_a
+    @abstractmethod
+    def sample(self, n: int) -> np.ndarray:
+        pass

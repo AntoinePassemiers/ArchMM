@@ -19,11 +19,9 @@ def configuration(parent_package='', top_path=None):
 
     config = Configuration('archmm', parent_package, top_path)
 
-    config.add_subpackage('ann')
-    config.add_subpackage('estimation')
-    config.add_subpackage('misc')
+    #config.add_subpackage('ann')
 
-    for filename in ['chains', 'hmm', 'iohmm', 'math', 'mrf', 'stats']:
+    for filename in ['hmm']:
         config.add_extension(
             filename,
             sources=[f'{filename}.pyx'],

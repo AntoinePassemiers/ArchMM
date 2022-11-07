@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
-# hmm.pxd
-# distutils: language=c++
-# cython: boundscheck=False
-# cython: wraparound=False
-# cython: initializedcheck=False
-# cython: nonecheck=False
+#
+# categorical.py
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -24,24 +20,27 @@
 # MA 02110-1301, USA.
 
 import numpy as np
-cimport numpy as cnp
-cnp.import_array()
 
-from libcpp.vector cimport vector
+from archmm.states.base import HiddenState
 
 
-ctypedef cnp.float_t data_t
+class CategoricalState(HiddenState):
 
+    def __init__(self, *args):
+        HiddenState.__init__(self, *args)
+        self.p: np.ndarray = np.random.rand(self.n_features)
+        self.p /= np.sum(self.p)
 
-cdef class HMM:
+    def param_update(self, data: np.ndarray, gamma: np.ndarray):
+        denominator = np.sum(gamma)
+        idx = data.astype(int)
+        self.p[:] = 0
+        np.add.at(self.p, idx, gamma)
+        self.p /= denominator
 
-    cdef int n_states
-    cdef int n_features
-    cdef bint missing_values
+    def log_pdf(self, data: np.ndarray) -> np.ndarray:
+        idx = data.astype(int)
+        return np.log(self.p[idx])
 
-    cdef list states
-
-    cdef data_t[:] pi
-    cdef data_t[:, :] a
-    cdef data_t[:] log_pi
-    cdef data_t[:, :] log_a
+    def sample(self, n: int) -> np.ndarray:
+        return np.random.choice(np.arange(self.n_features), size=n, p=self.p)
