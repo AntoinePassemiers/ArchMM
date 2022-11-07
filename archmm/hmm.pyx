@@ -28,7 +28,7 @@ from typing import List, Union, Any, Tuple, Sized, Collection
 import numpy as np
 cimport numpy as cnp
 
-from archmm.states.gaussian import GaussianState
+from archmm.distributions.gaussian import MultivariateGaussian
 
 cnp.import_array()
 
@@ -85,7 +85,7 @@ cdef class HMM:
         self.n_features = n_features
 
         # Hidden states
-        self.states = [GaussianState(n_features) for _ in range(self.n_states)]
+        self.states = [MultivariateGaussian(n_features) for _ in range(self.n_states)]
 
         # Initial probabilities
         self.pi = np.random.rand(self.n_states).astype(py_data_t)
@@ -103,7 +103,7 @@ cdef class HMM:
 
     def emission_param_update(self, sequence: np.ndarray, gamma: np.ndarray):
         for i in range(self.n_states):
-            self.states[i].log_pdf(sequence, gamma)
+            self.states[i].param_update(sequence, gamma[:, i])
 
     def check_data(self, data: Union[np.ndarray, List[np.ndarray]]) -> Tuple[np.ndarray, np.ndarray]:
         if isinstance(data, list):
@@ -121,7 +121,7 @@ cdef class HMM:
         return data, np.asarray(bounds, dtype=int)
 
     def fit(self, data: Any, max_n_iter: int = 100):
-        data, bounds_ = HMM.check_data(data)
+        data, bounds_ = self.check_data(data)
         cdef int[:] bounds = np.asarray(bounds_, dtype=int)
         cdef int n_sequences = bounds.shape[0] - 1
         cdef int n = len(data)
@@ -153,9 +153,7 @@ cdef class HMM:
                         log_alpha[t, i] = log_sum_exp(tmp) + log_b[t, i]
 
                 # Compute forward log-likelihood
-                for i in range(self.n_states):
-                    tmp[i] = log_alpha[n - 1, i]
-                forward_ll = log_sum_exp(tmp)
+                forward_ll = log_sum_exp(log_alpha[n - 1, :])
 
                 # Backward procedure
                 for i in range(self.n_states):
@@ -207,8 +205,8 @@ cdef class HMM:
 
             self.emission_param_update(data, np.exp(log_gamma))
 
-    def decode(self, data: np.ndarray) -> np.ndarray:
-        data, bounds_ = HMM.check_data(data)
+    def decode(self, data: Any) -> np.ndarray:
+        data, bounds_ = self.check_data(data)
         cdef int[:] bounds = np.asarray(bounds_, dtype=int)
         cdef int t, i, k, z, best_k
         cdef int n = len(data)
@@ -250,3 +248,7 @@ cdef class HMM:
                 x[t - 1] = z
 
         return np.asarray(x)
+
+    def score(self, data: Any) -> float:
+        data, bounds_ = HMM.check_data(data)
+        cdef int[:] bounds = np.asarray(bounds_, dtype=int)

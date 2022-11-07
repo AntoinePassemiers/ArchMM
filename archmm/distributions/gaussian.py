@@ -22,16 +22,16 @@
 import numpy as np
 import scipy.stats
 
-from archmm.states.base import HiddenState
+from archmm.distributions.base import BaseDistribution
 
 
-class GaussianState(HiddenState):
+class MultivariateGaussian(BaseDistribution):
 
     def __init__(self, *args):
-        HiddenState.__init__(self, *args)
+        BaseDistribution.__init__(self, *args)
         self.mu: np.ndarray = np.random.rand(self.n_features)
         self.sigma = np.random.rand(self.n_features, self.n_features)
-        self.sigma += np.eye(self.n_features)[np.newaxis, ...]
+        self.sigma += np.eye(self.n_features)
 
     def param_update(self, data: np.ndarray, gamma: np.ndarray):
         denominator = np.sum(gamma)

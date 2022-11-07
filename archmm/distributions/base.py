@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# categorical.py
+# base.py
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -19,28 +19,24 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA 02110-1301, USA.
 
+from abc import ABCMeta, abstractmethod
+
 import numpy as np
 
-from archmm.states.base import HiddenState
 
+class BaseDistribution(metaclass=ABCMeta):
 
-class CategoricalState(HiddenState):
+    def __init__(self, n_features: int):
+        self.n_features: int = n_features
 
-    def __init__(self, *args):
-        HiddenState.__init__(self, *args)
-        self.p: np.ndarray = np.random.rand(self.n_features)
-        self.p /= np.sum(self.p)
+    @abstractmethod
+    def param_update(self, data: np.ndarray, gamma: np.ndarray) -> np.ndarray:
+        pass
 
-    def param_update(self, data: np.ndarray, gamma: np.ndarray):
-        denominator = np.sum(gamma)
-        idx = data.astype(int)
-        self.p[:] = 0
-        np.add.at(self.p, idx, gamma)
-        self.p /= denominator
-
+    @abstractmethod
     def log_pdf(self, data: np.ndarray) -> np.ndarray:
-        idx = data.astype(int)
-        return np.log(self.p[idx])
+        pass
 
+    @abstractmethod
     def sample(self, n: int) -> np.ndarray:
-        return np.random.choice(np.arange(self.n_features), size=n, p=self.p)
+        pass

@@ -19,7 +19,7 @@ def configuration(parent_package='', top_path=None):
 
     config = Configuration('archmm', parent_package, top_path)
 
-    #config.add_subpackage('ann')
+    config.add_subpackage('distributions')
 
     for filename in ['hmm']:
         config.add_extension(
