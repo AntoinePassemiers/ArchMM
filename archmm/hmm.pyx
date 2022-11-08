@@ -19,7 +19,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA 02110-1301, USA.
 
-from typing import List, Union, Any, Tuple, Sized, Collection, Type
+from typing import List, Union, Any, Tuple, Sized, Collection, Type, Iterable
 
 import cython
 import numpy as np
@@ -60,7 +60,7 @@ cdef inline data_t sum_(data_t[:] vec) nogil:
     return s
 
 
-cdef inline data_t log_sum_exp(data_t[:] vec) nogil:
+cdef inline data_t log_sum_exp_1d(data_t[:] vec) nogil:
     cdef int n = vec.shape[0]
     if n == 0:
         return 0.0
@@ -72,6 +72,25 @@ cdef inline data_t log_sum_exp(data_t[:] vec) nogil:
     for i in range(vec.shape[0]):
         s += libc.math.exp(vec[i] - offset)
     return libc.math.log(s) + offset
+
+
+cdef inline data_t log_sum_exp(data_t x, data_t y) nogil:
+    if x == MINUS_INFINITY:
+        return y
+    if y == MINUS_INFINITY:
+        return x
+    cdef data_t offset = libc.math.fmax(x, y)
+    x = x - offset
+    if x < -300:
+        x = 0
+    else:
+        x = libc.math.exp(x)
+    y = y - offset
+    if y < -300:
+        y = 0
+    else:
+        y = libc.math.exp(y)
+    return offset + libc.math.log(x + y)
 
 
 cdef class HMM:
@@ -104,16 +123,17 @@ cdef class HMM:
     def add_state(self, dist: BaseDistribution):
         self.states.append(dist)
 
+    def add_states(self, dists: Iterable[BaseDistribution]):
+        for dist in dists:
+            self.add_state(dist)
+
     def emission_log_prob(self, sequence: np.ndarray, log_b: np.ndarray):
         for i in range(self.n_states):
             log_b[:, i] = self.states[i].log_pdf(sequence).astype(py_data_t)
 
     def emission_param_update(self, sequence: np.ndarray, gamma: np.ndarray):
-        print(self.n_states, sequence.shape, gamma.shape)
         for i in range(self.n_states):
-            print(i)
             self.states[i].param_update(sequence, gamma[:, i])
-        print('end')
 
     def check_data(self, data: Union[np.ndarray, List[np.ndarray]]) -> Tuple[np.ndarray, np.ndarray]:
         if isinstance(data, list):
@@ -137,17 +157,16 @@ cdef class HMM:
         data, bounds_ = self.check_data(data)
         cdef int[:] bounds = np.asarray(bounds_, dtype=int)
         cdef int n_sequences = bounds.shape[0] - 1
-        cdef int n = len(data)
+        cdef int ns = len(data)
+        cdef int n = 0
         cdef int n_states = self.n_states
 
-        print(n, n_sequences, bounds.shape)
-
         # Allocate memory
-        cdef data_t[:, :] log_b_ = np.zeros((n, self.n_states), dtype=py_data_t)
-        cdef data_t[:, :] log_alpha_ = np.zeros((n, self.n_states), dtype=py_data_t)
-        cdef data_t[:, :] log_beta_ = np.zeros((n, self.n_states), dtype=py_data_t)
-        cdef data_t[:, :] log_gamma_ = np.zeros((n, self.n_states), dtype=py_data_t)
-        cdef data_t[:, :, :] log_xi_ = np.zeros((n, self.n_states, self.n_states), dtype=py_data_t)
+        cdef data_t[:, :] log_b_ = np.zeros((ns, self.n_states), dtype=py_data_t)
+        cdef data_t[:, :] log_alpha_ = np.zeros((ns, self.n_states), dtype=py_data_t)
+        cdef data_t[:, :] log_beta_ = np.zeros((ns, self.n_states), dtype=py_data_t)
+        cdef data_t[:, :] log_gamma_ = np.zeros((ns, self.n_states), dtype=py_data_t)
+        cdef data_t[:, :, :] log_xi_ = np.zeros((ns, self.n_states, self.n_states), dtype=py_data_t)
         cdef data_t[:, :] log_b
         cdef data_t[:, :] log_alpha
         cdef data_t[:, :] log_beta
@@ -157,84 +176,113 @@ cdef class HMM:
 
         cdef int t, s, i, j, k, w, z, best_k
         cdef int start, end
-        cdef data_t lse, forward_ll, backward_ll
+        cdef data_t lse, forward_ll, backward_ll, log_numerator, log_denominator
 
         for _ in range(max_n_iter):
 
             self.emission_log_prob(data, np.asarray(log_b_, dtype=py_data_t))
 
+            with nogil:
 
-            for s in range(n_sequences):
+                for s in range(n_sequences):
 
-                start = bounds[s]
-                end = bounds[s + 1]
-                log_b = log_b_[start:end, :]
-                log_alpha = log_alpha_[start:end, :]
-                log_beta = log_beta_[start:end, :]
-                log_gamma = log_gamma_[start:end, :]
-                log_xi = log_xi_[start:end, :, :]
+                    start = bounds[s]
+                    end = bounds[s + 1]
+                    n = end - start
+                    if n < 2:
+                        continue
+                    log_b = log_b_[start:end, :]
+                    log_alpha = log_alpha_[start:end, :]
+                    log_beta = log_beta_[start:end, :]
+                    log_gamma = log_gamma_[start:end, :]
+                    log_xi = log_xi_[start:end, :, :]
 
-                # Forward procedure
-                for i in range(n_states):
-                    log_alpha[0, i] = self.log_pi[i] + log_b[0, i]
-                for t in range(1, n):
+                    # Forward procedure
                     for i in range(n_states):
-                        for j in range(n_states):
-                            tmp[j] = log_alpha[t - 1, j] + self.log_a[j, i]
-                        log_alpha[t, i] = log_sum_exp(tmp) + log_b[t, i]
+                        log_alpha[0, i] = self.log_pi[i] + log_b[0, i]
+                    for t in range(1, n):
+                        for i in range(n_states):
+                            for j in range(n_states):
+                                tmp[j] = log_alpha[t - 1, j] + self.log_a[j, i]
+                            log_alpha[t, i] = log_sum_exp_1d(tmp) + log_b[t, i]
 
-                # Compute forward log-likelihood
-                forward_ll = log_sum_exp(log_alpha[n - 1, :])
+                    # Compute forward log-likelihood
+                    forward_ll = log_sum_exp_1d(log_alpha[n - 1, :])
 
-                # Backward procedure
-                for i in range(n_states):
-                    log_beta[n - 1, i] = 0
-                for t in range(n - 2, -1, -1):
+                    # Backward procedure
                     for i in range(n_states):
-                        for j in range(n_states):
-                            tmp[j] = log_beta[t + 1, j] + self.log_a[i, j] + log_b[t + 1, j]
-                        log_beta[t, i] = log_sum_exp(tmp)
+                        log_beta[n - 1, i] = 0
+                    for t in range(n - 2, -1, -1):
+                        for i in range(n_states):
+                            for j in range(n_states):
+                                tmp[j] = log_beta[t + 1, j] + self.log_a[i, j] + log_b[t + 1, j]
+                            log_beta[t, i] = log_sum_exp_1d(tmp)
 
-                # Compute backward log-likelihood
-                for i in range(n_states):
-                    tmp[i] = self.log_pi[i] + log_b[0, i] + log_beta[0, i]
-                backward_ll = log_sum_exp(tmp)
+                    # Compute backward log-likelihood
+                    for i in range(n_states):
+                        tmp[i] = self.log_pi[i] + log_b[0, i] + log_beta[0, i]
+                    backward_ll = log_sum_exp_1d(tmp)
 
-                # Compute occupation likelihood
-                for t in range(n):
-                    for i in range(n_states):
-                        log_gamma[t, i] = log_alpha[t, i] + log_beta[t, i]
-                    lse = log_sum_exp(log_gamma[t, :])
-                    for i in range(n_states):
-                        log_gamma[t, i] = log_gamma[t, i] - lse
+                    # Compute occupation likelihood
+                    for t in range(n):
+                        for i in range(n_states):
+                            log_gamma[t, i] = log_alpha[t, i] + log_beta[t, i]
+                        lse = log_sum_exp_1d(log_gamma[t, :])
+                        for i in range(n_states):
+                            log_gamma[t, i] = log_gamma[t, i] - lse
 
-                # Compute transition likelihood
-                for t in range(n - 1):
-                    for i in range(n_states):
-                        for j in range(n_states):
-                            log_xi[t, i, j] = log_alpha[t, i] + self.log_a[i, j] + log_beta[t + 1, j] + log_b[t + 1, j]
-                    for i in range(n_states):
-                        tmp[i] = log_sum_exp(log_xi[t, i, :])
-                    lse = log_sum_exp(tmp)
-                    for i in range(n_states):
-                        for j in range(n_states):
-                            log_xi[t, i, j] = log_xi[t, i, j] - lse
+                    # Compute transition likelihood
+                    for t in range(n - 1):
+                        for i in range(n_states):
+                            for j in range(n_states):
+                                log_xi[t, i, j] = log_alpha[t, i] + self.log_a[i, j] + log_beta[t + 1, j] + log_b[t + 1, j]
+                        for i in range(n_states):
+                            tmp[i] = log_sum_exp_1d(log_xi[t, i, :])
+                        lse = log_sum_exp_1d(tmp)
+                        for i in range(n_states):
+                            for j in range(n_states):
+                                log_xi[t, i, j] = log_xi    [t, i, j] - lse
 
                 # Update initial state probabilities
                 for i in range(n_states):
-                    self.pi[i] = libc.math.exp(log_gamma[0, i])
-                    self.log_pi[i] = log_gamma[0, i]
+                    self.pi[i] = 0.0
+                    for s in range(n_sequences):
+                        start = bounds[s]
+                        self.pi[i] += libc.math.exp(log_gamma[start, i])
+                    self.pi[i] /= n_sequences
+                    self.log_pi[i] = libc.math.log(self.pi[i])
 
                 # Update state transition probabilities
                 for i in range(n_states):
-                    lse = log_sum_exp(log_gamma[:n-1, i])
+
+                    # Compute denominator
+                    log_denominator = MINUS_INFINITY
+                    for s in range(n_sequences):
+                        start, end = bounds[s], bounds[s + 1]
+                        n = end - start
+                        if n < 2:
+                            continue
+                        log_gamma = log_gamma_[start:end, :]
+                        for t in range(n - 1):
+                            log_denominator = log_sum_exp(log_denominator, log_gamma[t, i])
+
                     for j in range(n_states):
-                        self.log_a[i, j] = log_sum_exp(log_xi[:n-1, i, j]) - lse
+
+                        # Compute numerator
+                        log_numerator = MINUS_INFINITY
+                        for s in range(n_sequences):
+                            start, end = bounds[s], bounds[s + 1]
+                            n = end - start
+                            if n < 2:
+                                continue
+                            log_xi = log_xi_[start:end, :, :]
+                            for t in range(log_xi.shape[0] - 1):
+                                log_numerator = log_sum_exp(log_numerator, log_xi[t, i, j])
+                        self.log_a[i, j] = log_numerator - log_denominator
                         self.a[i, j] = libc.math.exp(self.log_a[i, j])
 
             print(f'Likelihood: forward={forward_ll}, backward={backward_ll}')
 
-            # segfault
             self.emission_param_update(data, np.exp(np.asarray(log_gamma_, dtype=py_data_t)))
 
     def decode(self, data: Any) -> np.ndarray:

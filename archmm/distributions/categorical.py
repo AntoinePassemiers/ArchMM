@@ -26,9 +26,9 @@ from archmm.distributions.base import BaseDistribution
 
 class Categorical(BaseDistribution):
 
-    def __init__(self, *args):
-        BaseDistribution.__init__(self, *args)
-        self.p: np.ndarray = np.random.rand(self.n_features)
+    def __init__(self, n_classes: int):
+        self.n_classes: int = n_classes
+        self.p: np.ndarray = np.random.rand(self.n_classes)
         self.p /= np.sum(self.p)
 
     def param_update(self, data: np.ndarray, gamma: np.ndarray):
@@ -43,4 +43,4 @@ class Categorical(BaseDistribution):
         return np.log(self.p[idx])
 
     def sample(self, n: int) -> np.ndarray:
-        return np.random.choice(np.arange(self.n_features), size=n, p=self.p)
+        return np.random.choice(np.arange(self.n_classes), size=n, p=self.p)
