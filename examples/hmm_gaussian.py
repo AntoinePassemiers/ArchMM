@@ -19,3 +19,5 @@ model.fit(sequences)
 
 print(list(model.decode(sequences[0])))
 print(list(model.decode(sequences[1])))
+
+print(f'Log-likelihood: {model.score(sequences)}')

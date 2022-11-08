@@ -150,6 +150,44 @@ cdef class HMM:
             bounds = [0, len(data)]
         return data, np.asarray(bounds, dtype=int)
 
+    cdef inline data_t forward_procedure(self, data_t[:, :] log_alpha, data_t[:, :] log_b, data_t[:] tmp) nogil:
+
+        cdef int n = log_alpha.shape[0]
+        cdef int n_states = log_alpha.shape[1]
+        cdef int t, i, j
+
+        # Forward procedure
+        for i in range(n_states):
+            log_alpha[0, i] = self.log_pi[i] + log_b[0, i]
+        for t in range(1, n):
+            for i in range(n_states):
+                for j in range(n_states):
+                    tmp[j] = log_alpha[t - 1, j] + self.log_a[j, i]
+                log_alpha[t, i] = log_sum_exp_1d(tmp) + log_b[t, i]
+
+        # Compute forward log-likelihood
+        return log_sum_exp_1d(log_alpha[n - 1, :])
+
+    cdef inline data_t backward_procedure(self, data_t[:, :] log_beta, data_t[:, :] log_b, data_t[:] tmp) nogil:
+
+        cdef int n = log_beta.shape[0]
+        cdef int n_states = log_beta.shape[1]
+        cdef int t, i, j
+
+        # Backward procedure
+        for i in range(n_states):
+            log_beta[n - 1, i] = 0
+        for t in range(n - 2, -1, -1):
+            for i in range(n_states):
+                for j in range(n_states):
+                    tmp[j] = log_beta[t + 1, j] + self.log_a[i, j] + log_b[t + 1, j]
+                log_beta[t, i] = log_sum_exp_1d(tmp)
+
+        # Compute backward log-likelihood
+        for i in range(n_states):
+            tmp[i] = self.log_pi[i] + log_b[0, i] + log_beta[0, i]
+        return log_sum_exp_1d(tmp)
+
     def fit(self, data: Any, max_n_iter: int = 100):
 
         self.init()
@@ -197,31 +235,9 @@ cdef class HMM:
                     log_gamma = log_gamma_[start:end, :]
                     log_xi = log_xi_[start:end, :, :]
 
-                    # Forward procedure
-                    for i in range(n_states):
-                        log_alpha[0, i] = self.log_pi[i] + log_b[0, i]
-                    for t in range(1, n):
-                        for i in range(n_states):
-                            for j in range(n_states):
-                                tmp[j] = log_alpha[t - 1, j] + self.log_a[j, i]
-                            log_alpha[t, i] = log_sum_exp_1d(tmp) + log_b[t, i]
-
-                    # Compute forward log-likelihood
-                    forward_ll = log_sum_exp_1d(log_alpha[n - 1, :])
-
-                    # Backward procedure
-                    for i in range(n_states):
-                        log_beta[n - 1, i] = 0
-                    for t in range(n - 2, -1, -1):
-                        for i in range(n_states):
-                            for j in range(n_states):
-                                tmp[j] = log_beta[t + 1, j] + self.log_a[i, j] + log_b[t + 1, j]
-                            log_beta[t, i] = log_sum_exp_1d(tmp)
-
-                    # Compute backward log-likelihood
-                    for i in range(n_states):
-                        tmp[i] = self.log_pi[i] + log_b[0, i] + log_beta[0, i]
-                    backward_ll = log_sum_exp_1d(tmp)
+                    # Forward-backward algorithm
+                    forward_ll = self.forward_procedure(log_alpha, log_b, tmp)
+                    backward_ll = self.backward_procedure(log_beta, log_b, tmp)
 
                     # Compute occupation likelihood
                     for t in range(n):
@@ -328,14 +344,38 @@ cdef class HMM:
                 z = t2[t, z]
                 x[t - 1] = z
 
-        return np.asarray(x)
+        return np.asarray(x)  # TODO: list of arrays
 
     def score(self, data: Any) -> float:
-        data, bounds_ = HMM.check_data(data)
+        data, bounds_ = self.check_data(data)
         cdef int[:] bounds = np.asarray(bounds_, dtype=int)
+        cdef int n_sequences = bounds.shape[0] - 1
+        cdef int ns = len(data)
+        cdef int n = 0
+        cdef int n_states = self.n_states
+        cdef int s, start, end
+        cdef data_t ll = 0
 
-        # TODO
-        raise NotImplementedError()
+        # Allocate memory
+        cdef data_t[:, :] log_b_ = np.zeros((ns, self.n_states), dtype=py_data_t)
+        cdef data_t[:, :] log_alpha_ = np.zeros((ns, self.n_states), dtype=py_data_t)
+        cdef data_t[:, :] log_b
+        cdef data_t[:, :] log_alpha
+        cdef data_t[:] tmp = np.zeros(self.n_states, dtype=py_data_t)
+
+        self.emission_log_prob(data, np.asarray(log_b_, dtype=py_data_t))
+
+        with nogil:
+            for s in range(n_sequences):
+                start = bounds[s]
+                end = bounds[s + 1]
+                n = end - start
+                if n < 2:
+                    continue
+                log_b = log_b_[start:end, :]
+                log_alpha = log_alpha_[start:end, :]
+                ll += self.forward_procedure(log_alpha, log_b, tmp)
+        return ll
 
     @property
     def n_states(self) -> int:

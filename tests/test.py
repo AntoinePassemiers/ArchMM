@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-# hmm.pxd
-# distutils: language=c
+#
+# test.py
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -20,21 +20,24 @@
 # MA 02110-1301, USA.
 
 import numpy as np
-cimport numpy as cnp
-cnp.import_array()
+
+from archmm.hmm import HMM
+from archmm.distributions import MultivariateGaussian
 
 
-ctypedef cnp.float_t data_t
+def test_gaussian():
+    sequences = []
+    sequence = np.random.rand(1800, 3)
+    sequence[1200:, :] += 0.5
+    sequences.append(sequence)
+    sequence = np.random.rand(1800, 3)
+    sequence[300:, :] += 0.5
+    sequences.append(sequence)
 
+    model = HMM()
+    for _ in range(3):
+        model.add_state(MultivariateGaussian(3))
+    model.fit(sequences)
 
-cdef class HMM:
-
-    cdef list states
-
-    cdef data_t[:] pi
-    cdef data_t[:, :] a
-    cdef data_t[:] log_pi
-    cdef data_t[:, :] log_a
-
-    cdef inline data_t forward_procedure(self, data_t[:, :] log_alpha, data_t[:, :] log_b, data_t[:] tmp) nogil
-    cdef inline data_t backward_procedure(self, data_t[:, :] log_beta, data_t[:, :] log_b, data_t[:] tmp) nogil
+    for sequence in sequences:
+        model.decode(sequence)

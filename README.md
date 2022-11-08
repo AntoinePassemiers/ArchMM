@@ -25,7 +25,19 @@ model.fit(sequences)
 Custom distributions can be defined as hidden states.
 More examples can be found in the `examples` folder.
 
+### Install the library
+
+Please make sure you have Cython installed first.
+Then you can build the library simply with:
+
+```
+python setup.py install
+```
+
 ### Ongoing work
+- Implement sample method
+- Implement score method
+- Improved initialization
 - NaN support
 - Arbitrary topologies
 - GMMHMM
