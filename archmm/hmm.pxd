@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 # hmm.pxd
-# distutils: language=c++
-# cython: boundscheck=False
-# cython: wraparound=False
-# cython: initializedcheck=False
-# cython: nonecheck=False
+# distutils: language=c
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -27,17 +23,11 @@ import numpy as np
 cimport numpy as cnp
 cnp.import_array()
 
-from libcpp.vector cimport vector
-
 
 ctypedef cnp.float_t data_t
 
 
 cdef class HMM:
-
-    cdef int n_states
-    cdef int n_features
-    cdef bint missing_values
 
     cdef list states
 

@@ -26,9 +26,6 @@ import numpy as np
 
 class BaseDistribution(metaclass=ABCMeta):
 
-    def __init__(self, n_features: int):
-        self.n_features: int = n_features
-
     @abstractmethod
     def param_update(self, data: np.ndarray, gamma: np.ndarray) -> np.ndarray:
         pass

@@ -27,8 +27,8 @@ from archmm.distributions.base import BaseDistribution
 
 class MultivariateGaussian(BaseDistribution):
 
-    def __init__(self, *args):
-        BaseDistribution.__init__(self, *args)
+    def __init__(self, n_features: int):
+        self.n_features: int = n_features
         self.mu: np.ndarray = np.random.rand(self.n_features)
         self.sigma = np.random.rand(self.n_features, self.n_features)
         self.sigma += np.eye(self.n_features)
