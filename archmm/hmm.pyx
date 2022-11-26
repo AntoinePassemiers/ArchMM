@@ -45,6 +45,16 @@ cdef data_t MINUS_INFINITY = <data_t>-np.inf
 cdef data_t INFINITY = <data_t>np.inf
 
 
+cdef inline int random_choice(data_t r, data_t[:] p) nogil:
+    cdef int i
+    cdef data_t cdf = 0.
+    for i in range(p.shape[1]):
+        cdf += p[i]
+        if r <= cdf:
+            return i
+    return p.shape[0] - 1
+
+
 cdef inline int argmax(data_t[:] vec) nogil:
     cdef int i
     cdef int best_idx = 0
@@ -374,6 +384,30 @@ cdef class HMM:
                 log_alpha = log_alpha_[start:end, :]
                 ll += self.forward_procedure(log_alpha, log_b, tmp)
         return ll
+
+    def sample(self, length: int) -> np.ndarray:
+        cdef int n = int(length)
+        if n == 0:
+            return np.asarray([])
+
+        # Randomly generate the sequence of hidden states
+        cdef int t
+        cdef data_t[:] r = np.random.rand(n).astype(py_data_t)
+        cdef data_t[:] p
+        cdef cnp.int_t[:] states = np.zeros(n, dtype=int)
+        with nogil:
+            states[0] = random_choice(r[0], self.pi)
+            for t in range(1, n):
+                states[t] = random_choice(r[0], self.a[t-1, :])
+        states_ = np.asarray(states)
+
+        # Sample observations from hidden states
+        data = np.empty((n, *self.states[0].shape), dtype=float)  # TODO: distribution-specific dtype
+        for i in range(self.n_states):
+            idx = np.where(states_ == i)[0]
+            if len(idx) > 0:
+                data[idx, ...] = self.states[i].sample(len(idx))
+        return data
 
     def assert_almost_equal(self, other: 'HMM', precision: int = 6):
         # TODO: sort hidden states based on pairwise similarities

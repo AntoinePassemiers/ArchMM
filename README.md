@@ -26,6 +26,9 @@ print(model.decode(sequences))
 
 # Compute log-likelihood
 print(model.score(sequences))
+
+# Generate random sequence from trained model
+print(model.sample(15))
 ```
 
 Custom distributions can be defined as hidden states.
@@ -41,11 +44,8 @@ python setup.py install
 ```
 
 ### Ongoing work
-- Implement sample method
-- Implement score method
 - Improved initialization
 - NaN support
 - Arbitrary topologies
-- GMMHMM
 - Input-Output HMM
 - MRF, etc.
