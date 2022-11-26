@@ -22,23 +22,27 @@
 import numpy as np
 
 from archmm.distributions.base import BaseDistribution
+from archmm.distributions.support import Bounds, Integer
 
 
 class Categorical(BaseDistribution):
 
     def __init__(self, n_classes: int):
+        super().__init__()
         self.n_classes: int = n_classes
         self.p: np.ndarray = np.random.rand(self.n_classes)
         self.p /= np.sum(self.p)
+        self.add_support(Integer())
+        self.add_support(Bounds(0, self.n_classes - 1))
 
-    def param_update(self, data: np.ndarray, gamma: np.ndarray):
+    def _param_update(self, data: np.ndarray, gamma: np.ndarray):
         denominator = np.sum(gamma)
         idx = data.astype(int)
         self.p[:] = 0
         np.add.at(self.p, idx, gamma)
         self.p /= denominator
 
-    def log_pdf(self, data: np.ndarray) -> np.ndarray:
+    def _log_pdf(self, data: np.ndarray) -> np.ndarray:
         idx = data.astype(int)
         return np.log(self.p[idx])
 

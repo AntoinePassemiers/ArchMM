@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# test.py
+# emission.py
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -19,28 +19,24 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA 02110-1301, USA.
 
-import numpy as np
+from abc import ABCMeta, abstractmethod
+from typing import Any
 
-from archmm.hmm import HMM
-from archmm.distributions import MultivariateGaussian
+import torch
+
+from archmm.gem.utils import ensure_tensor
 
 
-def test_fit():
-    sequences = []
-    sequence = np.random.rand(1800, 3)
-    sequence[1200:, :] += 0.5
-    sequences.append(sequence)
-    sequence = np.random.rand(1800, 3)
-    sequence[300:, :] += 0.5
-    sequences.append(sequence)
+class EmissionModel(metaclass=ABCMeta):
 
-    model = HMM()
-    for _ in range(3):
-        model.add_state(MultivariateGaussian(3))
-    model.fit(sequences)
+    @abstractmethod
+    def log_pdf_(self, X: torch.Tensor, Y: torch.Tensor) -> torch.Tensor:
+        pass
 
-    for sequence in sequences:
-        model.decode(sequence)
-        model.score(sequence)
-    model.decode(sequences)
-    assert not np.any(np.isnan(model.score(sequences)))
+    def log_pdf(self, X: Any, Y: Any) -> torch.Tensor:
+        X = ensure_tensor(X)
+        Y = ensure_tensor(Y)
+        p = self.log_pdf_(X, Y)
+        p = torch.squeeze(p)
+        assert len(p.size()) == 1
+        return p

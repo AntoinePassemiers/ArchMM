@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 # hmm.pyx
 # distutils: language=c
+# cython: boundscheck=False
+# cython: wraparound=False
+# cython: initializedcheck=False
+# cython: nonecheck=False
+# cython: overflowcheck=False
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -24,9 +29,10 @@ from typing import List, Union, Any, Tuple, Sized, Collection, Type, Iterable
 import cython
 import numpy as np
 cimport numpy as cnp
-from archmm.distributions.base import BaseDistribution
+import scipy.special
 
-from archmm.distributions.gaussian import MultivariateGaussian
+from archmm.distributions.base import BaseDistribution
+from archmm.utils import check_data
 
 cnp.import_array()
 
@@ -135,21 +141,6 @@ cdef class HMM:
         for i in range(self.n_states):
             self.states[i].param_update(sequence, gamma[:, i])
 
-    def check_data(self, data: Union[np.ndarray, List[np.ndarray]]) -> Tuple[np.ndarray, np.ndarray]:
-        if isinstance(data, list):
-            if len(data) == 0:
-                return np.array([]), np.array([0])
-            bounds = []
-            start = 0
-            for seq in data:
-                bounds.append(start)
-                start += len(seq)
-            bounds.append(start)
-            data = np.concatenate(data, axis=0)
-        else:
-            bounds = [0, len(data)]
-        return data, np.asarray(bounds, dtype=int)
-
     cdef inline data_t forward_procedure(self, data_t[:, :] log_alpha, data_t[:, :] log_b, data_t[:] tmp) nogil:
 
         cdef int n = log_alpha.shape[0]
@@ -188,11 +179,17 @@ cdef class HMM:
             tmp[i] = self.log_pi[i] + log_b[0, i] + log_beta[0, i]
         return log_sum_exp_1d(tmp)
 
-    def fit(self, data: Any, max_n_iter: int = 100):
+    def fit(
+            self,
+            data: Any,
+            max_n_iter: int = 100,
+            eps: float = 1e-7,
+            verbose: bool = True
+    ):
 
         self.init()
 
-        data, bounds_ = self.check_data(data)
+        data, bounds_ = check_data(data)
         cdef int[:] bounds = np.asarray(bounds_, dtype=int)
         cdef int n_sequences = bounds.shape[0] - 1
         cdef int ns = len(data)
@@ -215,8 +212,9 @@ cdef class HMM:
         cdef int t, s, i, j, k, w, z, best_k
         cdef int start, end
         cdef data_t lse, forward_ll, backward_ll, log_numerator, log_denominator
+        cdef list lls = []
 
-        for _ in range(max_n_iter):
+        for iteration in range(max_n_iter):
 
             self.emission_log_prob(data, np.asarray(log_b_, dtype=py_data_t))
 
@@ -239,34 +237,27 @@ cdef class HMM:
                     forward_ll = self.forward_procedure(log_alpha, log_b, tmp)
                     backward_ll = self.backward_procedure(log_beta, log_b, tmp)
 
-                    # Compute occupation likelihood
-                    for t in range(n):
-                        for i in range(n_states):
-                            log_gamma[t, i] = log_alpha[t, i] + log_beta[t, i]
-                        lse = log_sum_exp_1d(log_gamma[t, :])
-                        for i in range(n_states):
-                            log_gamma[t, i] = log_gamma[t, i] - lse
+            # Compute occupation likelihood
+            arr = (np.asarray(log_alpha_) + np.asarray(log_beta_)).astype(py_data_t)
+            arr -= scipy.special.logsumexp(arr, axis=1)[:, np.newaxis]
+            log_gamma_ = arr
 
-                    # Compute transition likelihood
-                    for t in range(n - 1):
-                        for i in range(n_states):
-                            for j in range(n_states):
-                                log_xi[t, i, j] = log_alpha[t, i] + self.log_a[i, j] + log_beta[t + 1, j] + log_b[t + 1, j]
-                        for i in range(n_states):
-                            tmp[i] = log_sum_exp_1d(log_xi[t, i, :])
-                        lse = log_sum_exp_1d(tmp)
-                        for i in range(n_states):
-                            for j in range(n_states):
-                                log_xi[t, i, j] = log_xi    [t, i, j] - lse
+            # Compute transition likelihood
+            arr = np.asarray(log_alpha_)[:-1, :, np.newaxis] \
+                  + np.asarray(self.log_a)[np.newaxis, :, :] \
+                  + np.asarray(log_beta_)[1:, np.newaxis, :] \
+                  + np.asarray(log_b_)[1:, np.newaxis, :]
+            arr = arr.astype(py_data_t)
+            arr -= scipy.special.logsumexp(arr, axis=(1, 2))[:, np.newaxis, np.newaxis]
+            log_xi_ = arr
 
-                # Update initial state probabilities
-                for i in range(n_states):
-                    self.pi[i] = 0.0
-                    for s in range(n_sequences):
-                        start = bounds[s]
-                        self.pi[i] += libc.math.exp(log_gamma[start, i])
-                    self.pi[i] /= n_sequences
-                    self.log_pi[i] = libc.math.log(self.pi[i])
+            # Update initial state probabilities
+            idx = bounds_[:-1]
+            self.pi = np.mean(np.exp(np.asarray(log_gamma_)[idx, :]), axis=0).astype(py_data_t)
+            self.log_pi = np.log(np.asarray(self.pi)).astype(py_data_t)
+
+            # TODO: optimize this
+            with nogil:
 
                 # Update state transition probabilities
                 for i in range(n_states):
@@ -297,18 +288,25 @@ cdef class HMM:
                         self.log_a[i, j] = log_numerator - log_denominator
                         self.a[i, j] = libc.math.exp(self.log_a[i, j])
 
-            print(f'Likelihood: forward={forward_ll}, backward={backward_ll}')
+            if verbose:
+                print(f'Likelihood: forward={forward_ll}, backward={backward_ll}')
+            lls.append(float(forward_ll))
 
             self.emission_param_update(data, np.exp(np.asarray(log_gamma_, dtype=py_data_t)))
 
+            # Check convergence
+            if len(lls) > 1:
+                if abs((lls[iteration] - lls[iteration-1]) / lls[iteration-1]) < eps:
+                    break
+
     def decode(self, data: Any) -> np.ndarray:
-        data, bounds_ = self.check_data(data)
+        data, bounds_ = check_data(data)
         cdef int[:] bounds = np.asarray(bounds_, dtype=int)
         cdef int t, i, k, z, best_k
         cdef int n = len(data)
         cdef int n_states = self.n_states
         if n == 0:
-            return np.asarray([])
+            return np.asarray([], dtype=int)
         cdef data_t[:, :] log_b = np.zeros((n, self.n_states), dtype=py_data_t)
         cdef data_t[:, :] t1 = np.zeros((n, self.n_states), dtype=py_data_t)
         cdef int[:, :] t2 = np.zeros((n, self.n_states), dtype=int)
@@ -347,7 +345,7 @@ cdef class HMM:
         return np.asarray(x)  # TODO: list of arrays
 
     def score(self, data: Any) -> float:
-        data, bounds_ = self.check_data(data)
+        data, bounds_ = check_data(data)
         cdef int[:] bounds = np.asarray(bounds_, dtype=int)
         cdef int n_sequences = bounds.shape[0] - 1
         cdef int ns = len(data)
@@ -376,6 +374,11 @@ cdef class HMM:
                 log_alpha = log_alpha_[start:end, :]
                 ll += self.forward_procedure(log_alpha, log_b, tmp)
         return ll
+
+    def assert_almost_equal(self, other: 'HMM', precision: int = 6):
+        # TODO: sort hidden states based on pairwise similarities
+        np.testing.assert_array_almost_equal(self.log_pi, other.pi, decimal=precision)
+        np.testing.assert_array_almost_equal(self.log_pi, other.a, decimal=precision)
 
     @property
     def n_states(self) -> int:

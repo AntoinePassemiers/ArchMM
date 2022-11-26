@@ -1,2 +1,4 @@
 from .categorical import *
-from .gaussian import *
+from .multivariate_normal import *
+from .normal import *
+from .poisson import *

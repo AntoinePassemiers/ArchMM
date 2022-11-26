@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# base.py
+# multivariate_normal.py
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -19,44 +19,29 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA 02110-1301, USA.
 
-from abc import ABCMeta, abstractmethod
-from typing import List, Tuple
-
 import numpy as np
+import scipy.stats
 
-from archmm.distributions.support import Support, Shape
+from archmm.distributions.base import BaseDistribution
 
 
-class BaseDistribution(metaclass=ABCMeta):
+class MultivariateGaussian(BaseDistribution):
 
-    def __init__(self, *shape: int):
-        self.shape: Tuple[int] = tuple(shape)
-        self.supports: List[Support] = []
-        self.add_support(Shape(*self.shape))
+    def __init__(self, n_features: int):
+        super().__init__(n_features)
+        self.n_features: int = n_features
+        self.mu: np.ndarray = np.random.rand(self.n_features)
+        self.sigma = np.random.rand(self.n_features, self.n_features)
+        self.sigma += np.eye(self.n_features)
 
-    def add_support(self, support: Support):
-        self.supports.append(support)
-
-    def check_data(self, data: np.ndarray):
-        for support in self.supports:
-            support(data)
-
-    def param_update(self, data: np.ndarray, gamma: np.ndarray):
-        self.check_data(data)
-        self._param_update(data, gamma)
-
-    @abstractmethod
     def _param_update(self, data: np.ndarray, gamma: np.ndarray):
-        pass
+        denominator = np.sum(gamma)
+        self.mu[:] = np.sum(data * gamma[:, np.newaxis], axis=0) / denominator
+        centered = data - self.mu[np.newaxis, :]
+        self.sigma[:, :] = np.einsum('t,tk,tl->kl', gamma, centered, centered) / denominator
 
-    def log_pdf(self, data: np.ndarray) -> np.ndarray:
-        self.check_data(data)
-        return self._log_pdf(data)
-
-    @abstractmethod
     def _log_pdf(self, data: np.ndarray) -> np.ndarray:
-        pass
+        return scipy.stats.multivariate_normal.logpdf(data, mean=self.mu, cov=self.sigma)
 
-    @abstractmethod
     def sample(self, n: int) -> np.ndarray:
-        pass
+        return scipy.stats.multivariate_normal.rvs(mean=self.mu, cov=self.sigma, size=n)

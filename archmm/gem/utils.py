@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# test.py
+# utils.py
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -19,28 +19,26 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA 02110-1301, USA.
 
-import numpy as np
+from typing import Any
 
-from archmm.hmm import HMM
-from archmm.distributions import MultivariateGaussian
+import torch
 
 
-def test_fit():
-    sequences = []
-    sequence = np.random.rand(1800, 3)
-    sequence[1200:, :] += 0.5
-    sequences.append(sequence)
-    sequence = np.random.rand(1800, 3)
-    sequence[300:, :] += 0.5
-    sequences.append(sequence)
+def ensure_tensor(data: Any) -> torch.Tensor:
+    if not torch.is_tensor(data):
+        data = torch.FloatTensor(data)
+    return data
 
-    model = HMM()
-    for _ in range(3):
-        model.add_state(MultivariateGaussian(3))
-    model.fit(sequences)
 
-    for sequence in sequences:
-        model.decode(sequence)
-        model.score(sequence)
-    model.decode(sequences)
-    assert not np.any(np.isnan(model.score(sequences)))
+def create_activation_function(name: str) -> torch.nn.Module:
+    name = name.strip().lower()
+    if name == 'relu':
+        return torch.nn.ReLU()
+    elif name == 'sigmoid':
+        return torch.nn.Sigmoid()
+    elif name == 'tanh':
+        return torch.nn.Tanh()
+    elif name == 'leaky_relu':
+        return torch.nn.LeakyReLU()
+    else:
+        raise NotImplementedError(f'Unknown activation function"{name}"')

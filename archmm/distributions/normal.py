@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# gaussian.py
+# normal.py
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -25,22 +25,23 @@ import scipy.stats
 from archmm.distributions.base import BaseDistribution
 
 
-class MultivariateGaussian(BaseDistribution):
+class Gaussian(BaseDistribution):
 
     def __init__(self, n_features: int):
+        super().__init__()
         self.n_features: int = n_features
-        self.mu: np.ndarray = np.random.rand(self.n_features)
-        self.sigma = np.random.rand(self.n_features, self.n_features)
+        self.mu: float = float(np.random.rand())
+        self.sigma = float(np.random.rand())
         self.sigma += np.eye(self.n_features)
 
-    def param_update(self, data: np.ndarray, gamma: np.ndarray):
+    def _param_update(self, data: np.ndarray, gamma: np.ndarray):
         denominator = np.sum(gamma)
-        self.mu[:] = np.sum(data * gamma[:, np.newaxis], axis=0) / denominator
-        centered = data - self.mu[np.newaxis, :]
-        self.sigma[:, :] = np.einsum('t,tk,tl->kl', gamma, centered, centered) / denominator
+        self.mu = float(np.sum(data * gamma, axis=0) / denominator)
+        centered = data - self.mu
+        self.sigma = float(np.sqrt(np.sum((centered ** 2.) * gamma, axis=0) / denominator))
 
-    def log_pdf(self, data: np.ndarray) -> np.ndarray:
-        return scipy.stats.multivariate_normal.logpdf(data, mean=self.mu, cov=self.sigma)
+    def _log_pdf(self, data: np.ndarray) -> np.ndarray:
+        return scipy.stats.norm.logpdf(data, loc=self.mu, scale=self.sigma)
 
     def sample(self, n: int) -> np.ndarray:
-        return scipy.stats.multivariate_normal.rvs(mean=self.mu, cov=self.sigma, size=n)
+        return scipy.stats.norm.rvs(loc=self.mu, scale=self.sigma, size=n)

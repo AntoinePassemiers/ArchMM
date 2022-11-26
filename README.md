@@ -5,7 +5,7 @@ Flexible Cython library for designing Hidden Markov Models
 
 ```python
 from archmm.hmm import HMM
-from archmm.distributions.gaussian import MultivariateGaussian
+from archmm.distributions import MultivariateGaussian
 
 # Create a HMM with 3 hidden states
 # and 4-dimensional multivariate Gaussian distributions
@@ -20,6 +20,12 @@ for _ in range(3):
 # with the support of the distributions. In the present case,
 # arrays have shape (n, 4), and n is sequence-dependent.
 model.fit(sequences)
+
+# Decode sequences with Viterbi algorithm
+print(model.decode(sequences))
+
+# Compute log-likelihood
+print(model.score(sequences))
 ```
 
 Custom distributions can be defined as hidden states.

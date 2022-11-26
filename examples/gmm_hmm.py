@@ -1,4 +1,5 @@
 import numpy as np
+from archmm.distributions.mixture import Mixture
 
 from archmm.hmm import HMM
 from archmm.distributions import MultivariateGaussian
@@ -14,7 +15,12 @@ sequences.append(sequence)
 
 model = HMM()
 for _ in range(2):
-    model.add_state(MultivariateGaussian(3))
+    model.add_state(Mixture(
+        MultivariateGaussian(3),
+        MultivariateGaussian(3),
+        MultivariateGaussian(3)
+    ))
+
 model.fit(sequences)
 
 print(list(model.decode(sequences[0])))

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-#
-# test.py
+# iohmm.pxd
+# distutils: language=c
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -20,27 +20,14 @@
 # MA 02110-1301, USA.
 
 import numpy as np
+cimport numpy as cnp
+cnp.import_array()
 
-from archmm.hmm import HMM
-from archmm.distributions import MultivariateGaussian
+import torch
 
 
-def test_fit():
-    sequences = []
-    sequence = np.random.rand(1800, 3)
-    sequence[1200:, :] += 0.5
-    sequences.append(sequence)
-    sequence = np.random.rand(1800, 3)
-    sequence[300:, :] += 0.5
-    sequences.append(sequence)
+cdef class IOHMM:
 
-    model = HMM()
-    for _ in range(3):
-        model.add_state(MultivariateGaussian(3))
-    model.fit(sequences)
-
-    for sequence in sequences:
-        model.decode(sequence)
-        model.score(sequence)
-    model.decode(sequences)
-    assert not np.any(np.isnan(model.score(sequences)))
+    cdef object initial_model
+    cdef list transition_models
+    cdef list emission_models

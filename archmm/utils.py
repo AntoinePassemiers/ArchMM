@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# test.py
+# utils.py
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -19,28 +19,22 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA 02110-1301, USA.
 
+from typing import List, Tuple, Union
+
 import numpy as np
 
-from archmm.hmm import HMM
-from archmm.distributions import MultivariateGaussian
 
-
-def test_fit():
-    sequences = []
-    sequence = np.random.rand(1800, 3)
-    sequence[1200:, :] += 0.5
-    sequences.append(sequence)
-    sequence = np.random.rand(1800, 3)
-    sequence[300:, :] += 0.5
-    sequences.append(sequence)
-
-    model = HMM()
-    for _ in range(3):
-        model.add_state(MultivariateGaussian(3))
-    model.fit(sequences)
-
-    for sequence in sequences:
-        model.decode(sequence)
-        model.score(sequence)
-    model.decode(sequences)
-    assert not np.any(np.isnan(model.score(sequences)))
+def check_data(data: Union[np.ndarray, List[np.ndarray]]) -> Tuple[np.ndarray, np.ndarray]:
+    if isinstance(data, list):
+        if len(data) == 0:
+            return np.array([]), np.array([0])
+        bounds = []
+        start = 0
+        for seq in data:
+            bounds.append(start)
+            start += len(seq)
+        bounds.append(start)
+        data = np.concatenate(data, axis=0)
+    else:
+        bounds = [0, len(data)]
+    return data, np.asarray(bounds, dtype=int)
