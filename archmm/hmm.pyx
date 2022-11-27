@@ -338,7 +338,7 @@ cdef class HMM:
 
     def decode(self, data: Any) -> np.ndarray:
         data, bounds_ = check_data(data)
-        cdef int[:] bounds = np.asarray(bounds_, dtype=int)
+        cdef cnp.int_t[:] bounds = np.asarray(bounds_, dtype=int)
         cdef int t, i, k, z, best_k
         cdef int n = len(data)
         cdef int n_states = self.n_states

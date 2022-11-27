@@ -1,6 +1,9 @@
 [MASTER]
 extension-pkg-whitelist=numpy,torch
 
+[MESSAGES CONTROL]
+disable=C,R,W
+
 [TYPECHECK]
 ignored-modules=numpy,torch
 ignored-classes=numpy,torch
