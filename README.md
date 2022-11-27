@@ -1,4 +1,5 @@
-[![Travis-CI Build Status](https://travis-ci.org/AntoinePassemiers/ArchMM.svg?branch=master)](https://travis-ci.org/AntoinePassemiers/ArchMM)
+[![Build status](https://github.com/AntoinePassemiers/ArchMM/actions/workflows/build.yml/badge.svg)](https://github.com/AntoinePassemiers/ArchMM/actions?query=build)
+[![Code analysis](https://github.com/AntoinePassemiers/ArchMM/actions/workflows/analysis.yml/badge.svg)](https://github.com/AntoinePassemiers/ArchMM/actions?query=analysis)
 # ArchMM
 
 Flexible and efficient library for designing Hidden Markov Models using arbitrary topologies and underlying statistical distributions.
