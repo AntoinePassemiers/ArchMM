@@ -223,7 +223,7 @@ cdef class HMM:
         self.init()
 
         data, bounds_ = check_data(data)
-        cdef int[:] bounds = np.asarray(bounds_, dtype=int)
+        cdef cnp.int_t[:] bounds = np.asarray(bounds_, dtype=int)
         cdef int n_sequences = bounds.shape[0] - 1
         cdef int ns = len(data)
         cdef int n = 0

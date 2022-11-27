@@ -2,4 +2,4 @@ numpy
 scipy
 Cython
 scikit-learn
-torch
+torch==1.12.1
