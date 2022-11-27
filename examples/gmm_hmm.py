@@ -1,4 +1,6 @@
 import numpy as np
+
+from archmm import HiddenState, Architecture
 from archmm.distributions.mixture import Mixture
 
 from archmm.hmm import HMM
@@ -14,12 +16,15 @@ sequence[300:, :] += 0.5
 sequences.append(sequence)
 
 model = HMM()
+states = []
 for _ in range(2):
-    model.add_state(Mixture(
+    states.append(HiddenState(Mixture(
         MultivariateGaussian(3),
         MultivariateGaussian(3),
         MultivariateGaussian(3)
-    ))
+    )))
+Architecture.ergodic(states)
+model.add_states(states)
 
 model.fit(sequences)
 

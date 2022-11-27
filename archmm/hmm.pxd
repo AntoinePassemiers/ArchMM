@@ -35,6 +35,8 @@ cdef class HMM:
     cdef data_t[:, :] a
     cdef data_t[:] log_pi
     cdef data_t[:, :] log_a
+    cdef cnp.uint8_t[:] pi_mask
+    cdef cnp.uint8_t[:, :] a_mask
 
     cdef inline data_t forward_procedure(self, data_t[:, :] log_alpha, data_t[:, :] log_b, data_t[:] tmp) nogil
     cdef inline data_t backward_procedure(self, data_t[:, :] log_beta, data_t[:, :] log_b, data_t[:] tmp) nogil

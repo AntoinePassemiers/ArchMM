@@ -1,17 +1,18 @@
 [![Travis-CI Build Status](https://travis-ci.org/AntoinePassemiers/ArchMM.svg?branch=master)](https://travis-ci.org/AntoinePassemiers/ArchMM)
 # ArchMM
 
-Flexible Cython library for designing Hidden Markov Models
+Flexible and efficient library for designing Hidden Markov Models using arbitrary topologies and underlying statistical distributions.
 
 ```python
-from archmm.hmm import HMM
+from archmm import HMM, HiddenState, Architecture
 from archmm.distributions import MultivariateGaussian
 
-# Create a HMM with 3 hidden states
+# Create a HMM with 3 fully-connected hidden states
 # and 4-dimensional multivariate Gaussian distributions
 model = HMM()
-for _ in range(3):
-    model.add_state(MultivariateGaussian(4))
+states = [HiddenState(MultivariateGaussian(4)) for _ in range(3)]
+Architecture.ergodic(states)  # Fully-connected
+model.add_states(states)
 
 # Train the model with the Baum-Welch algorithm.
 # `sequences` is either a NumPy array or a list of NumPy arrays.
@@ -46,6 +47,5 @@ python setup.py install
 ### Ongoing work
 - Improved initialization
 - NaN support
-- Arbitrary topologies
 - Input-Output HMM
 - MRF, etc.

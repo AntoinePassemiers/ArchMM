@@ -31,7 +31,7 @@ class MultivariateGaussian(BaseDistribution):
         super().__init__(n_features)
         self.n_features: int = n_features
         self.mu: np.ndarray = np.random.rand(self.n_features)
-        self.sigma = np.random.rand(self.n_features, self.n_features)
+        self.sigma = np.random.rand(self.n_features, self.n_features) - 0.5
         self.sigma += np.eye(self.n_features)
 
     def _param_update(self, data: np.ndarray, gamma: np.ndarray):
@@ -39,6 +39,10 @@ class MultivariateGaussian(BaseDistribution):
         self.mu[:] = np.sum(data * gamma[:, np.newaxis], axis=0) / denominator
         centered = data - self.mu[np.newaxis, :]
         self.sigma[:, :] = np.einsum('t,tk,tl->kl', gamma, centered, centered) / denominator
+
+        # Ensure covariance matrix is invertible
+        if np.linalg.det(self.sigma) == 0:
+            self.sigma = np.eye(self.n_features)
 
     def _log_pdf(self, data: np.ndarray) -> np.ndarray:
         return scipy.stats.multivariate_normal.logpdf(data, mean=self.mu, cov=self.sigma)

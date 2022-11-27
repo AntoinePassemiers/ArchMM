@@ -24,17 +24,17 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA 02110-1301, USA.
 
-from typing import List, Union, Any, Tuple, Sized, Collection, Type, Iterable
+import copy
+from typing import Any, Iterable
 
-import cython
-import numpy as np
 cimport numpy as cnp
+import numpy as np
+cnp.import_array()
+
 import scipy.special
 
-from archmm.distributions.base import BaseDistribution
+from archmm.state import HiddenState
 from archmm.utils import check_data
-
-cnp.import_array()
 
 cimport libc.math
 
@@ -86,7 +86,8 @@ cdef inline data_t log_sum_exp_1d(data_t[:] vec) nogil:
     if libc.math.isinf(offset):
         return MINUS_INFINITY
     for i in range(vec.shape[0]):
-        s += libc.math.exp(vec[i] - offset)
+        if vec[i] != MINUS_INFINITY:
+            s += libc.math.exp(vec[i] - offset)
     return libc.math.log(s) + offset
 
 
@@ -119,37 +120,47 @@ cdef class HMM:
         # Initial probabilities
         self.pi = np.ones(1, dtype=py_data_t)
         self.log_pi = np.log(self.pi).astype(py_data_t)
+        self.pi_mask = np.ones(1, dtype=np.uint8)
 
         # State transition probabilities
         self.a = np.ones((1, 1), dtype=py_data_t)
         self.log_a = np.log(self.a).astype(py_data_t)
+        self.a_mask = np.ones((1, 1), dtype=np.uint8)
 
     def init(self):
 
         # Initial probabilities
-        self.pi = np.random.rand(self.n_states).astype(py_data_t)
+        self.pi_mask = np.empty(self.n_states, dtype=bool)
+        for i in range(self.n_states):
+            self.pi_mask[i] = self.states[i].is_allowed_to_start()
+        self.pi = (np.asarray(self.pi_mask) * np.random.rand(self.n_states)).astype(py_data_t)
         self.pi /= np.sum(self.pi)
         self.log_pi = np.log(self.pi).astype(py_data_t)
 
         # State transition probabilities
-        self.a = np.random.rand(self.n_states, self.n_states).astype(py_data_t)
+        self.a_mask = np.empty((self.n_states, self.n_states), dtype=bool)
+        for i in range(self.n_states):
+            for j in range(self.n_states):
+                self.a_mask[i, j] = self.states[i].can_transit_to(self.states[j])
+        self.a = (np.asarray(self.a_mask) * np.random.rand(self.n_states, self.n_states)).astype(py_data_t)
         self.a /= np.sum(self.a, axis=1)[:, np.newaxis]
+        self.a = np.nan_to_num(np.asarray(self.a, dtype=py_data_t), nan=0)
         self.log_a = np.log(self.a).astype(py_data_t)
 
-    def add_state(self, dist: BaseDistribution):
-        self.states.append(dist)
+    def add_state(self, state: HiddenState):
+        self.states.append(state)
 
-    def add_states(self, dists: Iterable[BaseDistribution]):
-        for dist in dists:
-            self.add_state(dist)
+    def add_states(self, states: Iterable[HiddenState]):
+        for state in states:
+            self.add_state(state)
 
     def emission_log_prob(self, sequence: np.ndarray, log_b: np.ndarray):
         for i in range(self.n_states):
-            log_b[:, i] = self.states[i].log_pdf(sequence).astype(py_data_t)
+            log_b[:, i] = self.states[i].dist.log_pdf(sequence).astype(py_data_t)
 
     def emission_param_update(self, sequence: np.ndarray, gamma: np.ndarray):
         for i in range(self.n_states):
-            self.states[i].param_update(sequence, gamma[:, i])
+            self.states[i].dist.param_update(sequence, gamma[:, i])
 
     cdef inline data_t forward_procedure(self, data_t[:, :] log_alpha, data_t[:, :] log_b, data_t[:] tmp) nogil:
 
@@ -159,11 +170,17 @@ cdef class HMM:
 
         # Forward procedure
         for i in range(n_states):
-            log_alpha[0, i] = self.log_pi[i] + log_b[0, i]
+            if self.pi_mask[i]:
+                log_alpha[0, i] = self.log_pi[i] + log_b[0, i]
+            else:
+                log_alpha[0, i] = MINUS_INFINITY
         for t in range(1, n):
             for i in range(n_states):
                 for j in range(n_states):
-                    tmp[j] = log_alpha[t - 1, j] + self.log_a[j, i]
+                    if self.a_mask[j, i]:
+                        tmp[j] = log_alpha[t - 1, j] + self.log_a[j, i]
+                    else:
+                        tmp[j] = MINUS_INFINITY
                 log_alpha[t, i] = log_sum_exp_1d(tmp) + log_b[t, i]
 
         # Compute forward log-likelihood
@@ -181,12 +198,18 @@ cdef class HMM:
         for t in range(n - 2, -1, -1):
             for i in range(n_states):
                 for j in range(n_states):
-                    tmp[j] = log_beta[t + 1, j] + self.log_a[i, j] + log_b[t + 1, j]
+                    if self.a_mask[i, j]:
+                        tmp[j] = log_beta[t + 1, j] + self.log_a[i, j] + log_b[t + 1, j]
+                    else:
+                        tmp[j] = MINUS_INFINITY
                 log_beta[t, i] = log_sum_exp_1d(tmp)
 
         # Compute backward log-likelihood
         for i in range(n_states):
-            tmp[i] = self.log_pi[i] + log_b[0, i] + log_beta[0, i]
+            if self.pi_mask[i]:
+                tmp[i] = self.log_pi[i] + log_b[0, i] + log_beta[0, i]
+            else:
+                tmp[i] = MINUS_INFINITY
         return log_sum_exp_1d(tmp)
 
     def fit(
@@ -205,6 +228,7 @@ cdef class HMM:
         cdef int ns = len(data)
         cdef int n = 0
         cdef int n_states = self.n_states
+        assert n_states > 0
 
         # Allocate memory
         cdef data_t[:, :] log_b_ = np.zeros((ns, self.n_states), dtype=py_data_t)
@@ -230,6 +254,8 @@ cdef class HMM:
 
             with nogil:
 
+                forward_ll = 0.
+                backward_ll = 0.
                 for s in range(n_sequences):
 
                     start = bounds[s]
@@ -244,8 +270,8 @@ cdef class HMM:
                     log_xi = log_xi_[start:end, :, :]
 
                     # Forward-backward algorithm
-                    forward_ll = self.forward_procedure(log_alpha, log_b, tmp)
-                    backward_ll = self.backward_procedure(log_beta, log_b, tmp)
+                    forward_ll += self.forward_procedure(log_alpha, log_b, tmp)
+                    backward_ll += self.backward_procedure(log_beta, log_b, tmp)
 
             # Compute occupation likelihood
             arr = (np.asarray(log_alpha_) + np.asarray(log_beta_)).astype(py_data_t)
@@ -302,6 +328,7 @@ cdef class HMM:
                 print(f'Likelihood: forward={forward_ll}, backward={backward_ll}')
             lls.append(float(forward_ll))
 
+            # Update parameters
             self.emission_param_update(data, np.exp(np.asarray(log_gamma_, dtype=py_data_t)))
 
             # Check convergence
@@ -402,17 +429,33 @@ cdef class HMM:
         states_ = np.asarray(states)
 
         # Sample observations from hidden states
-        data = np.empty((n, *self.states[0].shape), dtype=float)  # TODO: distribution-specific dtype
+        data = np.empty((n, *self.states[0].dist.shape), dtype=float)  # TODO: distribution-specific dtype
         for i in range(self.n_states):
             idx = np.where(states_ == i)[0]
             if len(idx) > 0:
-                data[idx, ...] = self.states[i].sample(len(idx))
+                data[idx, ...] = self.states[i].dist.sample(len(idx))
         return data
 
     def assert_almost_equal(self, other: 'HMM', precision: int = 6):
         # TODO: sort hidden states based on pairwise similarities
         np.testing.assert_array_almost_equal(self.log_pi, other.pi, decimal=precision)
         np.testing.assert_array_almost_equal(self.log_pi, other.a, decimal=precision)
+
+    def __copy__(self) -> 'HMM':
+        hmm = HMM()
+        hmm.a = np.copy(np.asarray(self.a))
+        hmm.log_a = np.copy(np.asarray(self.log_a))
+        hmm.pi = np.copy(np.asarray(self.pi))
+        hmm.log_pi = np.copy(np.asarray(self.log_pi))
+        hmm.states = copy.copy(self.states)
+        return hmm
+
+    def __deepcopy__(self, memodict=None):
+        if memodict is None:
+            memodict = {}
+        hmm = self.__copy__()
+        hmm.states = copy.deepcopy(self.states)
+        return hmm
 
     @property
     def n_states(self) -> int:
