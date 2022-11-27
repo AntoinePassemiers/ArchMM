@@ -346,9 +346,9 @@ cdef class HMM:
             return np.asarray([], dtype=int)
         cdef data_t[:, :] log_b = np.zeros((n, self.n_states), dtype=py_data_t)
         cdef data_t[:, :] t1 = np.zeros((n, self.n_states), dtype=py_data_t)
-        cdef int[:, :] t2 = np.zeros((n, self.n_states), dtype=int)
+        cdef cnp.int_t[:, :] t2 = np.zeros((n, self.n_states), dtype=int)
         cdef data_t[:] tmp = np.zeros(self.n_states, dtype=py_data_t)
-        cdef int[:] x = np.zeros(n, dtype=int)
+        cdef cnp.int_t[:] x = np.zeros(n, dtype=int)
         cdef data_t max_value, new_value
 
         self.emission_log_prob(data, log_b)
@@ -383,7 +383,7 @@ cdef class HMM:
 
     def score(self, data: Any) -> float:
         data, bounds_ = check_data(data)
-        cdef int[:] bounds = np.asarray(bounds_, dtype=int)
+        cdef cnp.int_t[:] bounds = np.asarray(bounds_, dtype=int)
         cdef int n_sequences = bounds.shape[0] - 1
         cdef int ns = len(data)
         cdef int n = 0
