@@ -20,6 +20,7 @@
 # MA 02110-1301, USA.
 
 import numpy as np
+from archmm import HiddenState, Architecture
 
 from archmm.hmm import HMM
 from archmm.distributions import MultivariateGaussian
@@ -35,8 +36,9 @@ def test_fit():
     sequences.append(sequence)
 
     model = HMM()
-    for _ in range(3):
-        model.add_state(MultivariateGaussian(3))
+    states = [HiddenState(MultivariateGaussian(3)) for _ in range(3)]
+    Architecture.ergodic(states)
+    model.add_states(states)
     model.fit(sequences)
 
     for sequence in sequences:
