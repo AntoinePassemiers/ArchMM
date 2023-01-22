@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# normal.py
+# beta.py
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -19,27 +19,33 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA 02110-1301, USA.
 
+import random
+
 import numpy as np
-import scipy.stats
+import torch
+from scipy.stats import beta
 
 from archmm.distributions.base import BaseDistribution
+from archmm.distributions.support import Bounds
 
 
-class Gaussian(BaseDistribution):
+class Beta(BaseDistribution):
 
     def __init__(self):
         super().__init__()
-        self.mu: float = float(np.random.rand())
-        self.sigma = float(np.random.rand() + 1e-10)
+        self.alpha: float = random.random()
+        self.beta: float = random.random()
+        self.add_support(Bounds(0, 1))
 
     def _param_update(self, data: np.ndarray, gamma: np.ndarray):
-        denominator = np.sum(gamma)
-        self.mu = float(np.sum(data * gamma, axis=0) / denominator)
-        centered = data - self.mu
-        self.sigma = float(np.sqrt(np.sum((centered ** 2.) * gamma, axis=0) / denominator))
+        raise NotImplementedError('No closed-form ML estimator for Beta distribution')
 
     def _log_pdf(self, data: np.ndarray) -> np.ndarray:
-        return scipy.stats.norm.logpdf(data, loc=self.mu, scale=self.sigma)
+        return beta.logpdf(data, self.alpha, self.beta)
+
+    def log_pdf_torch(self, data: torch.Tensor) -> torch.Tensor:
+        dist = torch.distributions.Beta(self.alpha, self.beta)
+        return dist.log_prob(data)
 
     def sample(self, n: int) -> np.ndarray:
-        return scipy.stats.norm.rvs(loc=self.mu, scale=self.sigma, size=n)
+        return beta.rvs(self.alpha, self.beta, size=n)

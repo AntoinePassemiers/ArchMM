@@ -18,6 +18,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA 02110-1301, USA.
+import copy
 
 import numpy as np
 from archmm import HiddenState, Architecture
@@ -46,3 +47,24 @@ def test_fit():
         model.score(sequence)
     model.decode(sequences)
     assert not np.any(np.isnan(model.score(sequences)))
+
+
+def test_local_convergence():
+    base_model = HMM()
+    states = [HiddenState(MultivariateGaussian(3)) for _ in range(3)]
+    Architecture.ergodic(states)
+    base_model.add_states(states)
+
+    sequences = [base_model.sample(50) for _ in range(3)]
+
+    model = HMM()
+    states = [HiddenState(MultivariateGaussian(3)) for _ in range(3)]
+    Architecture.ergodic(states)
+    model.add_states(states)
+    #model = copy.deepcopy(base_model)
+    #model.fit(sequences)
+
+    base_model.assert_almost_equal(model)
+
+
+test_local_convergence()

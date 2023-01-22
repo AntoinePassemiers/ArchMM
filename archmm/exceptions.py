@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-# hmm.pxd
-# distutils: language=c
+#
+# exceptions.py
 #
 # Copyright 2022 Antoine Passemiers <antoine.passemiers@gmail.com>
 #
@@ -19,25 +19,6 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA 02110-1301, USA.
 
-import numpy as np
-cimport numpy as cnp
-cnp.import_array()
 
-
-ctypedef cnp.float_t data_t
-
-
-cdef class HMM:
-
-    cdef list states
-    cdef object optimizer
-
-    cdef data_t[:] pi
-    cdef data_t[:, :] a
-    cdef data_t[:] log_pi
-    cdef data_t[:, :] log_a
-    cdef cnp.uint8_t[:] pi_mask
-    cdef cnp.uint8_t[:, :] a_mask
-
-    cdef inline data_t forward_procedure(self, data_t[:, :] log_alpha, data_t[:, :] log_b, data_t[:] tmp) nogil
-    cdef inline data_t backward_procedure(self, data_t[:, :] log_beta, data_t[:, :] log_b, data_t[:] tmp) nogil
+class InvalidArchitecture(Exception):
+    pass

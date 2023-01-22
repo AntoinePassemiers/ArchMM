@@ -23,14 +23,17 @@ from abc import ABCMeta, abstractmethod
 from typing import List, Tuple
 
 import numpy as np
+import torch
 
 from archmm.distributions.support import Support, Shape
 
 
-class BaseDistribution(metaclass=ABCMeta):
+class BaseDistribution(torch.nn.Module, metaclass=ABCMeta):
 
-    def __init__(self, *shape: int):
+    def __init__(self, *shape: int, closed_form: bool = True):
+        super().__init__()
         self.shape: Tuple[int] = tuple(shape)
+        self.closed_form: bool = closed_form
         self.supports: List[Support] = []
         self.add_support(Shape(*self.shape))
 
@@ -56,6 +59,9 @@ class BaseDistribution(metaclass=ABCMeta):
     @abstractmethod
     def _log_pdf(self, data: np.ndarray) -> np.ndarray:
         pass
+
+    def log_pdf_torch(self, data: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError()
 
     @abstractmethod
     def sample(self, n: int) -> np.ndarray:

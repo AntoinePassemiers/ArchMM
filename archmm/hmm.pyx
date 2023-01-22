@@ -29,9 +29,16 @@ from typing import Any, Iterable
 
 cimport numpy as cnp
 import numpy as np
+from archmm.parameter import BaseParameter
+
+from archmm.optimizer import Optimizer
+
+from archmm.exceptions import InvalidArchitecture
+
 cnp.import_array()
 
 import scipy.special
+import torch
 
 from archmm.state import HiddenState
 from archmm.utils import check_data
@@ -39,10 +46,13 @@ from archmm.utils import check_data
 cimport libc.math
 
 
-py_data_t = np.float
+py_data_t = float
 
 cdef data_t MINUS_INFINITY = <data_t>-np.inf
 cdef data_t INFINITY = <data_t>np.inf
+
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
 cdef inline int random_choice(data_t r, data_t[:] p) nogil:
@@ -112,10 +122,13 @@ cdef inline data_t log_sum_exp(data_t x, data_t y) nogil:
 
 cdef class HMM:
 
-    def __init__(self):
+    def __init__(self, optimizer: Optimizer = Optimizer()):
 
         # Hidden states
         self.states = []
+
+        # Optimizer (maximization step)
+        self.optimizer = optimizer
 
         # Initial probabilities
         self.pi = np.ones(1, dtype=py_data_t)
@@ -133,6 +146,8 @@ cdef class HMM:
         self.pi_mask = np.empty(self.n_states, dtype=bool)
         for i in range(self.n_states):
             self.pi_mask[i] = self.states[i].is_allowed_to_start()
+        if np.sum(self.pi_mask) == 0:
+            raise InvalidArchitecture('Trying to initialize HMM with no initial state')
         self.pi = (np.asarray(self.pi_mask) * np.random.rand(self.n_states)).astype(py_data_t)
         self.pi /= np.sum(self.pi)
         self.log_pi = np.log(self.pi).astype(py_data_t)
@@ -154,13 +169,15 @@ cdef class HMM:
         for state in states:
             self.add_state(state)
 
+    def add_prior(self, param: BaseParameter, dist: torch.distributions.Distribution):
+        self.optimizer.add_prior(param, dist)
+
     def emission_log_prob(self, sequence: np.ndarray, log_b: np.ndarray):
         for i in range(self.n_states):
             log_b[:, i] = self.states[i].dist.log_pdf(sequence).astype(py_data_t)
 
     def emission_param_update(self, sequence: np.ndarray, gamma: np.ndarray):
-        for i in range(self.n_states):
-            self.states[i].dist.param_update(sequence, gamma[:, i])
+        self.optimizer.update_params(sequence, gamma)
 
     cdef inline data_t forward_procedure(self, data_t[:, :] log_alpha, data_t[:, :] log_b, data_t[:] tmp) nogil:
 
@@ -221,6 +238,7 @@ cdef class HMM:
     ):
 
         self.init()
+        self.optimizer.init(self.states)
 
         data, bounds_ = check_data(data)
         cdef cnp.int_t[:] bounds = np.asarray(bounds_, dtype=int)
@@ -438,8 +456,8 @@ cdef class HMM:
 
     def assert_almost_equal(self, other: 'HMM', precision: int = 6):
         # TODO: sort hidden states based on pairwise similarities
-        np.testing.assert_array_almost_equal(self.log_pi, other.pi, decimal=precision)
-        np.testing.assert_array_almost_equal(self.log_pi, other.a, decimal=precision)
+        np.testing.assert_array_almost_equal(self.log_pi, other.log_pi, decimal=precision)
+        np.testing.assert_array_almost_equal(self.log_a, other.log_a, decimal=precision)
 
     def __copy__(self) -> 'HMM':
         hmm = HMM()
@@ -453,8 +471,8 @@ cdef class HMM:
     def __deepcopy__(self, memodict=None):
         if memodict is None:
             memodict = {}
-        hmm = self.__copy__()
-        hmm.states = copy.deepcopy(self.states)
+        hmm = copy.copy(self)
+        # hmm.states = copy.deepcopy(self.states)
         return hmm
 
     @property

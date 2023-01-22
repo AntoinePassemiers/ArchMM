@@ -33,5 +33,5 @@ model.add_states(states)
 model.fit(sequence)
 
 print(f'Hidden states: {model.decode(sequence)}')
-print(f'p parameter for state 0: {states[0].p}')
-print(f'p parameter for state 1: {states[1].p}')
+print(f'p parameter for state 0: {states[0].dist.p}')
+print(f'p parameter for state 1: {states[1].dist.p}')
