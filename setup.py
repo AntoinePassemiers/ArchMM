@@ -158,7 +158,7 @@ def check_package_status(package, min_version):
         package_status["up_to_date"] = False
         package_status["version"] = ""
 
-    req_str = "scikit-learn requires {} >= {}.\n".format(package, min_version)
+    req_str = "ArchMM requires {} >= {}.\n".format(package, min_version)
 
     if package_status["up_to_date"] is False:
         if package_status["version"]:
@@ -175,15 +175,6 @@ def check_package_status(package, min_version):
 
 def setup_package():
 
-    # TODO: Require Python 3.8 for PyPy when PyPy3.8 is ready
-    # https://github.com/conda-forge/conda-forge-pinning-feedstock/issues/2089
-    if platform.python_implementation() == "PyPy":
-        python_requires = ">=3.7"
-        required_python_version = (3, 7)
-    else:
-        python_requires = ">=3.8"
-        required_python_version = (3, 8)
-
     metadata = dict(
         name=DISTNAME,
         maintainer=MAINTAINER,
@@ -191,7 +182,7 @@ def setup_package():
         description=DESCRIPTION,
         long_description=LONG_DESCRIPTION,
         cmdclass=cmdclass,
-        python_requires=python_requires,
+        python_requires=">=3.6",
         package_data={"": ["*.pxd"]},
         **extra_setuptools_args,
     )
@@ -200,23 +191,12 @@ def setup_package():
     if all(
         command in ("egg_info", "dist_info", "clean", "check") for command in commands
     ):
-        # These actions are required to succeed without Numpy for example when
-        # pip is used to install Scikit-learn when Numpy is not yet present in
-        # the system.
-
         # These commands use setup from setuptools
         from setuptools import setup
 
         metadata["version"] = VERSION
         metadata["packages"] = ["sklearn"]
     else:
-        if sys.version_info < required_python_version:
-            required_version = "%d.%d" % required_python_version
-            raise RuntimeError(
-                "Scikit-learn requires Python %s or later. The current"
-                " Python version is %s installed in %s."
-                % (required_version, platform.python_version(), sys.executable)
-            )
 
         # These commands require the setup from numpy.distutils because they
         # may use numpy.distutils compiler classes.

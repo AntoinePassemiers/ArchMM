@@ -25,14 +25,13 @@
 # MA 02110-1301, USA.
 
 import copy
-from typing import Any, Iterable
+from typing import Any, Dict, Iterable
 
 cimport numpy as cnp
 import numpy as np
 from archmm.parameter import BaseParameter
 
 from archmm.optimizer import Optimizer
-
 from archmm.exceptions import InvalidArchitecture
 
 cnp.import_array()
@@ -266,6 +265,9 @@ cdef class HMM:
         cdef data_t lse, forward_ll, backward_ll, log_numerator, log_denominator
         cdef list lls = []
 
+        cdef float best_obj = <float>-np.inf
+        cdef int n_iter_without_improvement = 0
+
         for iteration in range(max_n_iter):
 
             self.emission_log_prob(data, np.asarray(log_b_, dtype=py_data_t))
@@ -352,6 +354,13 @@ cdef class HMM:
             # Check convergence
             if len(lls) > 1:
                 if abs((lls[iteration] - lls[iteration-1]) / lls[iteration-1]) < eps:
+                    break
+            if lls[iteration] > best_obj:
+                best_obj = lls[iteration]
+                n_iter_without_improvement = 0
+            else:
+                n_iter_without_improvement += 1
+                if n_iter_without_improvement >= 10:
                     break
 
     def decode(self, data: Any) -> np.ndarray:
@@ -463,9 +472,12 @@ cdef class HMM:
         hmm = HMM()
         hmm.a = np.copy(np.asarray(self.a))
         hmm.log_a = np.copy(np.asarray(self.log_a))
+        hmm.a_mask = np.copy(np.asarray(self.a_mask))
         hmm.pi = np.copy(np.asarray(self.pi))
         hmm.log_pi = np.copy(np.asarray(self.log_pi))
+        hmm.pi_mask = np.copy(np.asarray(self.pi_mask))
         hmm.states = copy.copy(self.states)
+        hmm.optimizer = copy.copy(self.optimizer)
         return hmm
 
     def __deepcopy__(self, memodict=None):
@@ -474,6 +486,26 @@ cdef class HMM:
         hmm = copy.copy(self)
         # hmm.states = copy.deepcopy(self.states)
         return hmm
+
+    def __getstate__(self) -> Dict[str, Any]:
+        return {
+            'a': np.asarray(self.a),
+            'a_mask': np.asarray(self.a_mask),
+            'pi': np.asarray(self.pi),
+            'pi_mask': np.asarray(self.pi_mask),
+            'optimizer': self.optimizer,
+            'states': self.states
+        }
+
+    def __setstate__(self, state: Dict[str, Any]):
+        self.a = state['a'].astype(py_data_t)
+        self.log_a = np.log(state['a'] + 1e-30).astype(py_data_t)
+        self.a_mask = state['a_mask'].astype(np.uint8)
+        self.pi = state['pi'].astype(py_data_t)
+        self.log_pi = np.log(state['pi'] + 1e-30).astype(py_data_t)
+        self.pi_mask = state['pi_mask'].astype(np.uint8)
+        self.optimizer = state['optimizer']
+        self.states = state['states']
 
     @property
     def n_states(self) -> int:

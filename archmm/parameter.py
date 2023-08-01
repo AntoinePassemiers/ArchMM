@@ -73,7 +73,7 @@ class PositiveParameter(BaseParameter):
         super().__init__(shape)
 
     def get(self) -> torch.Tensor:
-        return torch.exp(self.raw)
+        return torch.exp(torch.clamp(self.raw, -100, 100))
 
     def set(self, x: torch.Tensor):
         self.raw.data = torch.log(x)

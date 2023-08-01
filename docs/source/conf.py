@@ -53,7 +53,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'archmm'
-copyright = '2018, Antoine Passemiers'
+copyright = '2023, Antoine Passemiers'
 author = 'Antoine Passemiers'
 
 # The version info for the project you're documenting, acts as replacement for

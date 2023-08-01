@@ -33,7 +33,7 @@ class Optimizer:
     def __init__(
             self,
             n_iter_per_em_step: int = 10,
-            lr: float = 1e-3
+            lr: float = 0.0002
     ):
         self._optimizer: Optional[torch.optim.Optimizer] = None
         self.states: List[HiddenState] = []
@@ -42,6 +42,7 @@ class Optimizer:
         self.lr: float = lr
 
     def init(self, states: List[HiddenState]):
+        self.states = []
         parameters = []
         for state in states:
             self.states.append(state)
